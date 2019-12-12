@@ -30,9 +30,18 @@ newtype WriteQueue a = WriteQueue
   { getWriteQueue :: TQueue a
   }
 
+writeQueue :: WriteQueue a -> a -> STM ()
+writeQueue = writeTQueue . getWriteQueue
+
 newtype ReadQueue a = ReadQueue
   { getReadQueue :: TQueue a
   }
+
+readQueue :: ReadQueue a -> STM a
+readQueue = readTQueue . getReadQueue
+
+tryReadQueue :: ReadQueue a -> STM (Maybe a)
+tryReadQueue = tryReadTQueue . getReadQueue
 
 twitchConnectionParams :: ConnectionParams
 twitchConnectionParams =
@@ -96,9 +105,7 @@ replThread queue = do
   hFlush stdout
   cmd <- words <$> getLine
   case cmd of
-    "say":args ->
-      atomically $
-      writeTQueue (getWriteQueue queue) $ Say $ T.pack $ unwords args
+    "say":args -> atomically $ writeQueue queue $ Say $ T.pack $ unwords args
     unknown:_ -> putStrLn ("Unknown command: " <> unknown)
     _ -> return ()
   replThread queue
@@ -106,7 +113,7 @@ replThread queue = do
 twitchIncomingThread :: Connection -> WriteQueue RawIrcMsg -> IO ()
 twitchIncomingThread conn queue = do
   mb <- readIrcLine conn
-  for_ mb $ atomically . writeTQueue (getWriteQueue queue)
+  for_ mb $ atomically . writeQueue queue
   twitchIncomingThread conn queue
 
 botThread ::
@@ -119,20 +126,18 @@ botThread incomingQueue outgoingQueue replQueue filePath =
   withFile filePath AppendMode botLoop
   where
     botLoop logHandle = do
-      maybeRawMsg <- atomically $ tryReadTQueue $ getReadQueue incomingQueue
+      maybeRawMsg <- atomically $ tryReadQueue incomingQueue
       for_ maybeRawMsg $ \rawMsg -> do
         let cookedMsg = cookIrcMsg rawMsg
         hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
         hFlush logHandle
         case cookedMsg of
-          (Ping xs) ->
-            atomically $ writeTQueue (getWriteQueue outgoingQueue) (ircPong xs)
+          (Ping xs) -> atomically $ writeQueue outgoingQueue (ircPong xs)
           _ -> return ()
-      maybeReplCommand <- atomically $ tryReadTQueue $ getReadQueue replQueue
+      maybeReplCommand <- atomically $ tryReadQueue replQueue
       for_ maybeReplCommand $ \case
         Say msg ->
-          atomically $
-          writeTQueue (getWriteQueue outgoingQueue) $ ircPrivmsg "#tsoding" msg
+          atomically $ writeQueue outgoingQueue $ ircPrivmsg "#tsoding" msg
       botLoop logHandle
 
 twitchLoggingThread :: Connection -> WriteQueue RawIrcMsg -> FilePath -> IO ()
@@ -146,14 +151,13 @@ twitchLoggingThread conn queue filePath =
         hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
         hFlush logHandle
         case cookedMsg of
-          (Ping xs) ->
-            atomically $ writeTQueue (getWriteQueue queue) (ircPong xs)
+          (Ping xs) -> atomically $ writeQueue queue (ircPong xs)
           _ -> return ()
       loggingLoop logHandle
 
 twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
 twitchOutgoingThread conn queue = do
-  bm <- atomically $ readTQueue (getReadQueue queue)
+  bm <- atomically $ readQueue queue
   sendMsg conn bm
   twitchOutgoingThread conn queue
 
