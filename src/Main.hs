@@ -80,28 +80,6 @@ instance FromJSON ConfigTwitch where
     ConfigTwitch <$> v .: "account" <*> v .: "token"
   parseJSON invalid = typeMismatch "Config" invalid
 
-recieveLoop :: ConfigTwitch -> Handle -> Connection -> TQueue RawIrcMsg -> IO ()
-recieveLoop config logHandle conn queue = do
-  mb <- readIrcLine conn
-  for_ mb $ \msg -> do
-    let cookedMsg = cookIrcMsg msg
-    hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
-    hFlush logHandle
-    case cookedMsg of
-      (Ping xs) -> sendMsg conn (ircPong xs)
-      -- (Privmsg userInfo target msgText) -> return ()
-      _ -> return ()
-  bm <- atomically $ tryReadTQueue queue
-  for_ bm $ sendMsg conn
-  recieveLoop config logHandle conn queue
-
-twitchThread :: ConfigTwitch -> TQueue RawIrcMsg -> IO ()
-twitchThread config queue =
-  withConnection twitchConnectionParams $ \conn -> do
-    withFile "twitch.log" AppendMode $ \logHandle -> do
-      authorize config conn
-      recieveLoop config logHandle conn queue
-
 replThread :: TQueue RawIrcMsg -> IO ()
 replThread queue = do
   putStr "> "
@@ -115,14 +93,38 @@ replThread queue = do
     _ -> return ()
   replThread queue
 
+twitchLoggingThread :: Connection -> TQueue RawIrcMsg -> FilePath -> IO ()
+twitchLoggingThread conn queue filePath =
+  withFile filePath AppendMode loggingLoop
+  where
+    loggingLoop logHandle = do
+      mb <- readIrcLine conn
+      for_ mb $ \msg -> do
+        let cookedMsg = cookIrcMsg msg
+        hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
+        hFlush logHandle
+        case cookedMsg of
+          (Ping xs) -> atomically $ writeTQueue queue (ircPong xs)
+          _ -> return ()
+      loggingLoop logHandle
+
+twitchWriteThread :: Connection -> TQueue RawIrcMsg -> IO ()
+twitchWriteThread conn queue = do
+  bm <- atomically $ readTQueue queue
+  sendMsg conn bm
+  twitchWriteThread conn queue
+
 mainWithArgs :: [String] -> IO ()
 mainWithArgs (configPath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
   eitherDecodeFileStrict configPath >>= \case
     Right config -> do
       queue <- atomically $ newTQueue
-      void $ forkIO $ twitchThread config queue
-      replThread queue
+      withConnection twitchConnectionParams $ \conn -> do
+        authorize config conn
+        void $ forkIO $ twitchLoggingThread conn queue "twitch.log"
+        void $ forkIO $ twitchWriteThread conn queue
+        replThread queue
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Configuration file is not provided"
