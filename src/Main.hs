@@ -17,7 +17,6 @@ import Data.Traversable
 import Irc.Message
 import Data.Foldable
 import System.IO
-import Data.Functor
 import Control.Concurrent
 import Control.Concurrent.STM
 import qualified Database.SQLite.Simple as Sqlite
@@ -109,10 +108,15 @@ replThread queue = do
   hFlush stdout
   cmd <- words <$> getLine
   case cmd of
-    "say":args -> atomically $ writeQueue queue $ Say $ T.pack $ unwords args
-    unknown:_ -> putStrLn ("Unknown command: " <> unknown)
-    _ -> return ()
-  replThread queue
+    "say":args -> do
+      atomically $ writeQueue queue $ Say $ T.pack $ unwords args
+      replThread queue
+    "quit":_ -> return ()
+    unknown:_ -> do
+      putStrLn ("Unknown command: " <> unknown)
+      replThread queue
+    _ -> replThread queue
+
 
 twitchIncomingThread :: Connection -> WriteQueue RawIrcMsg -> IO ()
 twitchIncomingThread conn queue = do
@@ -178,9 +182,11 @@ mainWithArgs (configPath:databasePath:_) = do
       replQueue <- atomically newTQueue
       withConnection twitchConnectionParams $ \conn -> do
         authorize config conn
-        void $ forkIO $ twitchIncomingThread conn (WriteQueue incomingIrcQueue)
-        void $ forkIO $ twitchOutgoingThread conn (ReadQueue outgoingIrcQueue)
-        void $
+        incomingThreadId <-
+          forkIO $ twitchIncomingThread conn (WriteQueue incomingIrcQueue)
+        outgoingThreadId <-
+          forkIO $ twitchOutgoingThread conn (ReadQueue outgoingIrcQueue)
+        botThreadId <-
           forkIO $
           botThread
             (ReadQueue incomingIrcQueue)
@@ -189,6 +195,9 @@ mainWithArgs (configPath:databasePath:_) = do
             databasePath
             "twitch.log"
         replThread (WriteQueue replQueue)
+        killThread incomingThreadId
+        killThread outgoingThreadId
+        killThread botThreadId
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Not enough arguments provided"
