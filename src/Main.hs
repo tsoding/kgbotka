@@ -24,6 +24,16 @@ import Control.Concurrent.STM
 maxIrcMessage :: Int
 maxIrcMessage = 500 * 4
 
+data ReplCommand = Say T.Text
+
+newtype WriteQueue a = WriteQueue
+  { getWriteQueue :: TQueue a
+  }
+
+newtype ReadQueue a = ReadQueue
+  { getReadQueue :: TQueue a
+  }
+
 twitchConnectionParams :: ConnectionParams
 twitchConnectionParams =
   ConnectionParams
@@ -80,7 +90,7 @@ instance FromJSON ConfigTwitch where
     ConfigTwitch <$> v .: "account" <*> v .: "token"
   parseJSON invalid = typeMismatch "Config" invalid
 
-replThread :: TQueue RawIrcMsg -> IO ()
+replThread :: WriteQueue ReplCommand -> IO ()
 replThread queue = do
   putStr "> "
   hFlush stdout
@@ -88,12 +98,44 @@ replThread queue = do
   case cmd of
     "say":args ->
       atomically $
-      writeTQueue queue $ ircPrivmsg "#tsoding" $ T.pack $ unwords args
+      writeTQueue (getWriteQueue queue) $ Say $ T.pack $ unwords args
     unknown:_ -> putStrLn ("Unknown command: " <> unknown)
     _ -> return ()
   replThread queue
 
-twitchLoggingThread :: Connection -> TQueue RawIrcMsg -> FilePath -> IO ()
+twitchIncomingThread :: Connection -> WriteQueue RawIrcMsg -> IO ()
+twitchIncomingThread conn queue = do
+  mb <- readIrcLine conn
+  for_ mb $ atomically . writeTQueue (getWriteQueue queue)
+  twitchIncomingThread conn queue
+
+botThread ::
+     ReadQueue RawIrcMsg
+  -> WriteQueue RawIrcMsg
+  -> ReadQueue ReplCommand
+  -> FilePath
+  -> IO ()
+botThread incomingQueue outgoingQueue replQueue filePath =
+  withFile filePath AppendMode botLoop
+  where
+    botLoop logHandle = do
+      maybeRawMsg <- atomically $ tryReadTQueue $ getReadQueue incomingQueue
+      for_ maybeRawMsg $ \rawMsg -> do
+        let cookedMsg = cookIrcMsg rawMsg
+        hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
+        hFlush logHandle
+        case cookedMsg of
+          (Ping xs) ->
+            atomically $ writeTQueue (getWriteQueue outgoingQueue) (ircPong xs)
+          _ -> return ()
+      maybeReplCommand <- atomically $ tryReadTQueue $ getReadQueue replQueue
+      for_ maybeReplCommand $ \case
+        Say msg ->
+          atomically $
+          writeTQueue (getWriteQueue outgoingQueue) $ ircPrivmsg "#tsoding" msg
+      botLoop logHandle
+
+twitchLoggingThread :: Connection -> WriteQueue RawIrcMsg -> FilePath -> IO ()
 twitchLoggingThread conn queue filePath =
   withFile filePath AppendMode loggingLoop
   where
@@ -104,27 +146,37 @@ twitchLoggingThread conn queue filePath =
         hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
         hFlush logHandle
         case cookedMsg of
-          (Ping xs) -> atomically $ writeTQueue queue (ircPong xs)
+          (Ping xs) ->
+            atomically $ writeTQueue (getWriteQueue queue) (ircPong xs)
           _ -> return ()
       loggingLoop logHandle
 
-twitchWriteThread :: Connection -> TQueue RawIrcMsg -> IO ()
-twitchWriteThread conn queue = do
-  bm <- atomically $ readTQueue queue
+twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
+twitchOutgoingThread conn queue = do
+  bm <- atomically $ readTQueue (getReadQueue queue)
   sendMsg conn bm
-  twitchWriteThread conn queue
+  twitchOutgoingThread conn queue
 
 mainWithArgs :: [String] -> IO ()
 mainWithArgs (configPath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
   eitherDecodeFileStrict configPath >>= \case
     Right config -> do
-      queue <- atomically $ newTQueue
+      incomingIrcQueue <- atomically newTQueue
+      outgoingIrcQueue <- atomically newTQueue
+      replQueue <- atomically newTQueue
       withConnection twitchConnectionParams $ \conn -> do
         authorize config conn
-        void $ forkIO $ twitchLoggingThread conn queue "twitch.log"
-        void $ forkIO $ twitchWriteThread conn queue
-        replThread queue
+        void $ forkIO $ twitchIncomingThread conn (WriteQueue incomingIrcQueue)
+        void $ forkIO $ twitchOutgoingThread conn (ReadQueue outgoingIrcQueue)
+        void $
+          forkIO $
+          botThread
+            (ReadQueue incomingIrcQueue)
+            (WriteQueue outgoingIrcQueue)
+            (ReadQueue replQueue)
+            "twitch.log"
+        replThread (WriteQueue replQueue)
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Configuration file is not provided"
