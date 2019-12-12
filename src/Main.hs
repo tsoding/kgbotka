@@ -20,6 +20,14 @@ import System.IO
 import Control.Concurrent
 import Control.Concurrent.STM
 import qualified Database.SQLite.Simple as Sqlite
+import Migration
+
+migrations :: [Migration]
+migrations = [
+ "CREATE TABLE Log (\
+ \  id INTEGER PRIMARY KEY,\
+ \  message TEXT NOT NULL\
+ \)"]
 
 maxIrcMessage :: Int
 maxIrcMessage = 500 * 4
@@ -132,9 +140,9 @@ botThread ::
   -> FilePath
   -> IO ()
 botThread incomingQueue outgoingQueue replQueue dbFilePath logFilePath =
-  withSqliteConnection dbFilePath $ \dbConn ->
-    withFile logFilePath AppendMode $ \logHandle ->
-      botLoop dbConn logHandle
+  withSqliteConnection dbFilePath $ \dbConn -> do
+    Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
+    withFile logFilePath AppendMode $ \logHandle -> botLoop dbConn logHandle
   where
     botLoop dbConn logHandle = do
       maybeRawMsg <- atomically $ tryReadQueue incomingQueue
