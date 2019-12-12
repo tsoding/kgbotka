@@ -20,6 +20,7 @@ import System.IO
 import Data.Functor
 import Control.Concurrent
 import Control.Concurrent.STM
+import qualified Database.SQLite.Simple as Sqlite
 
 maxIrcMessage :: Int
 maxIrcMessage = 500 * 4
@@ -63,6 +64,9 @@ twitchConnectionParams =
 
 withConnection :: ConnectionParams -> (Connection -> IO a) -> IO a
 withConnection params = bracket (connect params) close
+
+withSqliteConnection :: FilePath -> (Sqlite.Connection -> IO a) -> IO a
+withSqliteConnection filePath = bracket (Sqlite.open filePath) Sqlite.close
 
 sendMsg :: Connection -> RawIrcMsg -> IO ()
 sendMsg conn msg = send conn (renderRawIrcMsg msg)
@@ -121,11 +125,14 @@ botThread ::
   -> WriteQueue RawIrcMsg
   -> ReadQueue ReplCommand
   -> FilePath
+  -> FilePath
   -> IO ()
-botThread incomingQueue outgoingQueue replQueue filePath =
-  withFile filePath AppendMode botLoop
+botThread incomingQueue outgoingQueue replQueue dbFilePath logFilePath =
+  withSqliteConnection dbFilePath $ \dbConn ->
+    withFile logFilePath AppendMode $ \logHandle ->
+      botLoop dbConn logHandle
   where
-    botLoop logHandle = do
+    botLoop dbConn logHandle = do
       maybeRawMsg <- atomically $ tryReadQueue incomingQueue
       for_ maybeRawMsg $ \rawMsg -> do
         let cookedMsg = cookIrcMsg rawMsg
@@ -138,7 +145,7 @@ botThread incomingQueue outgoingQueue replQueue filePath =
       for_ maybeReplCommand $ \case
         Say msg ->
           atomically $ writeQueue outgoingQueue $ ircPrivmsg "#tsoding" msg
-      botLoop logHandle
+      botLoop dbConn logHandle
 
 twitchLoggingThread :: Connection -> WriteQueue RawIrcMsg -> FilePath -> IO ()
 twitchLoggingThread conn queue filePath =
@@ -162,7 +169,7 @@ twitchOutgoingThread conn queue = do
   twitchOutgoingThread conn queue
 
 mainWithArgs :: [String] -> IO ()
-mainWithArgs (configPath:_) = do
+mainWithArgs (configPath:databasePath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
   eitherDecodeFileStrict configPath >>= \case
     Right config -> do
@@ -179,12 +186,13 @@ mainWithArgs (configPath:_) = do
             (ReadQueue incomingIrcQueue)
             (WriteQueue outgoingIrcQueue)
             (ReadQueue replQueue)
+            databasePath
             "twitch.log"
         replThread (WriteQueue replQueue)
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
-  hPutStrLn stderr "[ERROR] Configuration file is not provided"
-  hPutStrLn stderr "Usage: ./kgbotka <config.json>"
+  hPutStrLn stderr "[ERROR] Not enough arguments provided"
+  hPutStrLn stderr "Usage: ./kgbotka <config.json> <database.db>"
   exitFailure
 
 main :: IO ()
