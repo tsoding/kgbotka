@@ -164,6 +164,7 @@ botThread incomingQueue outgoingQueue replQueue state dbFilePath logFilePath =
     withFile logFilePath AppendMode $ \logHandle -> botLoop dbConn logHandle
   where
     botLoop dbConn logHandle = do
+      threadDelay 10000 -- to prevent busy looping
       maybeRawMsg <- atomically $ tryReadQueue incomingQueue
       for_ maybeRawMsg $ \rawMsg -> do
         let cookedMsg = cookIrcMsg rawMsg
