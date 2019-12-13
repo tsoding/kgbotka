@@ -32,7 +32,9 @@ migrations = [
 maxIrcMessage :: Int
 maxIrcMessage = 500 * 4
 
-data ReplCommand = Say T.Text
+data ReplCommand
+  = Say T.Text T.Text
+  | JoinChannel T.Text
 
 newtype WriteQueue a = WriteQueue
   { getWriteQueue :: TQueue a
@@ -116,10 +118,14 @@ replThread queue = do
   hFlush stdout
   cmd <- words <$> getLine
   case cmd of
-    "say":args -> do
-      atomically $ writeQueue queue $ Say $ T.pack $ unwords args
+    "say":channel:args -> do
+      atomically $
+        writeQueue queue $ Say (T.pack channel) $ T.pack $ unwords args
       replThread queue
     "quit":_ -> return ()
+    "join":channel:_ -> do
+      atomically $ writeQueue queue $ JoinChannel $ T.pack channel
+      replThread queue
     unknown:_ -> do
       putStrLn ("Unknown command: " <> unknown)
       replThread queue
@@ -155,8 +161,12 @@ botThread incomingQueue outgoingQueue replQueue dbFilePath logFilePath =
           _ -> return ()
       maybeReplCommand <- atomically $ tryReadQueue replQueue
       for_ maybeReplCommand $ \case
-        Say msg ->
-          atomically $ writeQueue outgoingQueue $ ircPrivmsg "#tsoding" msg
+        Say channel msg ->
+          atomically $
+          writeQueue outgoingQueue $ ircPrivmsg ("#" <> channel) msg
+        JoinChannel channel ->
+          atomically $
+          writeQueue outgoingQueue $ ircJoin ("#" <> channel) Nothing
       botLoop dbConn logHandle
 
 twitchLoggingThread :: Connection -> WriteQueue RawIrcMsg -> FilePath -> IO ()

@@ -1,5 +1,6 @@
 .ghc.environment*
 dist-newstyle/
+dist/
 *.json
 *.log
 *.db
