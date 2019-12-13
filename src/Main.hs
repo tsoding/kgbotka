@@ -1,29 +1,30 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Main where
+module Main (main) where
 
-import Data.Aeson
-import Data.Aeson.Types
-import qualified Data.Text as T
-import System.Environment
-import System.Exit
-import Hookup
-import Network.Socket (Family(AF_INET))
-import Control.Exception
-import Irc.RawIrcMsg
-import Irc.Commands
-import Data.Traversable
-import Irc.Message
-import Data.Foldable
-import System.IO
 import Control.Concurrent
 import Control.Concurrent.STM
-import qualified Database.SQLite.Simple as Sqlite
-import Migration
-import qualified Data.Set as S
-import Irc.Identifier (Identifier, mkId)
+import Control.Exception
 import Control.Monad
+import Data.Aeson
+import Data.Aeson.Types
+import Data.Foldable
+import Data.Maybe
+import qualified Data.Set as S
+import qualified Data.Text as T
+import Data.Traversable
+import qualified Database.SQLite.Simple as Sqlite
+import Hookup
+import Irc.Commands
+import Irc.Identifier (Identifier, mkId, idText)
+import Irc.Message
+import Irc.RawIrcMsg
+import Migration
+import Network.Socket (Family(AF_INET))
+import System.Environment
+import System.Exit
+import System.IO
 
 migrations :: [Migration]
 migrations = [
@@ -115,33 +116,38 @@ instance FromJSON ConfigTwitch where
     ConfigTwitch <$> v .: "account" <*> v .: "token"
   parseJSON invalid = typeMismatch "Config" invalid
 
-replThread :: TVar (S.Set Identifier) -> WriteQueue ReplCommand -> IO ()
-replThread state queue = do
-  putStr "> "
+replThread ::
+     Maybe T.Text -> TVar (S.Set Identifier) -> WriteQueue ReplCommand -> IO ()
+replThread currentChannel state queue = do
+  putStr $ "[" <> T.unpack (fromMaybe "#" currentChannel) <> "]> "
   hFlush stdout
-  cmd <- words <$> getLine
-  case cmd of
-    "say":channel:args -> do
-      atomically $
-        writeQueue queue $ Say (T.pack channel) $ T.pack $ unwords args
-      replThread state queue
-    "quit":_ -> return ()
-    "join":channel:_ -> do
-      atomically $ writeQueue queue $ JoinChannel $ T.pack channel
-      replThread state queue
-    "part":channel:_ -> do
+  cmd <- T.words . T.pack <$> getLine
+  case (cmd, currentChannel) of
+    ("cd":channel:_, _) -> replThread (Just channel) state queue
+    ("cd":_, _) -> replThread Nothing state queue
+    ("say":args, Just channel) -> do
+      atomically $ writeQueue queue $ Say channel $ T.unwords args
+      replThread currentChannel state queue
+    ("say":_, Nothing) -> do
+      putStrLn "No current channel to say anything to is selected"
+      replThread currentChannel state queue
+    ("quit":_, _) -> return ()
+    ("join":channel:_, _) -> do
+      atomically $ writeQueue queue $ JoinChannel channel
+      replThread (Just channel) state queue
+    ("part":_, Just channel) -> do
       atomically $ do
-        let channelId = mkId $ T.pack channel
+        let channelId = mkId channel
         isMember <- S.member channelId <$> readTVar state
         when isMember $ writeQueue queue $ PartChannel channelId
-      replThread state queue
-    "channels":_ -> do
-      readTVarIO state >>= putStrLn . show
-      replThread state queue
-    unknown:_ -> do
-      putStrLn ("Unknown command: " <> unknown)
-      replThread state queue
-    _ -> replThread state queue
+      replThread Nothing state queue
+    ("ls":_, _) -> do
+      traverse_ (putStrLn . T.unpack . idText) =<< S.toList <$> readTVarIO state
+      replThread currentChannel state queue
+    (unknown:_, _) -> do
+      putStrLn $ T.unpack $ "Unknown command: " <> unknown
+      replThread currentChannel state queue
+    _ -> replThread currentChannel state queue
 
 
 twitchIncomingThread :: Connection -> WriteQueue RawIrcMsg -> IO ()
@@ -217,7 +223,7 @@ mainWithArgs (configPath:databasePath:_) = do
             state
             databasePath
             "twitch.log"
-        replThread state (WriteQueue replQueue)
+        replThread Nothing state (WriteQueue replQueue)
         killThread incomingThreadId
         killThread outgoingThreadId
         killThread botThreadId

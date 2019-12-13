@@ -1,6 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Migration where
+module Migration
+  ( migrateDatabase
+  , Migration(..)
+  ) where
 
 import Data.String
 
