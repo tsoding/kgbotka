@@ -187,21 +187,6 @@ botThread incomingQueue outgoingQueue replQueue state dbFilePath logFilePath =
           atomically $ writeQueue outgoingQueue $ ircPart channelId ""
       botLoop dbConn logHandle
 
-twitchLoggingThread :: Connection -> WriteQueue RawIrcMsg -> FilePath -> IO ()
-twitchLoggingThread conn queue filePath =
-  withFile filePath AppendMode loggingLoop
-  where
-    loggingLoop logHandle = do
-      mb <- readIrcLine conn
-      for_ mb $ \msg -> do
-        let cookedMsg = cookIrcMsg msg
-        hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
-        hFlush logHandle
-        case cookedMsg of
-          (Ping xs) -> atomically $ writeQueue queue (ircPong xs)
-          _ -> return ()
-      loggingLoop logHandle
-
 twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
 twitchOutgoingThread conn queue = do
   bm <- atomically $ readQueue queue
