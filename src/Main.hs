@@ -21,6 +21,9 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import qualified Database.SQLite.Simple as Sqlite
 import Migration
+import qualified Data.Set as S
+import Irc.Identifier (Identifier, mkId)
+import Control.Monad
 
 migrations :: [Migration]
 migrations = [
@@ -35,6 +38,7 @@ maxIrcMessage = 500 * 4
 data ReplCommand
   = Say T.Text T.Text
   | JoinChannel T.Text
+  | PartChannel Identifier
 
 newtype WriteQueue a = WriteQueue
   { getWriteQueue :: TQueue a
@@ -84,7 +88,6 @@ authorize :: ConfigTwitch -> Connection -> IO ()
 authorize conf conn = do
   sendMsg conn (ircPass $ configTwitchToken conf)
   sendMsg conn (ircNick $ configTwitchAccount conf)
-  sendMsg conn (ircJoin "#tsoding" Nothing)
   sendMsg conn (ircCapReq ["twitch.tv/tags"])
 
 readIrcLine :: Connection -> IO (Maybe RawIrcMsg)
@@ -112,8 +115,8 @@ instance FromJSON ConfigTwitch where
     ConfigTwitch <$> v .: "account" <*> v .: "token"
   parseJSON invalid = typeMismatch "Config" invalid
 
-replThread :: WriteQueue ReplCommand -> IO ()
-replThread queue = do
+replThread :: TVar (S.Set Identifier) -> WriteQueue ReplCommand -> IO ()
+replThread state queue = do
   putStr "> "
   hFlush stdout
   cmd <- words <$> getLine
@@ -121,15 +124,24 @@ replThread queue = do
     "say":channel:args -> do
       atomically $
         writeQueue queue $ Say (T.pack channel) $ T.pack $ unwords args
-      replThread queue
+      replThread state queue
     "quit":_ -> return ()
     "join":channel:_ -> do
       atomically $ writeQueue queue $ JoinChannel $ T.pack channel
-      replThread queue
+      replThread state queue
+    "part":channel:_ -> do
+      atomically $ do
+        let channelId = mkId $ T.pack channel
+        isMember <- S.member channelId <$> readTVar state
+        when isMember $ writeQueue queue $ PartChannel channelId
+      replThread state queue
+    "channels":_ -> do
+      readTVarIO state >>= putStrLn . show
+      replThread state queue
     unknown:_ -> do
       putStrLn ("Unknown command: " <> unknown)
-      replThread queue
-    _ -> replThread queue
+      replThread state queue
+    _ -> replThread state queue
 
 
 twitchIncomingThread :: Connection -> WriteQueue RawIrcMsg -> IO ()
@@ -142,10 +154,11 @@ botThread ::
      ReadQueue RawIrcMsg
   -> WriteQueue RawIrcMsg
   -> ReadQueue ReplCommand
+  -> TVar (S.Set Identifier)
   -> FilePath
   -> FilePath
   -> IO ()
-botThread incomingQueue outgoingQueue replQueue dbFilePath logFilePath =
+botThread incomingQueue outgoingQueue replQueue state dbFilePath logFilePath =
   withSqliteConnection dbFilePath $ \dbConn -> do
     Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
     withFile logFilePath AppendMode $ \logHandle -> botLoop dbConn logHandle
@@ -157,16 +170,20 @@ botThread incomingQueue outgoingQueue replQueue dbFilePath logFilePath =
         hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
         hFlush logHandle
         case cookedMsg of
-          (Ping xs) -> atomically $ writeQueue outgoingQueue (ircPong xs)
+          Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
+          Join _ channelId _ ->
+            atomically $ modifyTVar state $ S.insert channelId
+          Part _ channelId _ ->
+            atomically $ modifyTVar state $ S.delete channelId
           _ -> return ()
       maybeReplCommand <- atomically $ tryReadQueue replQueue
       for_ maybeReplCommand $ \case
         Say channel msg ->
-          atomically $
-          writeQueue outgoingQueue $ ircPrivmsg ("#" <> channel) msg
+          atomically $ writeQueue outgoingQueue $ ircPrivmsg channel msg
         JoinChannel channel ->
-          atomically $
-          writeQueue outgoingQueue $ ircJoin ("#" <> channel) Nothing
+          atomically $ writeQueue outgoingQueue $ ircJoin channel Nothing
+        PartChannel channelId ->
+          atomically $ writeQueue outgoingQueue $ ircPart channelId ""
       botLoop dbConn logHandle
 
 twitchLoggingThread :: Connection -> WriteQueue RawIrcMsg -> FilePath -> IO ()
@@ -198,6 +215,7 @@ mainWithArgs (configPath:databasePath:_) = do
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
       replQueue <- atomically newTQueue
+      state <- atomically $ newTVar S.empty
       withConnection twitchConnectionParams $ \conn -> do
         authorize config conn
         incomingThreadId <-
@@ -210,9 +228,10 @@ mainWithArgs (configPath:databasePath:_) = do
             (ReadQueue incomingIrcQueue)
             (WriteQueue outgoingIrcQueue)
             (ReadQueue replQueue)
+            state
             databasePath
             "twitch.log"
-        replThread (WriteQueue replQueue)
+        replThread state (WriteQueue replQueue)
         killThread incomingThreadId
         killThread outgoingThreadId
         killThread botThreadId

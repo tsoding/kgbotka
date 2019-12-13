@@ -72,6 +72,7 @@ executable kgbotka
                      , network >= 2.6
                      , stm >= 2.5
                      , sqlite-simple >= 0.4.16
+                     , containers >= 0.6.0
 
   -- Directories containing source files.
   hs-source-dirs:      src
