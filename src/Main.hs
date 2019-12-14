@@ -25,13 +25,24 @@ import Network.Socket (Family(AF_INET))
 import System.Environment
 import System.Exit
 import System.IO
+import Command
 
 migrations :: [Migration]
-migrations = [
- "CREATE TABLE Log (\
- \  id INTEGER PRIMARY KEY,\
- \  message TEXT NOT NULL\
- \)"]
+migrations =
+  [ "CREATE TABLE Log (\
+    \  id INTEGER PRIMARY KEY,\
+    \  message TEXT NOT NULL\
+    \);"
+  , "CREATE TABLE Command (\
+    \  id INTEGER PRIMARY KEY,\
+    \  code TEXT NOT NULL\
+    \);"
+  , "CREATE TABLE CommandName (\
+    \  name TEXT NOT NULL,\
+    \  commandId INTEGER NOT NULL REFERENCES Command(id) ON DELETE CASCADE,\
+    \  UNIQUE(name) ON CONFLICT REPLACE\
+    \);"
+  ]
 
 maxIrcMessage :: Int
 maxIrcMessage = 500 * 4
@@ -182,6 +193,17 @@ botThread incomingQueue outgoingQueue replQueue state dbFilePath logFilePath =
             atomically $ modifyTVar state $ S.insert channelId
           Part _ channelId _ ->
             atomically $ modifyTVar state $ S.delete channelId
+          Privmsg _ channelId message ->
+            case parseCommandCall "!" message of
+              Just (CommandCall name _) -> do
+                command <- commandByName dbConn name
+                case command of
+                  Just (Command _ code) ->
+                    atomically $
+                    writeQueue outgoingQueue $
+                    ircPrivmsg (idText channelId) code
+                  Nothing -> return ()
+              _ -> return ()
           _ -> return ()
       atomically $ do
         replCommand <- tryReadQueue replQueue
@@ -197,6 +219,7 @@ botThread incomingQueue outgoingQueue replQueue state dbFilePath logFilePath =
 
 twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
 twitchOutgoingThread conn queue = do
+  -- TODO: escape Twitch commands right in the twitchOutgoingThread
   bm <- atomically $ readQueue queue
   sendMsg conn bm
   twitchOutgoingThread conn queue
