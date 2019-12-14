@@ -183,14 +183,16 @@ botThread incomingQueue outgoingQueue replQueue state dbFilePath logFilePath =
           Part _ channelId _ ->
             atomically $ modifyTVar state $ S.delete channelId
           _ -> return ()
-      maybeReplCommand <- atomically $ tryReadQueue replQueue
-      for_ maybeReplCommand $ \case
-        Say channel msg ->
-          atomically $ writeQueue outgoingQueue $ ircPrivmsg channel msg
-        JoinChannel channel ->
-          atomically $ writeQueue outgoingQueue $ ircJoin channel Nothing
-        PartChannel channelId ->
-          atomically $ writeQueue outgoingQueue $ ircPart channelId ""
+      atomically $ do
+        replCommand <- tryReadQueue replQueue
+        case replCommand of
+          Just (Say channel msg) ->
+            writeQueue outgoingQueue $ ircPrivmsg channel msg
+          Just (JoinChannel channel) ->
+            writeQueue outgoingQueue $ ircJoin channel Nothing
+          Just (PartChannel channelId) ->
+            writeQueue outgoingQueue $ ircPart channelId ""
+          Nothing -> return ()
       botLoop dbConn logHandle
 
 twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
