@@ -1,8 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Main (main) where
+module Main
+  ( main
+  ) where
 
+import Command
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
@@ -17,7 +20,7 @@ import Data.Traversable
 import qualified Database.SQLite.Simple as Sqlite
 import Hookup
 import Irc.Commands
-import Irc.Identifier (Identifier, mkId, idText)
+import Irc.Identifier (Identifier, idText, mkId)
 import Irc.Message
 import Irc.RawIrcMsg
 import Migration
@@ -25,7 +28,6 @@ import Network.Socket (Family(AF_INET))
 import System.Environment
 import System.Exit
 import System.IO
-import Command
 
 migrations :: [Migration]
 migrations =
@@ -48,7 +50,8 @@ maxIrcMessage :: Int
 maxIrcMessage = 500 * 4
 
 data ReplCommand
-  = Say T.Text T.Text
+  = Say T.Text
+        T.Text
   | JoinChannel T.Text
   | PartChannel Identifier
 
@@ -115,7 +118,7 @@ readIrcLine conn = do
   for mb $ \xs ->
     case parseRawIrcMsg (asUtf8 xs) of
       Just msg -> return $! msg
-      Nothing  -> fail "Server sent invalid message!"
+      Nothing -> fail "Server sent invalid message!"
 
 data ConfigTwitch = ConfigTwitch
   { configTwitchAccount :: T.Text
@@ -123,8 +126,7 @@ data ConfigTwitch = ConfigTwitch
   } deriving (Eq)
 
 instance FromJSON ConfigTwitch where
-  parseJSON (Object v) =
-    ConfigTwitch <$> v .: "account" <*> v .: "token"
+  parseJSON (Object v) = ConfigTwitch <$> v .: "account" <*> v .: "token"
   parseJSON invalid = typeMismatch "Config" invalid
 
 replThread ::
@@ -231,8 +233,9 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
       botLoop logHandle
 
 twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
-twitchOutgoingThread conn queue = do
+twitchOutgoingThread conn queue
   -- TODO: escape Twitch commands right in the twitchOutgoingThread
+ = do
   bm <- atomically $ readQueue queue
   sendMsg conn bm
   twitchOutgoingThread conn queue

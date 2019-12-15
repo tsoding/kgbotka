@@ -11,10 +11,10 @@ module Command
   , deleteCommandName
   ) where
 
-import qualified Data.Text as T
 import Data.Char
-import Database.SQLite.Simple
 import Data.Maybe
+import qualified Data.Text as T
+import Database.SQLite.Simple
 
 data Command =
   Command Int
@@ -29,8 +29,7 @@ instance FromRow Command where
 
 commandByName :: Connection -> T.Text -> IO (Maybe Command)
 commandByName conn name =
-  listToMaybe <$>
-  queryNamed conn queryText [":commandName" := name]
+  listToMaybe <$> queryNamed conn queryText [":commandName" := name]
   where
     queryText =
       "SELECT c.id, c.code \
@@ -72,7 +71,7 @@ deleteCommandName dbConn name = do
     [":commandName" := name]
 
 addCommandName :: Connection -> T.Text -> T.Text -> IO ()
-addCommandName dbConn alias name  = do
+addCommandName dbConn alias name = do
   command <- commandByName dbConn name
   case command of
     Just (Command ident _) ->

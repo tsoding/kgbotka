@@ -7,11 +7,11 @@ module Migration
 
 import Data.String
 
-import Database.SQLite.Simple
-import qualified Data.Text as T
-import Data.Function
 import Data.Foldable
+import Data.Function
 import Data.List
+import qualified Data.Text as T
+import Database.SQLite.Simple
 
 newtype Migration = Migration
   { migrationQuery :: Query
