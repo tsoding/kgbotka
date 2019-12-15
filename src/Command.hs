@@ -21,6 +21,8 @@ data Command =
           T.Text
   deriving (Show)
 
+commandId :: Command -> Int
+commandId (Command ident _) = ident
 
 instance FromRow Command where
   fromRow = Command <$> field <*> field
@@ -42,16 +44,26 @@ addCommand dbConn name code = do
     dbConn
     "INSERT INTO Command (code) VALUES (:commandCode)"
     [":commandCode" := code]
-  commandId <- lastInsertRowId dbConn
+  ident <- lastInsertRowId dbConn
   executeNamed
     dbConn
-    "INSERT INTO CommandName (name, commandId)\
+    "INSERT INTO CommandName (name, commandId) \
     \VALUES (:commandName, :commandId)"
-    [":commandName" := name, ":commandId" := commandId]
+    [":commandName" := name, ":commandId" := ident]
+
+deleteCommandById :: Connection -> Int -> IO ()
+deleteCommandById dbConn ident =
+  executeNamed
+    dbConn
+    "DELETE FROM Command WHERE id = :commandId"
+    [":commandId" := ident]
 
 deleteCommandByName :: Connection -> T.Text -> IO ()
-deleteCommandByName = undefined -- TODO: deleteCommandByName not implemented
-
+deleteCommandByName dbConn name = do
+  commandByName dbConn name >>= 
+    maybe (return ()) (deleteCommandById dbConn . commandId)
+  
+-- TODO: deleting commands does not cascade to removing command names
 deleteCommandName :: Connection -> T.Text -> IO ()
 deleteCommandName dbConn name = do
   executeNamed 
@@ -63,12 +75,12 @@ addCommandName :: Connection -> T.Text -> T.Text -> IO ()
 addCommandName dbConn alias name  = do
   command <- commandByName dbConn name
   case command of
-    Just (Command commandId _) -> 
+    Just (Command ident _) -> 
       executeNamed 
         dbConn 
         "INSERT INTO CommandName (name, commandId)\
         \VALUES (:commandName, :commandId)"
-        [":commandName" := alias, ":commandId" := commandId]
+        [":commandName" := alias, ":commandId" := ident]
     Nothing -> return ()
 
 data CommandCall = CommandCall
