@@ -53,7 +53,11 @@ deleteCommandByName :: Connection -> T.Text -> IO ()
 deleteCommandByName = undefined -- TODO: deleteCommandByName not implemented
 
 deleteCommandName :: Connection -> T.Text -> IO ()
-deleteCommandName = undefined -- TODO: deleteCommandName not implemented
+deleteCommandName dbConn name = do
+  executeNamed 
+    dbConn
+    "DELETE FROM CommandName WHERE name = :commandName"
+    [":commandName" := name] 
 
 addCommandName :: Connection -> T.Text -> T.Text -> IO ()
 addCommandName dbConn alias name  = do
