@@ -60,24 +60,24 @@ deleteCommandById dbConn ident =
 
 deleteCommandByName :: Connection -> T.Text -> IO ()
 deleteCommandByName dbConn name = do
-  commandByName dbConn name >>= 
+  commandByName dbConn name >>=
     maybe (return ()) (deleteCommandById dbConn . commandId)
-  
+
 -- TODO: deleting commands does not cascade to removing command names
 deleteCommandName :: Connection -> T.Text -> IO ()
 deleteCommandName dbConn name = do
-  executeNamed 
+  executeNamed
     dbConn
     "DELETE FROM CommandName WHERE name = :commandName"
-    [":commandName" := name] 
+    [":commandName" := name]
 
 addCommandName :: Connection -> T.Text -> T.Text -> IO ()
 addCommandName dbConn alias name  = do
   command <- commandByName dbConn name
   case command of
-    Just (Command ident _) -> 
-      executeNamed 
-        dbConn 
+    Just (Command ident _) ->
+      executeNamed
+        dbConn
         "INSERT INTO CommandName (name, commandId)\
         \VALUES (:commandName, :commandId)"
         [":commandName" := alias, ":commandId" := ident]
