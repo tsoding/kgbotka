@@ -4,3 +4,4 @@ dist/
 *.json
 *.log
 *.db
+*.swp

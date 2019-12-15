@@ -1,13 +1,19 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Command
   ( CommandCall(..)
   , parseCommandCall
   , Command(..)
   , commandByName
+  , addCommand
+  , addCommandName
+  , deleteCommandByName
+  , deleteCommandName
   ) where
 
 import qualified Data.Text as T
 import Data.Char
-import qualified Database.SQLite.Simple as Sqlite
+import Database.SQLite.Simple
 import Data.Maybe
 
 data Command =
@@ -15,19 +21,51 @@ data Command =
           T.Text
   deriving (Show)
 
-instance Sqlite.FromRow Command where
-  fromRow = Command <$> Sqlite.field <*> Sqlite.field
 
-commandByName :: Sqlite.Connection -> T.Text -> IO (Maybe Command)
+instance FromRow Command where
+  fromRow = Command <$> field <*> field
+
+commandByName :: Connection -> T.Text -> IO (Maybe Command)
 commandByName conn name =
   listToMaybe <$>
-  Sqlite.queryNamed conn queryText [":commandName" Sqlite.:= name]
+  queryNamed conn queryText [":commandName" := name]
   where
     queryText =
       "SELECT c.id, c.code \
       \FROM Command c \
       \INNER JOIN CommandName cn ON c.id = cn.commandId \
       \WHERE cn.name = :commandName;"
+
+addCommand :: Connection -> T.Text -> T.Text -> IO ()
+addCommand dbConn name code = do
+  executeNamed
+    dbConn
+    "INSERT INTO Command (code) VALUES (:commandCode)"
+    [":commandCode" := code]
+  commandId <- lastInsertRowId dbConn
+  executeNamed
+    dbConn
+    "INSERT INTO CommandName (name, commandId)\
+    \VALUES (:commandName, :commandId)"
+    [":commandName" := name, ":commandId" := commandId]
+
+deleteCommandByName :: Connection -> T.Text -> IO ()
+deleteCommandByName = undefined -- TODO: deleteCommandByName not implemented
+
+deleteCommandName :: Connection -> T.Text -> IO ()
+deleteCommandName = undefined -- TODO: deleteCommandName not implemented
+
+addCommandName :: Connection -> T.Text -> T.Text -> IO ()
+addCommandName dbConn alias name  = do
+  command <- commandByName dbConn name
+  case command of
+    Just (Command commandId _) -> 
+      executeNamed 
+        dbConn 
+        "INSERT INTO CommandName (name, commandId)\
+        \VALUES (:commandName, :commandId)"
+        [":commandName" := alias, ":commandId" := commandId]
+    Nothing -> return ()
 
 data CommandCall = CommandCall
   { ccName :: T.Text

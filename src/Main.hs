@@ -128,38 +128,53 @@ instance FromJSON ConfigTwitch where
   parseJSON invalid = typeMismatch "Config" invalid
 
 replThread ::
-     Maybe T.Text -> TVar (S.Set Identifier) -> WriteQueue ReplCommand -> IO ()
-replThread currentChannel state queue = do
+     Maybe T.Text
+  -> TVar (S.Set Identifier)
+  -> Sqlite.Connection
+  -> WriteQueue ReplCommand
+  -> IO ()
+replThread currentChannel state dbConn queue = do
   putStr $ "[" <> T.unpack (fromMaybe "#" currentChannel) <> "]> "
   hFlush stdout
   cmd <- T.words . T.pack <$> getLine
   case (cmd, currentChannel) of
-    ("cd":channel:_, _) -> replThread (Just channel) state queue
-    ("cd":_, _) -> replThread Nothing state queue
+    ("cd":channel:_, _) -> replThread (Just channel) state dbConn queue
+    ("cd":_, _) -> replThread Nothing state dbConn queue
     ("say":args, Just channel) -> do
       atomically $ writeQueue queue $ Say channel $ T.unwords args
-      replThread currentChannel state queue
+      replThread currentChannel state dbConn queue
     ("say":_, Nothing) -> do
       putStrLn "No current channel to say anything to is selected"
-      replThread currentChannel state queue
+      replThread currentChannel state dbConn queue
     ("quit":_, _) -> return ()
     ("join":channel:_, _) -> do
       atomically $ writeQueue queue $ JoinChannel channel
-      replThread (Just channel) state queue
+      replThread (Just channel) state dbConn queue
     ("part":_, Just channel) -> do
       atomically $ do
         let channelId = mkId channel
         isMember <- S.member channelId <$> readTVar state
         when isMember $ writeQueue queue $ PartChannel channelId
-      replThread Nothing state queue
+      replThread Nothing state dbConn queue
     ("ls":_, _) -> do
       traverse_ (putStrLn . T.unpack . idText) =<< S.toList <$> readTVarIO state
-      replThread currentChannel state queue
+      replThread currentChannel state dbConn queue
+    ("addcmd":name:args, _) -> do
+      Sqlite.withTransaction dbConn $ addCommand dbConn name (T.unwords args)
+      replThread currentChannel state dbConn queue
+    ("addalias":alias:name:_, _) -> do
+      Sqlite.withTransaction dbConn $ addCommandName dbConn alias name
+      replThread currentChannel state dbConn queue
+    ("delcmd":name:_, _) -> do
+      Sqlite.withTransaction dbConn $ deleteCommandByName dbConn name
+      replThread currentChannel state dbConn queue
+    ("delalias":name:_, _) -> do
+      Sqlite.withTransaction dbConn $ deleteCommandName dbConn name
+      replThread currentChannel state dbConn queue
     (unknown:_, _) -> do
       putStrLn $ T.unpack $ "Unknown command: " <> unknown
-      replThread currentChannel state queue
-    _ -> replThread currentChannel state queue
-
+      replThread currentChannel state dbConn queue
+    _ -> replThread currentChannel state dbConn queue
 
 twitchIncomingThread :: Connection -> WriteQueue RawIrcMsg -> IO ()
 twitchIncomingThread conn queue = do
@@ -172,15 +187,13 @@ botThread ::
   -> WriteQueue RawIrcMsg
   -> ReadQueue ReplCommand
   -> TVar (S.Set Identifier)
-  -> FilePath
+  -> Sqlite.Connection
   -> FilePath
   -> IO ()
-botThread incomingQueue outgoingQueue replQueue state dbFilePath logFilePath =
-  withSqliteConnection dbFilePath $ \dbConn -> do
-    Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
-    withFile logFilePath AppendMode $ \logHandle -> botLoop dbConn logHandle
+botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
+  withFile logFilePath AppendMode $ \logHandle -> botLoop logHandle
   where
-    botLoop dbConn logHandle = do
+    botLoop logHandle = do
       threadDelay 10000 -- to prevent busy looping
       maybeRawMsg <- atomically $ tryReadQueue incomingQueue
       for_ maybeRawMsg $ \rawMsg -> do
@@ -215,7 +228,7 @@ botThread incomingQueue outgoingQueue replQueue state dbFilePath logFilePath =
           Just (PartChannel channelId) ->
             writeQueue outgoingQueue $ ircPart channelId ""
           Nothing -> return ()
-      botLoop dbConn logHandle
+      botLoop logHandle
 
 twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
 twitchOutgoingThread conn queue = do
@@ -233,25 +246,27 @@ mainWithArgs (configPath:databasePath:_) = do
       outgoingIrcQueue <- atomically newTQueue
       replQueue <- atomically newTQueue
       state <- atomically $ newTVar S.empty
-      withConnection twitchConnectionParams $ \conn -> do
-        authorize config conn
-        incomingThreadId <-
-          forkIO $ twitchIncomingThread conn (WriteQueue incomingIrcQueue)
-        outgoingThreadId <-
-          forkIO $ twitchOutgoingThread conn (ReadQueue outgoingIrcQueue)
-        botThreadId <-
-          forkIO $
-          botThread
-            (ReadQueue incomingIrcQueue)
-            (WriteQueue outgoingIrcQueue)
-            (ReadQueue replQueue)
-            state
-            databasePath
-            "twitch.log"
-        replThread Nothing state (WriteQueue replQueue)
-        killThread incomingThreadId
-        killThread outgoingThreadId
-        killThread botThreadId
+      withSqliteConnection databasePath $ \dbConn -> do
+        Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
+        withConnection twitchConnectionParams $ \conn -> do
+          authorize config conn
+          incomingThreadId <-
+            forkIO $ twitchIncomingThread conn (WriteQueue incomingIrcQueue)
+          outgoingThreadId <-
+            forkIO $ twitchOutgoingThread conn (ReadQueue outgoingIrcQueue)
+          botThreadId <-
+            forkIO $
+            botThread
+              (ReadQueue incomingIrcQueue)
+              (WriteQueue outgoingIrcQueue)
+              (ReadQueue replQueue)
+              state
+              dbConn
+              "twitch.log"
+          replThread Nothing state dbConn (WriteQueue replQueue)
+          killThread incomingThreadId
+          killThread outgoingThreadId
+          killThread botThreadId
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Not enough arguments provided"
