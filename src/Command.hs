@@ -62,7 +62,6 @@ deleteCommandByName dbConn name = do
   commandByName dbConn name >>=
     maybe (return ()) (deleteCommandById dbConn . commandId)
 
--- TODO: deleting commands does not cascade to removing command names
 deleteCommandName :: Connection -> T.Text -> IO ()
 deleteCommandName dbConn name = do
   executeNamed
