@@ -216,7 +216,7 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
                   Just (Command _ code) ->
                     atomically $
                     writeQueue outgoingQueue $
-                    ircPrivmsg (idText channelId) code
+                    ircPrivmsg (idText channelId) $ twitchCmdEscape code
                   Nothing -> return ()
               _ -> return ()
           _ -> return ()
@@ -231,13 +231,13 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
             writeQueue outgoingQueue $ ircPart channelId ""
           Nothing -> return ()
       botLoop logHandle
+    twitchCmdEscape :: T.Text -> T.Text
+    twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip
 
 twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
-twitchOutgoingThread conn queue
-  -- TODO: escape Twitch commands right in the twitchOutgoingThread
- = do
-  bm <- atomically $ readQueue queue
-  sendMsg conn bm
+twitchOutgoingThread conn queue = do
+  rawMsg <- atomically $ readQueue queue
+  sendMsg conn rawMsg
   twitchOutgoingThread conn queue
 
 mainWithArgs :: [String] -> IO ()
