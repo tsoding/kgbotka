@@ -250,6 +250,7 @@ mainWithArgs (configPath:databasePath:_) = do
       replQueue <- atomically newTQueue
       state <- atomically $ newTVar S.empty
       withSqliteConnection databasePath $ \dbConn -> do
+        Sqlite.execute_ dbConn "PRAGMA foreign_keys=ON"
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
