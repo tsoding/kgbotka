@@ -29,6 +29,10 @@ import System.Environment
 import System.Exit
 import System.IO
 
+-- TODO: link filter
+-- TODO: friday video queue
+-- TODO: command DSL
+
 migrations :: [Migration]
 migrations =
   [ "CREATE TABLE Log (\
@@ -39,6 +43,7 @@ migrations =
     \  id INTEGER PRIMARY KEY,\
     \  code TEXT NOT NULL\
     \);"
+  -- TODO: do we need to to cascade delete CommandName-s when the Command is deleted?
   , "CREATE TABLE CommandName (\
     \  name TEXT NOT NULL,\
     \  commandId INTEGER NOT NULL REFERENCES Command(id) ON DELETE CASCADE,\
