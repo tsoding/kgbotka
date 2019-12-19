@@ -53,6 +53,15 @@ migrations =
     \  commandId INTEGER NOT NULL REFERENCES Command(id) ON DELETE CASCADE,\
     \  UNIQUE(name) ON CONFLICT REPLACE\
     \);"
+  , "CREATE TABLE TwitchRoles ( \
+    \  id INTEGER PRIMARY KEY, \
+    \  name TEXT NOT NULL UNIQUE \
+    \);"
+  , "CREATE TABLE TwitchUserRoles ( \
+    \  userId INTEGER NOT NULL, \
+    \  roleId INTEGER NOT NULL REFERENCES TwitchRoles(id) ON DELETE CASCADE, \
+    \  UNIQUE(userId, roleId) \
+    \);"
   ]
 
 maxIrcMessage :: Int
