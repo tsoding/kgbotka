@@ -5,7 +5,6 @@ module Main
   ( main
   ) where
 
-import Command
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
@@ -13,6 +12,7 @@ import Control.Monad
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Foldable
+import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -23,15 +23,19 @@ import Irc.Commands
 import Irc.Identifier (Identifier, idText, mkId)
 import Irc.Message
 import Irc.RawIrcMsg
-import Migration
+import KGBotka.Command
+import KGBotka.Expr
+import KGBotka.Flip
+import KGBotka.Migration
+import KGBotka.Parser
 import Network.Socket (Family(AF_INET))
+import Network.URI
 import System.Environment
 import System.Exit
 import System.IO
 
 -- TODO(#1): link filter
 -- TODO(#2): friday video queue
--- TODO(#3): command DSL
 
 migrations :: [Migration]
 migrations =
@@ -189,6 +193,21 @@ twitchIncomingThread conn queue = do
   for_ mb $ atomically . writeQueue queue
   twitchIncomingThread conn queue
 
+evalExpr :: M.Map T.Text T.Text -> Expr -> T.Text
+evalExpr _ (TextExpr t) = t
+evalExpr vars (FunCallExpr "or" args) =
+  fromMaybe "" $ listToMaybe $ dropWhile T.null $ map (evalExpr vars) args
+evalExpr vars (FunCallExpr "urlencode" args) =
+  T.concat $ map (T.pack . encodeURI . T.unpack . evalExpr vars) args
+  where
+    encodeURI = escapeURIString (const False)
+evalExpr vars (FunCallExpr "flip" args) =
+  T.concat $ map (flipText . evalExpr vars) args
+evalExpr vars (FunCallExpr funame _) = fromMaybe "" $ M.lookup funame vars
+
+evalExprs :: M.Map T.Text T.Text -> [Expr] -> T.Text
+evalExprs vars = T.concat . map (evalExpr vars)
+
 botThread ::
      ReadQueue RawIrcMsg
   -> WriteQueue RawIrcMsg
@@ -215,13 +234,22 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
             atomically $ modifyTVar state $ S.delete channelId
           Privmsg _ channelId message ->
             case parseCommandCall "!" message of
-              Just (CommandCall name _) -> do
+              Just (CommandCall name args) -> do
                 command <- commandByName dbConn name
                 case command of
                   Just (Command _ code) ->
-                    atomically $
-                    writeQueue outgoingQueue $
-                    ircPrivmsg (idText channelId) $ twitchCmdEscape code
+                    let codeAst = snd <$> runParser exprs code
+                     in case codeAst of
+                          Right codeAst' -> do
+                            hPutStrLn logHandle $ "[AST] " <> show codeAst'
+                            hFlush logHandle
+                            atomically $
+                              writeQueue outgoingQueue $
+                              ircPrivmsg (idText channelId) $
+                              twitchCmdEscape $
+                              evalExprs (M.fromList [("1", args)]) codeAst'
+                          Left err ->
+                            hPutStrLn logHandle $ "[ERROR] " <> show err
                   Nothing -> return ()
               _ -> return ()
           _ -> return ()
