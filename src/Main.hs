@@ -29,7 +29,7 @@ import System.Environment
 import System.Exit
 import System.IO
 
--- TODO: link filter
+-- TODO(#1): link filter
 -- TODO: friday video queue
 -- TODO: command DSL
 
