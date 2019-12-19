@@ -31,7 +31,7 @@ import System.IO
 
 -- TODO(#1): link filter
 -- TODO(#2): friday video queue
--- TODO: command DSL
+-- TODO(#3): command DSL
 
 migrations :: [Migration]
 migrations =
