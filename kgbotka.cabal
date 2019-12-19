@@ -63,6 +63,7 @@ executable kgbotka
                      , KGBotka.Parser
                      , KGBotka.Expr
                      , KGBotka.Flip
+                     , KGBotka.Roles
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
