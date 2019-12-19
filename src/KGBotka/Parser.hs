@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveFunctor #-}
 
-module Parser where
+module KGBotka.Parser where
 
 import Control.Applicative
 import qualified Data.Text as T

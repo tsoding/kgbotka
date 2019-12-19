@@ -1,4 +1,4 @@
-module Flip where
+module KGBotka.Flip where
 
 import Control.Applicative
 import qualified Data.Map as M

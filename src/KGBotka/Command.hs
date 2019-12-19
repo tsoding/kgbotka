@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Command
+module KGBotka.Command
   ( CommandCall(..)
   , parseCommandCall
   , Command(..)

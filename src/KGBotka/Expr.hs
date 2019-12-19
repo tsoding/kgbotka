@@ -1,13 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Expr where
+module KGBotka.Expr where
 
 import Control.Applicative
 import Data.Char
 import qualified Data.Text as T
 import Data.Tuple
-
-import Parser
+import KGBotka.Parser
 
 data Expr
   = TextExpr T.Text

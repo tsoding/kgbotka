@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Migration
+module KGBotka.Migration
   ( migrateDatabase
   , Migration(..)
   ) where

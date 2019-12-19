@@ -5,7 +5,6 @@ module Main
   ( main
   ) where
 
-import Command
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
@@ -13,6 +12,7 @@ import Control.Monad
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Foldable
+import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -23,16 +23,16 @@ import Irc.Commands
 import Irc.Identifier (Identifier, idText, mkId)
 import Irc.Message
 import Irc.RawIrcMsg
-import Migration
+import KGBotka.Command
+import KGBotka.Expr
+import KGBotka.Flip
+import KGBotka.Migration
+import KGBotka.Parser
 import Network.Socket (Family(AF_INET))
+import Network.URI
 import System.Environment
 import System.Exit
 import System.IO
-import Expr
-import Parser
-import qualified Data.Map as M
-import Network.URI
-import Flip
 
 -- TODO(#1): link filter
 -- TODO(#2): friday video queue
