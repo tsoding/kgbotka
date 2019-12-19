@@ -30,7 +30,7 @@ import System.Exit
 import System.IO
 
 -- TODO(#1): link filter
--- TODO: friday video queue
+-- TODO(#2): friday video queue
 -- TODO: command DSL
 
 migrations :: [Migration]
