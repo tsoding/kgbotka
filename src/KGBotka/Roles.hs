@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module KGBotka.Roles
   ( addRoleToUser
   , delRoleFromUser
