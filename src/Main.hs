@@ -30,18 +30,17 @@ import KGBotka.Flip
 import KGBotka.Migration
 import KGBotka.Parser
 import KGBotka.Roles
+import KGBotka.TwitchAPI
+import qualified Network.HTTP.Client as HTTP
+import qualified Network.HTTP.Client.TLS as TLS
 import Network.Socket (Family(AF_INET))
 import Network.URI
 import System.Environment
 import System.Exit
 import System.IO
-import qualified Network.HTTP.Client as HTTP
-import qualified Network.HTTP.Client.TLS as TLS
-import KGBotka.TwitchAPI
 
 -- TODO(#1): link filter
 -- TODO(#2): friday video queue
-
 migrations :: [Migration]
 migrations =
   [ "CREATE TABLE Log (\

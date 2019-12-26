@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveFunctor #-}
+
 module KGBotka.TwitchAPI
   ( TwitchUser(..)
   , TwitchRes(..)
@@ -7,20 +8,22 @@ module KGBotka.TwitchAPI
   , getUsersByLogins
   ) where
 
-import qualified Data.Text as T
 import Data.Aeson
 import Data.Aeson.Types
-import Network.HTTP.Client
-import Data.List
-import Data.Text.Encoding
 import qualified Data.ByteString.Lazy as BS
+import Data.List
+import qualified Data.Text as T
+import Data.Text.Encoding
+import Network.HTTP.Client
 
 data TwitchUser = TwitchUser
   { userId :: T.Text
   , userLogin :: T.Text
   } deriving (Show)
 
-data TwitchRes a = TwitchRes { twitchResData :: a }
+newtype TwitchRes a = TwitchRes
+  { twitchResData :: a
+  }
 
 instance FromJSON a => FromJSON (TwitchRes a) where
   parseJSON (Object v) = TwitchRes <$> v .: "data"
@@ -45,9 +48,10 @@ getUsersByLogins ::
 getUsersByLogins manager clientId users = do
   let url =
         "https://api.twitch.tv/helix/users?" <>
-        (T.concat $ intersperse "&" $ map ("login=" <>) users)
+        T.concat (intersperse "&" $ map ("login=" <>) users)
   request <- parseRequest $ T.unpack url
-  response <- httpJson manager $
+  response <-
+    httpJson manager $
     request
       { requestHeaders =
           ("Client-ID", encodeUtf8 clientId) : requestHeaders request
