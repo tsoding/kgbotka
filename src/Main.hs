@@ -214,20 +214,21 @@ replThread state = do
       let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ deleteCommandName dbConn name
       replThread state
-    ("assrole":assRoleName:users, _) -> do
+    ("assrole":roleName:users, _) -> do
       let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ do
-        role <- getRoleByName dbConn assRoleName
+        maybeRole <- getTwitchRoleByName dbConn roleName
         response <-
           HTTP.responseBody . unwrapJsonResponse <$>
           getUsersByLogins
             (replStateManager state)
             (configTwitchClientId $ replStateConfigTwitch state)
             users
-        case (response, role) of
+        case (response, maybeRole) of
           (Right twitchUsers, Just role') ->
             traverse_
-              (addRoleToUser dbConn (roleId role') . TwitchUserId . userId)
+              (assTwitchRoleToUser dbConn (twitchRoleId role') .
+               TwitchUserId . userId)
               twitchUsers
           (Left message, _) -> putStrLn $ "[ERROR] " <> message
           (_, Nothing) -> putStrLn "[ERROR] Such role does not exist"

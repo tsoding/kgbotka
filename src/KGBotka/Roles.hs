@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module KGBotka.Roles
-  ( addRoleToUser
-  , delRoleFromUser
-  , getUserRoles
-  , getRoleByName
-  , Role(..)
+  ( assTwitchRoleToUser
+  , delTwitchRoleFromUser
+  , getTwitchUserRoles
+  , getTwitchRoleByName
+  , TwitchRole(..)
   , TwitchUserId(..)
   ) where
 
@@ -18,30 +18,30 @@ newtype TwitchUserId = TwitchUserId
   { twitchUserId :: T.Text
   } deriving (Show, Eq)
 
-data Role = Role
-  { roleId :: Int
-  , roleName :: T.Text
+data TwitchRole = TwitchRole
+  { twitchRoleId :: Int
+  , twitchRoleName :: T.Text
   } deriving (Show)
 
 instance ToField TwitchUserId where
   toField = toField . twitchUserId
 
-instance FromRow Role where
-  fromRow = Role <$> field <*> field
+instance FromRow TwitchRole where
+  fromRow = TwitchRole <$> field <*> field
 
-addRoleToUser :: Connection -> Int -> TwitchUserId -> IO ()
-addRoleToUser conn roleId' userId' =
+assTwitchRoleToUser :: Connection -> Int -> TwitchUserId -> IO ()
+assTwitchRoleToUser conn roleId' userId' =
   executeNamed
     conn
     "INSERT INTO TwitchUserRoles (userId, roleId) \
     \VALUES (:userId, :roleId);"
     [":userId" := userId', ":roleId" := roleId']
 
-delRoleFromUser :: Connection -> Int -> TwitchUserId -> IO ()
-delRoleFromUser = undefined
+delTwitchRoleFromUser :: Connection -> Int -> TwitchUserId -> IO ()
+delTwitchRoleFromUser = undefined
 
-getUserRoles :: Connection -> TwitchUserId -> IO [Role]
-getUserRoles conn userId = queryNamed conn queryText [":userId" := userId]
+getTwitchUserRoles :: Connection -> TwitchUserId -> IO [TwitchRole]
+getTwitchUserRoles conn userId = queryNamed conn queryText [":userId" := userId]
   where
     queryText =
       "SELECT ur.roleId, r.name \
@@ -50,8 +50,8 @@ getUserRoles conn userId = queryNamed conn queryText [":userId" := userId]
       \ON ur.roleId = r.id \
       \WHERE ur.userId = :userId;"
 
-getRoleByName :: Connection -> T.Text -> IO (Maybe Role)
-getRoleByName conn name =
+getTwitchRoleByName :: Connection -> T.Text -> IO (Maybe TwitchRole)
+getTwitchRoleByName conn name =
   listToMaybe <$>
   queryNamed
     conn
