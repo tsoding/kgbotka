@@ -13,6 +13,7 @@ import Data.Aeson.Types
 import Network.HTTP.Client
 import Data.List
 import Data.Text.Encoding
+import qualified Data.ByteString.Lazy as BS
 
 data TwitchUser = TwitchUser
   { userId :: T.Text
@@ -36,6 +37,7 @@ newtype JsonResponse a = JsonResponse
 httpJson :: FromJSON a => Manager -> Request -> IO (JsonResponse a)
 httpJson manager request = do
   response <- httpLbs request manager
+  putStrLn $ T.unpack $ decodeUtf8 $ BS.toStrict $ responseBody response
   return $ JsonResponse (eitherDecode <$> response)
 
 getUsersByLogins ::

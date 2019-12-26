@@ -29,6 +29,7 @@ import KGBotka.Expr
 import KGBotka.Flip
 import KGBotka.Migration
 import KGBotka.Parser
+import KGBotka.Roles
 import Network.Socket (Family(AF_INET))
 import Network.URI
 import System.Environment
@@ -62,9 +63,9 @@ migrations =
     \  name TEXT NOT NULL UNIQUE \
     \);"
   , "CREATE TABLE TwitchUserRoles ( \
-    \  userId INTEGER NOT NULL, \
+    \  userId TEXT NOT NULL, \
     \  roleId INTEGER NOT NULL REFERENCES TwitchRoles(id) ON DELETE CASCADE, \
-    \  UNIQUE(userId, roleId) \
+    \  UNIQUE(userId, roleId) ON CONFLICT IGNORE \
     \);"
   ]
 
@@ -214,16 +215,23 @@ replThread state = do
       let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ deleteCommandName dbConn name
       replThread state
-    ("users":users, _) -> do
-      response <-
-        HTTP.responseBody . unwrapJsonResponse <$>
-        getUsersByLogins
-          (replStateManager state)
-          (configTwitchClientId $ replStateConfigTwitch state)
-          users
-      case response of
-        Right twitchUsers -> print twitchUsers
-        Left message -> putStrLn $ "[ERROR] " <> message
+    ("assrole":assRoleName:users, _) -> do
+      let dbConn = replStateSqliteConnection state
+      Sqlite.withTransaction dbConn $ do
+        role <- getRoleByName dbConn assRoleName
+        response <-
+          HTTP.responseBody . unwrapJsonResponse <$>
+          getUsersByLogins
+            (replStateManager state)
+            (configTwitchClientId $ replStateConfigTwitch state)
+            users
+        case (response, role) of
+          (Right twitchUsers, Just role') ->
+            traverse_
+              (addRoleToUser dbConn (roleId role') . TwitchUserId . userId)
+              twitchUsers
+          (Left message, _) -> putStrLn $ "[ERROR] " <> message
+          (_, Nothing) -> putStrLn "[ERROR] Such role does not exist"
       replThread state
     (unknown:_, _) -> do
       putStrLn $ T.unpack $ "Unknown command: " <> unknown

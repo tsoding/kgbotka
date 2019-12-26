@@ -3,15 +3,18 @@ module KGBotka.Roles
   ( addRoleToUser
   , delRoleFromUser
   , getUserRoles
+  , getRoleByName
   , Role(..)
+  , TwitchUserId(..)
   ) where
 
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.ToField
+import Data.Maybe
 
 newtype TwitchUserId = TwitchUserId
-  { twitchUserId :: Int
+  { twitchUserId :: T.Text
   } deriving (Show, Eq)
 
 data Role = Role
@@ -25,10 +28,15 @@ instance ToField TwitchUserId where
 instance FromRow Role where
   fromRow = Role <$> field <*> field
 
-addRoleToUser :: Connection -> TwitchUserId -> Int -> IO ()
-addRoleToUser = undefined
+addRoleToUser :: Connection -> Int -> TwitchUserId -> IO ()
+addRoleToUser conn roleId' userId' = do
+  executeNamed
+    conn
+    "INSERT INTO TwitchUserRoles (userId, roleId) \
+    \VALUES (:userId, :roleId);"
+    [":userId" := userId', ":roleId" := roleId']
 
-delRoleFromUser :: Connection -> TwitchUserId -> Int -> IO ()
+delRoleFromUser :: Connection -> Int -> TwitchUserId -> IO ()
 delRoleFromUser = undefined
 
 getUserRoles :: Connection -> TwitchUserId -> IO [Role]
@@ -41,3 +49,12 @@ getUserRoles conn userId = do
       \INNER JOIN TwitchRoles r \
       \ON ur.roleId = r.id \
       \WHERE ur.userId = :userId;"
+
+getRoleByName :: Connection -> T.Text -> IO (Maybe Role)
+getRoleByName conn name =
+  listToMaybe <$>
+  queryNamed
+    conn
+    "SELECT * FROM TwitchRoles \
+    \WHERE name = :roleName;"
+    [":roleName" := name]
