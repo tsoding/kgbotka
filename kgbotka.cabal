@@ -52,7 +52,7 @@ extra-source-files:  CHANGELOG.md
 
 
 executable kgbotka
-  ghc-options: -threaded -Wall
+  ghc-options: -threaded -Wall -Werror
 
   -- .hs or .lhs file containing the Main module.
   main-is:             Main.hs
@@ -82,7 +82,8 @@ executable kgbotka
                      , network-uri >= 2.6.1
                      , http-client >= 0.6.4
                      , transformers >= 0.5.6.2
-
+                     , http-client-tls >= 0.3.5
+                     , bytestring >= 0.10.8
   -- Directories containing source files.
   hs-source-dirs:      src
 

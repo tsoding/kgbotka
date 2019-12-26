@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveFunctor #-}
 module KGBotka.TwitchAPI
   ( TwitchUser(..)
   , TwitchRes(..)
+  , JsonResponse(..)
   , getUsersByLogins
   ) where
 
@@ -10,11 +12,10 @@ import Data.Aeson
 import Data.Aeson.Types
 import Network.HTTP.Client
 import Data.List
-import Control.Monad.Trans.Except
-import Control.Exception
+import Data.Text.Encoding
 
 data TwitchUser = TwitchUser
-  { userId :: Int
+  { userId :: T.Text
   , userLogin :: T.Text
   } deriving (Show)
 
@@ -28,12 +29,25 @@ instance FromJSON TwitchUser where
   parseJSON (Object v) = TwitchUser <$> v .: "id" <*> v .: "login"
   parseJSON invalid = typeMismatch "TwitchUser" invalid
 
+newtype JsonResponse a = JsonResponse
+  { unwrapJsonResponse :: Response (Either String a)
+  } deriving (Functor)
+
+httpJson :: FromJSON a => Manager -> Request -> IO (JsonResponse a)
+httpJson manager request = do
+  response <- httpLbs request manager
+  return $ JsonResponse (eitherDecode <$> response)
+
 getUsersByLogins ::
-     Manager -> T.Text -> [T.Text] -> ExceptT SomeException IO [TwitchUser]
+     Manager -> T.Text -> [T.Text] -> IO (JsonResponse [TwitchUser])
 getUsersByLogins manager clientId users = do
   let url =
-        "https://api.twitch.tv/helix/users" <>
+        "https://api.twitch.tv/helix/users?" <>
         (T.concat $ intersperse "&" $ map ("login=" <>) users)
-  request <- ExceptT $ return $ parseRequest $ T.unpack url
-  response <- ExceptT (return <$> httpLbs request manager)
-  ExceptT $ return (twitchResData <$> eitherDecode (responseBody response))
+  request <- parseRequest $ T.unpack url
+  response <- httpJson manager $
+    request
+      { requestHeaders =
+          ("Client-ID", encodeUtf8 clientId) : requestHeaders request
+      }
+  return (twitchResData <$> response)

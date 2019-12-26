@@ -3,6 +3,7 @@
 
 module Main
   ( main
+  , ConfigTwitch(..)
   ) where
 
 import Control.Concurrent
@@ -33,6 +34,9 @@ import Network.URI
 import System.Environment
 import System.Exit
 import System.IO
+import qualified Network.HTTP.Client as HTTP
+import qualified Network.HTTP.Client.TLS as TLS
+import KGBotka.TwitchAPI
 
 -- TODO(#1): link filter
 -- TODO(#2): friday video queue
@@ -112,7 +116,10 @@ withConnection :: ConnectionParams -> (Connection -> IO a) -> IO a
 withConnection params = bracket (connect params) close
 
 withSqliteConnection :: FilePath -> (Sqlite.Connection -> IO a) -> IO a
-withSqliteConnection filePath = bracket (Sqlite.open filePath) Sqlite.close
+withSqliteConnection filePath f =
+  bracket (Sqlite.open filePath) Sqlite.close $ \dbConn -> do
+    Sqlite.execute_ dbConn "PRAGMA foreign_keys=ON"
+    f dbConn
 
 sendMsg :: Connection -> RawIrcMsg -> IO ()
 sendMsg conn msg = send conn (renderRawIrcMsg msg)
@@ -149,54 +156,79 @@ instance FromJSON ConfigTwitch where
     ConfigTwitch <$> v .: "account" <*> v .: "token" <*> v .: "clientId"
   parseJSON invalid = typeMismatch "Config" invalid
 
-replThread ::
-     Maybe T.Text
-  -> TVar (S.Set Identifier)
-  -> Sqlite.Connection
-  -> WriteQueue ReplCommand
-  -> IO ()
-replThread currentChannel state dbConn queue = do
-  putStr $ "[" <> T.unpack (fromMaybe "#" currentChannel) <> "]> "
+data ReplState = ReplState
+  { replStateChannels :: TVar (S.Set Identifier)
+  , replStateSqliteConnection :: Sqlite.Connection
+  , replStateCurrentChannel :: Maybe T.Text
+  , replStateCommandQueue :: WriteQueue ReplCommand
+  , replStateConfigTwitch :: ConfigTwitch
+  , replStateManager :: HTTP.Manager
+  }
+
+replThread :: ReplState -> IO ()
+replThread state = do
+  putStr $
+    "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
   hFlush stdout
   cmd <- T.words . T.pack <$> getLine
-  case (cmd, currentChannel) of
-    ("cd":channel:_, _) -> replThread (Just channel) state dbConn queue
-    ("cd":_, _) -> replThread Nothing state dbConn queue
+  case (cmd, replStateCurrentChannel state) of
+    ("cd":channel:_, _) ->
+      replThread $ state {replStateCurrentChannel = Just channel}
+    ("cd":_, _) -> replThread $ state {replStateCurrentChannel = Nothing}
     ("say":args, Just channel) -> do
-      atomically $ writeQueue queue $ Say channel $ T.unwords args
-      replThread currentChannel state dbConn queue
+      atomically $
+        writeQueue (replStateCommandQueue state) $ Say channel $ T.unwords args
+      replThread state
     ("say":_, Nothing) -> do
       putStrLn "No current channel to say anything to is selected"
-      replThread currentChannel state dbConn queue
+      replThread state
     ("quit":_, _) -> return ()
     ("join":channel:_, _) -> do
-      atomically $ writeQueue queue $ JoinChannel channel
-      replThread (Just channel) state dbConn queue
+      atomically $
+        writeQueue (replStateCommandQueue state) $ JoinChannel channel
+      replThread $ state {replStateCurrentChannel = Just channel}
     ("part":_, Just channel) -> do
       atomically $ do
         let channelId = mkId channel
-        isMember <- S.member channelId <$> readTVar state
-        when isMember $ writeQueue queue $ PartChannel channelId
-      replThread Nothing state dbConn queue
+        isMember <- S.member channelId <$> readTVar (replStateChannels state)
+        when isMember $
+          writeQueue (replStateCommandQueue state) $ PartChannel channelId
+      replThread state
     ("ls":_, _) -> do
-      traverse_ (putStrLn . T.unpack . idText) =<< S.toList <$> readTVarIO state
-      replThread currentChannel state dbConn queue
+      traverse_ (putStrLn . T.unpack . idText) =<<
+        S.toList <$> readTVarIO (replStateChannels state)
+      replThread state
     ("addcmd":name:args, _) -> do
+      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ addCommand dbConn name (T.unwords args)
-      replThread currentChannel state dbConn queue
+      replThread state
     ("addalias":alias:name:_, _) -> do
+      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ addCommandName dbConn alias name
-      replThread currentChannel state dbConn queue
+      replThread state
     ("delcmd":name:_, _) -> do
+      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ deleteCommandByName dbConn name
-      replThread currentChannel state dbConn queue
+      replThread state
     ("delalias":name:_, _) -> do
+      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ deleteCommandName dbConn name
-      replThread currentChannel state dbConn queue
+      replThread state
+    ("users":users, _) -> do
+      response <-
+        HTTP.responseBody . unwrapJsonResponse <$>
+        getUsersByLogins
+          (replStateManager state)
+          (configTwitchClientId $ replStateConfigTwitch state)
+          users
+      case response of
+        Right twitchUsers -> print twitchUsers
+        Left message -> putStrLn $ "[ERROR] " <> message
+      replThread state
     (unknown:_, _) -> do
       putStrLn $ T.unpack $ "Unknown command: " <> unknown
-      replThread currentChannel state dbConn queue
-    _ -> replThread currentChannel state dbConn queue
+      replThread state
+    _ -> replThread state
 
 twitchIncomingThread :: Connection -> WriteQueue RawIrcMsg -> IO ()
 twitchIncomingThread conn queue = do
@@ -292,9 +324,8 @@ mainWithArgs (configPath:databasePath:_) = do
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
       replQueue <- atomically newTQueue
-      state <- atomically $ newTVar S.empty
+      joinedChannels <- atomically $ newTVar S.empty
       withSqliteConnection databasePath $ \dbConn -> do
-        Sqlite.execute_ dbConn "PRAGMA foreign_keys=ON"
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
@@ -308,10 +339,19 @@ mainWithArgs (configPath:databasePath:_) = do
               (ReadQueue incomingIrcQueue)
               (WriteQueue outgoingIrcQueue)
               (ReadQueue replQueue)
-              state
+              joinedChannels
               dbConn
               "twitch.log"
-          replThread Nothing state dbConn (WriteQueue replQueue)
+          manager <- TLS.newTlsManager
+          replThread $
+            ReplState
+              { replStateChannels = joinedChannels
+              , replStateSqliteConnection = dbConn
+              , replStateCurrentChannel = Nothing
+              , replStateCommandQueue = WriteQueue replQueue
+              , replStateConfigTwitch = config
+              , replStateManager = manager
+              }
           killThread incomingThreadId
           killThread outgoingThreadId
           killThread botThreadId
