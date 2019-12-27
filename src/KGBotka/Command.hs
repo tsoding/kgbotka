@@ -58,12 +58,12 @@ deleteCommandById dbConn ident =
     [":commandId" := ident]
 
 deleteCommandByName :: Connection -> T.Text -> IO ()
-deleteCommandByName dbConn name = do
+deleteCommandByName dbConn name =
   commandByName dbConn name >>=
-    maybe (return ()) (deleteCommandById dbConn . commandId)
+  maybe (return ()) (deleteCommandById dbConn . commandId)
 
 deleteCommandName :: Connection -> T.Text -> IO ()
-deleteCommandName dbConn name = do
+deleteCommandName dbConn name =
   executeNamed
     dbConn
     "DELETE FROM CommandName WHERE name = :commandName"

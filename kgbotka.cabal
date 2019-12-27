@@ -52,7 +52,7 @@ extra-source-files:  CHANGELOG.md
 
 
 executable kgbotka
-  ghc-options: -threaded -Wall
+  ghc-options: -threaded -Wall -Werror
 
   -- .hs or .lhs file containing the Main module.
   main-is:             Main.hs
@@ -63,6 +63,8 @@ executable kgbotka
                      , KGBotka.Parser
                      , KGBotka.Expr
                      , KGBotka.Flip
+                     , KGBotka.Roles
+                     , KGBotka.TwitchAPI
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
@@ -78,6 +80,12 @@ executable kgbotka
                      , sqlite-simple >= 0.4.16
                      , containers >= 0.6.0
                      , network-uri >= 2.6.1
+                     , http-client >= 0.6.4
+                     , transformers >= 0.5.6.2
+                     , http-client-tls >= 0.3.5
+                     , bytestring >= 0.10.8
+                     , regex-base >= 0.94.0
+                     , regex-tdfa >= 1.3.1
 
   -- Directories containing source files.
   hs-source-dirs:      src

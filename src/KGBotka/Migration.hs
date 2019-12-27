@@ -33,7 +33,7 @@ applyMigration conn (Migration q) = do
     conn
     "INSERT INTO Migrations (migrationQuery)\
     \VALUES (:migrationQuery)"
-    [":migrationQuery" := (fromQuery q)]
+    [":migrationQuery" := fromQuery q]
 
 createMigrationTablesIfNeeded :: Connection -> IO ()
 createMigrationTablesIfNeeded conn =

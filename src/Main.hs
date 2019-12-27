@@ -3,6 +3,7 @@
 
 module Main
   ( main
+  , ConfigTwitch(..)
   ) where
 
 import Control.Concurrent
@@ -11,6 +12,7 @@ import Control.Exception
 import Control.Monad
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Either
 import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
@@ -23,20 +25,25 @@ import Irc.Commands
 import Irc.Identifier (Identifier, idText, mkId)
 import Irc.Message
 import Irc.RawIrcMsg
+import Irc.UserInfo (userNick)
 import KGBotka.Command
 import KGBotka.Expr
 import KGBotka.Flip
 import KGBotka.Migration
 import KGBotka.Parser
+import KGBotka.Roles
+import KGBotka.TwitchAPI
+import qualified Network.HTTP.Client as HTTP
+import qualified Network.HTTP.Client.TLS as TLS
 import Network.Socket (Family(AF_INET))
 import Network.URI
 import System.Environment
 import System.Exit
 import System.IO
+import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
+import Text.Regex.TDFA.String
 
--- TODO(#1): link filter
 -- TODO(#2): friday video queue
-
 migrations :: [Migration]
 migrations =
   [ "CREATE TABLE Log (\
@@ -52,6 +59,15 @@ migrations =
     \  name TEXT NOT NULL,\
     \  commandId INTEGER NOT NULL REFERENCES Command(id) ON DELETE CASCADE,\
     \  UNIQUE(name) ON CONFLICT REPLACE\
+    \);"
+  , "CREATE TABLE TwitchRoles ( \
+    \  id INTEGER PRIMARY KEY, \
+    \  name TEXT NOT NULL UNIQUE \
+    \);"
+  , "CREATE TABLE TwitchUserRoles ( \
+    \  userId TEXT NOT NULL, \
+    \  roleId INTEGER NOT NULL REFERENCES TwitchRoles(id) ON DELETE CASCADE, \
+    \  UNIQUE(userId, roleId) ON CONFLICT IGNORE \
     \);"
   ]
 
@@ -103,7 +119,10 @@ withConnection :: ConnectionParams -> (Connection -> IO a) -> IO a
 withConnection params = bracket (connect params) close
 
 withSqliteConnection :: FilePath -> (Sqlite.Connection -> IO a) -> IO a
-withSqliteConnection filePath = bracket (Sqlite.open filePath) Sqlite.close
+withSqliteConnection filePath f =
+  bracket (Sqlite.open filePath) Sqlite.close $ \dbConn -> do
+    Sqlite.execute_ dbConn "PRAGMA foreign_keys=ON"
+    f dbConn
 
 sendMsg :: Connection -> RawIrcMsg -> IO ()
 sendMsg conn msg = send conn (renderRawIrcMsg msg)
@@ -132,60 +151,95 @@ readIrcLine conn = do
 data ConfigTwitch = ConfigTwitch
   { configTwitchAccount :: T.Text
   , configTwitchToken :: T.Text
+  , configTwitchClientId :: T.Text
   } deriving (Eq)
 
 instance FromJSON ConfigTwitch where
-  parseJSON (Object v) = ConfigTwitch <$> v .: "account" <*> v .: "token"
+  parseJSON (Object v) =
+    ConfigTwitch <$> v .: "account" <*> v .: "token" <*> v .: "clientId"
   parseJSON invalid = typeMismatch "Config" invalid
 
-replThread ::
-     Maybe T.Text
-  -> TVar (S.Set Identifier)
-  -> Sqlite.Connection
-  -> WriteQueue ReplCommand
-  -> IO ()
-replThread currentChannel state dbConn queue = do
-  putStr $ "[" <> T.unpack (fromMaybe "#" currentChannel) <> "]> "
+data ReplState = ReplState
+  { replStateChannels :: TVar (S.Set Identifier)
+  , replStateSqliteConnection :: Sqlite.Connection
+  , replStateCurrentChannel :: Maybe T.Text
+  , replStateCommandQueue :: WriteQueue ReplCommand
+  , replStateConfigTwitch :: ConfigTwitch
+  , replStateManager :: HTTP.Manager
+  }
+
+replThread :: ReplState -> IO ()
+replThread state = do
+  putStr $
+    "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
   hFlush stdout
   cmd <- T.words . T.pack <$> getLine
-  case (cmd, currentChannel) of
-    ("cd":channel:_, _) -> replThread (Just channel) state dbConn queue
-    ("cd":_, _) -> replThread Nothing state dbConn queue
+  case (cmd, replStateCurrentChannel state) of
+    ("cd":channel:_, _) ->
+      replThread $ state {replStateCurrentChannel = Just channel}
+    ("cd":_, _) -> replThread $ state {replStateCurrentChannel = Nothing}
     ("say":args, Just channel) -> do
-      atomically $ writeQueue queue $ Say channel $ T.unwords args
-      replThread currentChannel state dbConn queue
+      atomically $
+        writeQueue (replStateCommandQueue state) $ Say channel $ T.unwords args
+      replThread state
     ("say":_, Nothing) -> do
       putStrLn "No current channel to say anything to is selected"
-      replThread currentChannel state dbConn queue
+      replThread state
     ("quit":_, _) -> return ()
     ("join":channel:_, _) -> do
-      atomically $ writeQueue queue $ JoinChannel channel
-      replThread (Just channel) state dbConn queue
+      atomically $
+        writeQueue (replStateCommandQueue state) $ JoinChannel channel
+      replThread $ state {replStateCurrentChannel = Just channel}
     ("part":_, Just channel) -> do
       atomically $ do
         let channelId = mkId channel
-        isMember <- S.member channelId <$> readTVar state
-        when isMember $ writeQueue queue $ PartChannel channelId
-      replThread Nothing state dbConn queue
+        isMember <- S.member channelId <$> readTVar (replStateChannels state)
+        when isMember $
+          writeQueue (replStateCommandQueue state) $ PartChannel channelId
+      replThread state
     ("ls":_, _) -> do
-      traverse_ (putStrLn . T.unpack . idText) =<< S.toList <$> readTVarIO state
-      replThread currentChannel state dbConn queue
+      traverse_ (putStrLn . T.unpack . idText) =<<
+        S.toList <$> readTVarIO (replStateChannels state)
+      replThread state
     ("addcmd":name:args, _) -> do
+      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ addCommand dbConn name (T.unwords args)
-      replThread currentChannel state dbConn queue
+      replThread state
     ("addalias":alias:name:_, _) -> do
+      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ addCommandName dbConn alias name
-      replThread currentChannel state dbConn queue
+      replThread state
     ("delcmd":name:_, _) -> do
+      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ deleteCommandByName dbConn name
-      replThread currentChannel state dbConn queue
+      replThread state
     ("delalias":name:_, _) -> do
+      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ deleteCommandName dbConn name
-      replThread currentChannel state dbConn queue
+      replThread state
+    ("assrole":roleName:users, _) -> do
+      let dbConn = replStateSqliteConnection state
+      Sqlite.withTransaction dbConn $ do
+        maybeRole <- getTwitchRoleByName dbConn roleName
+        response <-
+          HTTP.responseBody . unwrapJsonResponse <$>
+          getUsersByLogins
+            (replStateManager state)
+            (configTwitchClientId $ replStateConfigTwitch state)
+            users
+        case (response, maybeRole) of
+          (Right twitchUsers, Just role') ->
+            traverse_
+              (assTwitchRoleToUser dbConn (twitchRoleId role') .
+               TwitchUserId . userId)
+              twitchUsers
+          (Left message, _) -> putStrLn $ "[ERROR] " <> message
+          (_, Nothing) -> putStrLn "[ERROR] Such role does not exist"
+      replThread state
     (unknown:_, _) -> do
       putStrLn $ T.unpack $ "Unknown command: " <> unknown
-      replThread currentChannel state dbConn queue
-    _ -> replThread currentChannel state dbConn queue
+      replThread state
+    _ -> replThread state
 
 twitchIncomingThread :: Connection -> WriteQueue RawIrcMsg -> IO ()
 twitchIncomingThread conn queue = do
@@ -208,6 +262,19 @@ evalExpr vars (FunCallExpr funame _) = fromMaybe "" $ M.lookup funame vars
 evalExprs :: M.Map T.Text T.Text -> [Expr] -> T.Text
 evalExprs vars = T.concat . map (evalExpr vars)
 
+textContainsLink :: T.Text -> Bool
+textContainsLink t =
+  isRight $ do
+    regex <-
+      compile
+        defaultCompOpt
+        defaultExecOpt
+        "[-a-zA-Z0-9@:%._\\+~#=]{2,256}\\.[a-z]{2,6}\\b([-a-zA-Z0-9@:%_\\+.~#?&\\/\\/=]*)"
+    match <- execute regex $ T.unpack t
+    case match of
+      Just x -> Right x
+      Nothing -> Left "No match found"
+
 botThread ::
      ReadQueue RawIrcMsg
   -> WriteQueue RawIrcMsg
@@ -224,7 +291,7 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
       maybeRawMsg <- atomically $ tryReadQueue incomingQueue
       for_ maybeRawMsg $ \rawMsg -> do
         let cookedMsg = cookIrcMsg rawMsg
-        hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
+        hPutStrLn logHandle $ "[TWITCH] " <> show rawMsg
         hFlush logHandle
         case cookedMsg of
           Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
@@ -232,26 +299,41 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
             atomically $ modifyTVar state $ S.insert channelId
           Part _ channelId _ ->
             atomically $ modifyTVar state $ S.delete channelId
-          Privmsg _ channelId message ->
-            case parseCommandCall "!" message of
-              Just (CommandCall name args) -> do
-                command <- commandByName dbConn name
-                case command of
-                  Just (Command _ code) ->
-                    let codeAst = snd <$> runParser exprs code
-                     in case codeAst of
-                          Right codeAst' -> do
-                            hPutStrLn logHandle $ "[AST] " <> show codeAst'
-                            hFlush logHandle
-                            atomically $
-                              writeQueue outgoingQueue $
-                              ircPrivmsg (idText channelId) $
-                              twitchCmdEscape $
-                              evalExprs (M.fromList [("1", args)]) codeAst'
-                          Left err ->
-                            hPutStrLn logHandle $ "[ERROR] " <> show err
-                  Nothing -> return ()
-              _ -> return ()
+          Privmsg userInfo channelId message -> do
+            roles <-
+              maybe
+                (return [])
+                (getTwitchUserRoles dbConn)
+                (userIdFromRawIrcMsg rawMsg)
+            let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
+            case (roles, badgeRoles) of
+              ([], [])
+                | textContainsLink message ->
+                  atomically $
+                  writeQueue outgoingQueue $
+                  ircPrivmsg
+                    (idText channelId)
+                    ("/timeout " <> idText (userNick userInfo) <> " 1")
+              _ ->
+                case parseCommandCall "!" message of
+                  Just (CommandCall name args) -> do
+                    command <- commandByName dbConn name
+                    case command of
+                      Just (Command _ code) ->
+                        let codeAst = snd <$> runParser exprs code
+                         in case codeAst of
+                              Right codeAst' -> do
+                                hPutStrLn logHandle $ "[AST] " <> show codeAst'
+                                hFlush logHandle
+                                atomically $
+                                  writeQueue outgoingQueue $
+                                  ircPrivmsg (idText channelId) $
+                                  twitchCmdEscape $
+                                  evalExprs (M.fromList [("1", args)]) codeAst'
+                              Left err ->
+                                hPutStrLn logHandle $ "[ERROR] " <> show err
+                      Nothing -> return ()
+                  _ -> return ()
           _ -> return ()
       atomically $ do
         replCommand <- tryReadQueue replQueue
@@ -273,6 +355,43 @@ twitchOutgoingThread conn queue = do
   sendMsg conn rawMsg
   twitchOutgoingThread conn queue
 
+tagEntryPair :: TagEntry -> (T.Text, T.Text)
+tagEntryPair (TagEntry name value) = (name, value)
+
+tagEntryName :: TagEntry -> T.Text
+tagEntryName = fst . tagEntryPair
+
+tagEntryValue :: TagEntry -> T.Text
+tagEntryValue = snd . tagEntryPair
+
+lookupEntryValue :: T.Text -> [TagEntry] -> Maybe T.Text
+lookupEntryValue name = fmap tagEntryValue . find ((== name) . tagEntryName)
+
+userIdFromRawIrcMsg :: RawIrcMsg -> Maybe TwitchUserId
+userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
+  TwitchUserId <$> lookupEntryValue "user-id" tags
+
+data TwitchBadgeRole
+  = TwitchSub
+  | TwitchVip
+  | TwitchBroadcaster
+  | TwitchMod
+  deriving (Show)
+
+roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
+roleOfBadge badge
+  | "subscriber" `T.isPrefixOf` badge = Just TwitchSub
+  | "vip" `T.isPrefixOf` badge = Just TwitchVip
+  | "broadcaster" `T.isPrefixOf` badge = Just TwitchBroadcaster
+  | "moderator" `T.isPrefixOf` badge = Just TwitchMod
+  | otherwise = Nothing
+
+badgeRolesFromRawIrcMsg :: RawIrcMsg -> [TwitchBadgeRole]
+badgeRolesFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
+  fromMaybe [] $ do
+    badges <- lookupEntryValue "badges" tags
+    return $ mapMaybe roleOfBadge $ T.splitOn "," badges
+
 mainWithArgs :: [String] -> IO ()
 mainWithArgs (configPath:databasePath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
@@ -281,9 +400,8 @@ mainWithArgs (configPath:databasePath:_) = do
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
       replQueue <- atomically newTQueue
-      state <- atomically $ newTVar S.empty
+      joinedChannels <- atomically $ newTVar S.empty
       withSqliteConnection databasePath $ \dbConn -> do
-        Sqlite.execute_ dbConn "PRAGMA foreign_keys=ON"
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
@@ -297,10 +415,19 @@ mainWithArgs (configPath:databasePath:_) = do
               (ReadQueue incomingIrcQueue)
               (WriteQueue outgoingIrcQueue)
               (ReadQueue replQueue)
-              state
+              joinedChannels
               dbConn
               "twitch.log"
-          replThread Nothing state dbConn (WriteQueue replQueue)
+          manager <- TLS.newTlsManager
+          replThread $
+            ReplState
+              { replStateChannels = joinedChannels
+              , replStateSqliteConnection = dbConn
+              , replStateCurrentChannel = Nothing
+              , replStateCommandQueue = WriteQueue replQueue
+              , replStateConfigTwitch = config
+              , replStateManager = manager
+              }
           killThread incomingThreadId
           killThread outgoingThreadId
           killThread botThreadId
