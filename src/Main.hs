@@ -12,6 +12,7 @@ import Control.Exception
 import Control.Monad
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Either
 import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
@@ -39,7 +40,6 @@ import Network.URI
 import System.Environment
 import System.Exit
 import System.IO
-import Data.Either
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 
@@ -300,37 +300,40 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
           Part _ channelId _ ->
             atomically $ modifyTVar state $ S.delete channelId
           Privmsg userInfo channelId message -> do
-            roles <- maybe
-              (return [])
-              (getTwitchUserRoles dbConn)
-              (userIdFromRawIrcMsg rawMsg)
+            roles <-
+              maybe
+                (return [])
+                (getTwitchUserRoles dbConn)
+                (userIdFromRawIrcMsg rawMsg)
             let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
             case (roles, badgeRoles) of
-              ([], []) | textContainsLink message ->
-                atomically $
-                writeQueue outgoingQueue $
-                ircPrivmsg
-                  (idText channelId)
-                  ("/timeout " <> idText (userNick userInfo) <> " 1")
-              _ -> case parseCommandCall "!" message of
-                     Just (CommandCall name args) -> do
-                       command <- commandByName dbConn name
-                       case command of
-                         Just (Command _ code) ->
-                           let codeAst = snd <$> runParser exprs code
-                            in case codeAst of
-                                 Right codeAst' -> do
-                                   hPutStrLn logHandle $ "[AST] " <> show codeAst'
-                                   hFlush logHandle
-                                   atomically $
-                                     writeQueue outgoingQueue $
-                                     ircPrivmsg (idText channelId) $
-                                     twitchCmdEscape $
-                                     evalExprs (M.fromList [("1", args)]) codeAst'
-                                 Left err ->
-                                   hPutStrLn logHandle $ "[ERROR] " <> show err
-                         Nothing -> return ()
-                     _ -> return ()
+              ([], [])
+                | textContainsLink message ->
+                  atomically $
+                  writeQueue outgoingQueue $
+                  ircPrivmsg
+                    (idText channelId)
+                    ("/timeout " <> idText (userNick userInfo) <> " 1")
+              _ ->
+                case parseCommandCall "!" message of
+                  Just (CommandCall name args) -> do
+                    command <- commandByName dbConn name
+                    case command of
+                      Just (Command _ code) ->
+                        let codeAst = snd <$> runParser exprs code
+                         in case codeAst of
+                              Right codeAst' -> do
+                                hPutStrLn logHandle $ "[AST] " <> show codeAst'
+                                hFlush logHandle
+                                atomically $
+                                  writeQueue outgoingQueue $
+                                  ircPrivmsg (idText channelId) $
+                                  twitchCmdEscape $
+                                  evalExprs (M.fromList [("1", args)]) codeAst'
+                              Left err ->
+                                hPutStrLn logHandle $ "[ERROR] " <> show err
+                      Nothing -> return ()
+                  _ -> return ()
           _ -> return ()
       atomically $ do
         replCommand <- tryReadQueue replQueue
@@ -373,20 +376,21 @@ data TwitchBadgeRole
   | TwitchVip
   | TwitchBroadcaster
   | TwitchMod
-    deriving (Show)
+  deriving (Show)
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
-  | "subscriber"  `T.isPrefixOf` badge = Just TwitchSub
-  | "vip"         `T.isPrefixOf` badge = Just TwitchVip
+  | "subscriber" `T.isPrefixOf` badge = Just TwitchSub
+  | "vip" `T.isPrefixOf` badge = Just TwitchVip
   | "broadcaster" `T.isPrefixOf` badge = Just TwitchBroadcaster
-  | "moderator"   `T.isPrefixOf` badge = Just TwitchMod
+  | "moderator" `T.isPrefixOf` badge = Just TwitchMod
   | otherwise = Nothing
 
 badgeRolesFromRawIrcMsg :: RawIrcMsg -> [TwitchBadgeRole]
-badgeRolesFromRawIrcMsg RawIrcMsg {_msgTags = tags} = fromMaybe [] $ do
-  badges <- lookupEntryValue "badges" tags
-  return $ mapMaybe roleOfBadge $ T.splitOn "," badges
+badgeRolesFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
+  fromMaybe [] $ do
+    badges <- lookupEntryValue "badges" tags
+    return $ mapMaybe roleOfBadge $ T.splitOn "," badges
 
 mainWithArgs :: [String] -> IO ()
 mainWithArgs (configPath:databasePath:_) = do
