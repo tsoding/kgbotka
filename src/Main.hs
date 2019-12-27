@@ -373,13 +373,14 @@ data TwitchBadgeRole
   | TwitchVip
   | TwitchBroadcaster
   | TwitchMod
+    deriving (Show)
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
-  | badge `T.isPrefixOf` "subscriber" = Just TwitchSub
-  | badge `T.isPrefixOf` "vip" = Just TwitchVip
-  | badge `T.isPrefixOf` "broadcaster" = Just TwitchBroadcaster
-  | badge `T.isPrefixOf` "moderator" = Just TwitchMod
+  | "subscriber"  `T.isPrefixOf` badge = Just TwitchSub
+  | "vip"         `T.isPrefixOf` badge = Just TwitchVip
+  | "broadcaster" `T.isPrefixOf` badge = Just TwitchBroadcaster
+  | "moderator"   `T.isPrefixOf` badge = Just TwitchMod
   | otherwise = Nothing
 
 badgeRolesFromRawIrcMsg :: RawIrcMsg -> [TwitchBadgeRole]
