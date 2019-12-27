@@ -24,6 +24,7 @@ import Irc.Commands
 import Irc.Identifier (Identifier, idText, mkId)
 import Irc.Message
 import Irc.RawIrcMsg
+import Irc.UserInfo (userNick)
 import KGBotka.Command
 import KGBotka.Expr
 import KGBotka.Flip
@@ -38,8 +39,10 @@ import Network.URI
 import System.Environment
 import System.Exit
 import System.IO
+import Data.Either
+import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
+import Text.Regex.TDFA.String
 
--- TODO(#1): link filter
 -- TODO(#2): friday video queue
 migrations :: [Migration]
 migrations =
@@ -259,6 +262,19 @@ evalExpr vars (FunCallExpr funame _) = fromMaybe "" $ M.lookup funame vars
 evalExprs :: M.Map T.Text T.Text -> [Expr] -> T.Text
 evalExprs vars = T.concat . map (evalExpr vars)
 
+textContainsLink :: T.Text -> Bool
+textContainsLink t =
+  isRight $ do
+    regex <-
+      compile
+        defaultCompOpt
+        defaultExecOpt
+        "[-a-zA-Z0-9@:%._\\+~#=]{2,256}\\.[a-z]{2,6}\\b([-a-zA-Z0-9@:%_\\+.~#?&\\/\\/=]*)"
+    match <- execute regex $ T.unpack t
+    case match of
+      Just x -> Right x
+      Nothing -> Left "No match found"
+
 botThread ::
      ReadQueue RawIrcMsg
   -> WriteQueue RawIrcMsg
@@ -275,7 +291,7 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
       maybeRawMsg <- atomically $ tryReadQueue incomingQueue
       for_ maybeRawMsg $ \rawMsg -> do
         let cookedMsg = cookIrcMsg rawMsg
-        hPutStrLn logHandle $ "[TWITCH] " <> show cookedMsg
+        hPutStrLn logHandle $ "[TWITCH] " <> show rawMsg
         hFlush logHandle
         case cookedMsg of
           Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
@@ -283,26 +299,38 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
             atomically $ modifyTVar state $ S.insert channelId
           Part _ channelId _ ->
             atomically $ modifyTVar state $ S.delete channelId
-          Privmsg _ channelId message ->
-            case parseCommandCall "!" message of
-              Just (CommandCall name args) -> do
-                command <- commandByName dbConn name
-                case command of
-                  Just (Command _ code) ->
-                    let codeAst = snd <$> runParser exprs code
-                     in case codeAst of
-                          Right codeAst' -> do
-                            hPutStrLn logHandle $ "[AST] " <> show codeAst'
-                            hFlush logHandle
-                            atomically $
-                              writeQueue outgoingQueue $
-                              ircPrivmsg (idText channelId) $
-                              twitchCmdEscape $
-                              evalExprs (M.fromList [("1", args)]) codeAst'
-                          Left err ->
-                            hPutStrLn logHandle $ "[ERROR] " <> show err
-                  Nothing -> return ()
-              _ -> return ()
+          Privmsg userInfo channelId message -> do
+            roles <- maybe
+              (return [])
+              (getTwitchUserRoles dbConn)
+              (userIdFromRawIrcMsg rawMsg)
+            let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
+            case (roles, badgeRoles) of
+              ([], []) | textContainsLink message ->
+                atomically $
+                writeQueue outgoingQueue $
+                ircPrivmsg
+                  (idText channelId)
+                  ("/timeout " <> idText (userNick userInfo) <> " 1")
+              _ -> case parseCommandCall "!" message of
+                     Just (CommandCall name args) -> do
+                       command <- commandByName dbConn name
+                       case command of
+                         Just (Command _ code) ->
+                           let codeAst = snd <$> runParser exprs code
+                            in case codeAst of
+                                 Right codeAst' -> do
+                                   hPutStrLn logHandle $ "[AST] " <> show codeAst'
+                                   hFlush logHandle
+                                   atomically $
+                                     writeQueue outgoingQueue $
+                                     ircPrivmsg (idText channelId) $
+                                     twitchCmdEscape $
+                                     evalExprs (M.fromList [("1", args)]) codeAst'
+                                 Left err ->
+                                   hPutStrLn logHandle $ "[ERROR] " <> show err
+                         Nothing -> return ()
+                     _ -> return ()
           _ -> return ()
       atomically $ do
         replCommand <- tryReadQueue replQueue
@@ -323,6 +351,41 @@ twitchOutgoingThread conn queue = do
   rawMsg <- atomically $ readQueue queue
   sendMsg conn rawMsg
   twitchOutgoingThread conn queue
+
+tagEntryPair :: TagEntry -> (T.Text, T.Text)
+tagEntryPair (TagEntry name value) = (name, value)
+
+tagEntryName :: TagEntry -> T.Text
+tagEntryName = fst . tagEntryPair
+
+tagEntryValue :: TagEntry -> T.Text
+tagEntryValue = snd . tagEntryPair
+
+lookupEntryValue :: T.Text -> [TagEntry] -> Maybe T.Text
+lookupEntryValue name = fmap tagEntryValue . find ((== name) . tagEntryName)
+
+userIdFromRawIrcMsg :: RawIrcMsg -> Maybe TwitchUserId
+userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
+  TwitchUserId <$> lookupEntryValue "user-id" tags
+
+data TwitchBadgeRole
+  = TwitchSub
+  | TwitchVip
+  | TwitchBroadcaster
+  | TwitchMod
+
+roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
+roleOfBadge badge
+  | badge `T.isPrefixOf` "subscriber" = Just TwitchSub
+  | badge `T.isPrefixOf` "vip" = Just TwitchVip
+  | badge `T.isPrefixOf` "broadcaster" = Just TwitchBroadcaster
+  | badge `T.isPrefixOf` "moderator" = Just TwitchMod
+  | otherwise = Nothing
+
+badgeRolesFromRawIrcMsg :: RawIrcMsg -> [TwitchBadgeRole]
+badgeRolesFromRawIrcMsg RawIrcMsg {_msgTags = tags} = fromMaybe [] $ do
+  badges <- lookupEntryValue "badges" tags
+  return $ mapMaybe roleOfBadge $ T.splitOn "," badges
 
 mainWithArgs :: [String] -> IO ()
 mainWithArgs (configPath:databasePath:_) = do
