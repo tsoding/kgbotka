@@ -65,6 +65,10 @@ executable kgbotka
                      , KGBotka.Flip
                      , KGBotka.Roles
                      , KGBotka.TwitchAPI
+                     , KGBotka.Bot
+                     , KGBotka.Queue
+                     , KGBotka.Repl
+                     , KGBotka.Config
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
