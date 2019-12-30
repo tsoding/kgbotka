@@ -135,32 +135,35 @@ mainWithArgs (configPath:databasePath:_) = do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
-          incomingThreadId <-
-            forkIO $ twitchIncomingThread conn (WriteQueue incomingIrcQueue)
-          outgoingThreadId <-
-            forkIO $ twitchOutgoingThread conn (ReadQueue outgoingIrcQueue)
-          botThreadId <-
-            forkIO $
-            botThread
-              (ReadQueue incomingIrcQueue)
-              (WriteQueue outgoingIrcQueue)
-              (ReadQueue replQueue)
-              joinedChannels
-              dbConn
-              "twitch.log"
-          manager <- TLS.newTlsManager
-          replThread $
-            ReplState
-              { replStateChannels = joinedChannels
-              , replStateSqliteConnection = dbConn
-              , replStateCurrentChannel = Nothing
-              , replStateCommandQueue = WriteQueue replQueue
-              , replStateConfigTwitch = config
-              , replStateManager = manager
-              }
-          killThread incomingThreadId
-          killThread outgoingThreadId
-          killThread botThreadId
+          withFile "twitch.log" AppendMode $ \logHandler -> do
+            incomingThreadId <-
+              forkIO $ twitchIncomingThread conn (WriteQueue incomingIrcQueue)
+            outgoingThreadId <-
+              forkIO $ twitchOutgoingThread conn (ReadQueue outgoingIrcQueue)
+            botThreadId <-
+              forkIO $
+              botThread $
+              BotState
+                { botStateIncomingQueue = (ReadQueue incomingIrcQueue)
+                , botStateOutgoingQueue = (WriteQueue outgoingIrcQueue)
+                , botStateReplQueue = (ReadQueue replQueue)
+                , botStateChannels = joinedChannels
+                , botStateSqliteConnection = dbConn
+                , botStateLogHandle = logHandler
+                }
+            manager <- TLS.newTlsManager
+            replThread $
+              ReplState
+                { replStateChannels = joinedChannels
+                , replStateSqliteConnection = dbConn
+                , replStateCurrentChannel = Nothing
+                , replStateCommandQueue = WriteQueue replQueue
+                , replStateConfigTwitch = config
+                , replStateManager = manager
+                }
+            killThread incomingThreadId
+            killThread outgoingThreadId
+            killThread botThreadId
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Not enough arguments provided"

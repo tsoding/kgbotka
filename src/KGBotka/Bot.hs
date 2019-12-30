@@ -2,6 +2,7 @@
 
 module KGBotka.Bot
   ( botThread
+  , BotState(..)
   ) where
 
 import Control.Concurrent
@@ -95,18 +96,25 @@ userIdFromRawIrcMsg :: RawIrcMsg -> Maybe TwitchUserId
 userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
   TwitchUserId <$> lookupEntryValue "user-id" tags
 
-botThread ::
-     ReadQueue RawIrcMsg
-  -> WriteQueue RawIrcMsg
-  -> ReadQueue ReplCommand
-  -> TVar (S.Set Identifier)
-  -> Sqlite.Connection
-  -> FilePath
-  -> IO ()
-botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
-  withFile logFilePath AppendMode $ \logHandle -> botLoop logHandle
+data BotState = BotState
+  { botStateIncomingQueue :: ReadQueue RawIrcMsg
+  , botStateOutgoingQueue :: WriteQueue RawIrcMsg
+  , botStateReplQueue :: ReadQueue ReplCommand
+  , botStateChannels :: TVar (S.Set Identifier)
+  , botStateSqliteConnection :: Sqlite.Connection
+  , botStateLogHandle :: Handle
+  }
+
+botThread :: BotState -> IO ()
+botThread BotState { botStateIncomingQueue = incomingQueue
+                   , botStateOutgoingQueue = outgoingQueue
+                   , botStateReplQueue = replQueue
+                   , botStateChannels = channels
+                   , botStateSqliteConnection = dbConn
+                   , botStateLogHandle = logHandle
+                   } = botLoop
   where
-    botLoop logHandle = do
+    botLoop = do
       threadDelay 10000 -- to prevent busy looping
       maybeRawMsg <- atomically $ tryReadQueue incomingQueue
       for_ maybeRawMsg $ \rawMsg -> do
@@ -116,9 +124,9 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
         case cookedMsg of
           Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
           Join _ channelId _ ->
-            atomically $ modifyTVar state $ S.insert channelId
+            atomically $ modifyTVar channels $ S.insert channelId
           Part _ channelId _ ->
-            atomically $ modifyTVar state $ S.delete channelId
+            atomically $ modifyTVar channels $ S.delete channelId
           Privmsg userInfo channelId message -> do
             roles <-
               maybe
@@ -165,6 +173,6 @@ botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
           Just (PartChannel channelId) ->
             writeQueue outgoingQueue $ ircPart channelId ""
           Nothing -> return ()
-      botLoop logHandle
+      botLoop
     twitchCmdEscape :: T.Text -> T.Text
     twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip
