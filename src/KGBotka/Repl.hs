@@ -1,21 +1,22 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module KGBotka.Repl where
 
 import Control.Concurrent.STM
-import qualified Data.Set as S
-import Irc.Identifier (Identifier, idText, mkId)
-import qualified Database.SQLite.Simple as Sqlite
-import qualified Data.Text as T
-import KGBotka.Queue
-import qualified Network.HTTP.Client as HTTP
-import KGBotka.Config
-import Data.Maybe
-import System.IO
 import Control.Monad
 import Data.Foldable
+import Data.Maybe
+import qualified Data.Set as S
+import qualified Data.Text as T
+import qualified Database.SQLite.Simple as Sqlite
+import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Command
+import KGBotka.Config
+import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.TwitchAPI
+import qualified Network.HTTP.Client as HTTP
+import System.IO
 
 data ReplState = ReplState
   { replStateChannels :: TVar (S.Set Identifier)

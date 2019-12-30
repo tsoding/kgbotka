@@ -17,16 +17,16 @@ import qualified Database.SQLite.Simple as Sqlite
 import Hookup
 import Irc.Commands
 import Irc.RawIrcMsg
+import KGBotka.Bot
+import KGBotka.Config
 import KGBotka.Migration
+import KGBotka.Queue
+import KGBotka.Repl
 import qualified Network.HTTP.Client.TLS as TLS
 import Network.Socket (Family(AF_INET))
 import System.Environment
 import System.Exit
 import System.IO
-import KGBotka.Queue
-import KGBotka.Repl
-import KGBotka.Config
-import KGBotka.Bot
 
 -- TODO(#2): friday video queue
 migrations :: [Migration]
@@ -116,15 +116,11 @@ twitchIncomingThread conn queue = do
   for_ mb $ atomically . writeQueue queue
   twitchIncomingThread conn queue
 
-
 twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
 twitchOutgoingThread conn queue = do
   rawMsg <- atomically $ readQueue queue
   sendMsg conn rawMsg
   twitchOutgoingThread conn queue
-
-
-
 
 mainWithArgs :: [String] -> IO ()
 mainWithArgs (configPath:databasePath:_) = do

@@ -1,31 +1,32 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module KGBotka.Bot where
 
-import qualified Data.Text as T
-import KGBotka.Queue
-import Irc.RawIrcMsg
-import KGBotka.Repl
-import Control.Concurrent.STM
-import qualified Data.Set as S
-import Irc.Identifier (Identifier, idText)
-import qualified Database.SQLite.Simple as Sqlite
-import Irc.Message
-import KGBotka.Command
-import qualified Data.Map as M
-import System.IO
 import Control.Concurrent
-import Data.Foldable
-import Irc.Commands
-import KGBotka.Roles
-import Data.Maybe
+import Control.Concurrent.STM
 import Data.Either
+import Data.Foldable
+import qualified Data.Map as M
+import Data.Maybe
+import qualified Data.Set as S
+import qualified Data.Text as T
+import qualified Database.SQLite.Simple as Sqlite
+import Irc.Commands
+import Irc.Identifier (Identifier, idText)
+import Irc.Message
+import Irc.RawIrcMsg
+import Irc.UserInfo (userNick)
+import KGBotka.Command
+import KGBotka.Expr
+import KGBotka.Flip
+import KGBotka.Parser
+import KGBotka.Queue
+import KGBotka.Repl
+import KGBotka.Roles
+import Network.URI
+import System.IO
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Irc.UserInfo (userNick)
-import KGBotka.Parser
-import KGBotka.Expr
-import Network.URI
-import KGBotka.Flip
 
 evalExpr :: M.Map T.Text T.Text -> Expr -> T.Text
 evalExpr _ (TextExpr t) = t

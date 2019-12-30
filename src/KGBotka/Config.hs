@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module KGBotka.Config where
 
 import Data.Aeson
