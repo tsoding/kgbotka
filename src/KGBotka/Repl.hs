@@ -1,6 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module KGBotka.Repl where
+module KGBotka.Repl
+  ( replThread
+  , ReplState(..)
+  , ReplCommand(..)
+  ) where
 
 import Control.Concurrent.STM
 import Control.Monad

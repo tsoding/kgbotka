@@ -1,4 +1,10 @@
-module KGBotka.Queue where
+module KGBotka.Queue
+  ( WriteQueue(..)
+  , writeQueue
+  , ReadQueue(..)
+  , readQueue
+  , tryReadQueue
+  ) where
 
 import Control.Concurrent.STM
 

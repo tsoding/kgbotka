@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module KGBotka.Bot where
+module KGBotka.Bot
+  ( botThread
+  ) where
 
 import Control.Concurrent
 import Control.Concurrent.STM
