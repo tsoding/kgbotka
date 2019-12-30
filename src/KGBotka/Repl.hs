@@ -23,12 +23,12 @@ import qualified Network.HTTP.Client as HTTP
 import System.IO
 
 data ReplState = ReplState
-  { replStateChannels :: TVar (S.Set Identifier)
-  , replStateSqliteConnection :: Sqlite.Connection
-  , replStateCurrentChannel :: Maybe T.Text
-  , replStateCommandQueue :: WriteQueue ReplCommand
-  , replStateConfigTwitch :: ConfigTwitch
-  , replStateManager :: HTTP.Manager
+  { replStateChannels :: !(TVar (S.Set Identifier))
+  , replStateSqliteConnection :: !Sqlite.Connection
+  , replStateCurrentChannel :: !(Maybe T.Text)
+  , replStateCommandQueue :: !(WriteQueue ReplCommand)
+  , replStateConfigTwitch :: !ConfigTwitch
+  , replStateManager :: !HTTP.Manager
   }
 
 data ReplCommand

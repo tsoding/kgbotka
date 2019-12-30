@@ -97,12 +97,12 @@ userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
   TwitchUserId <$> lookupEntryValue "user-id" tags
 
 data BotState = BotState
-  { botStateIncomingQueue :: ReadQueue RawIrcMsg
-  , botStateOutgoingQueue :: WriteQueue RawIrcMsg
-  , botStateReplQueue :: ReadQueue ReplCommand
-  , botStateChannels :: TVar (S.Set Identifier)
-  , botStateSqliteConnection :: Sqlite.Connection
-  , botStateLogHandle :: Handle
+  { botStateIncomingQueue :: !(ReadQueue RawIrcMsg)
+  , botStateOutgoingQueue :: !(WriteQueue RawIrcMsg)
+  , botStateReplQueue :: !(ReadQueue ReplCommand)
+  , botStateChannels :: !(TVar (S.Set Identifier))
+  , botStateSqliteConnection :: !Sqlite.Connection
+  , botStateLogHandle :: !Handle
   }
 
 botThread :: BotState -> IO ()

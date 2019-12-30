@@ -7,9 +7,9 @@ import Data.Aeson.Types
 import qualified Data.Text as T
 
 data ConfigTwitch = ConfigTwitch
-  { configTwitchAccount :: T.Text
-  , configTwitchToken :: T.Text
-  , configTwitchClientId :: T.Text
+  { configTwitchAccount :: !T.Text
+  , configTwitchToken :: !T.Text
+  , configTwitchClientId :: !T.Text
   } deriving (Eq)
 
 instance FromJSON ConfigTwitch where
