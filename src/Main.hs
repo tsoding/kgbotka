@@ -170,8 +170,8 @@ mainWithArgs (configPath:databasePath:_) = do
     Right config -> do
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
-      incomingIrcRecorder <- atomically $ newInputRecorder $ ReadQueue $ incomingIrcQueue
-      outgoingIrcRecorder <- atomically $ newOutputRecorder $ WriteQueue $ outgoingIrcQueue
+      incomingIrcRecorder <- atomically $ newInputRecorder $ ReadQueue incomingIrcQueue
+      outgoingIrcRecorder <- atomically $ newOutputRecorder $ WriteQueue outgoingIrcQueue
       replQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
@@ -179,14 +179,14 @@ mainWithArgs (configPath:databasePath:_) = do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
-          withFile "twitch.log" AppendMode $ \logHandler -> do
+          withFile "twitch.log" AppendMode $ \logHandler ->
             withForkIOs
               [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
               , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
               , botThread $
                 BotState
                   { botStateIncomingQueue = toReadQueue $ recorderOutput incomingIrcRecorder
-                  , botStateOutgoingQueue = toWriteQueue $ recorderInput $ outgoingIrcRecorder
+                  , botStateOutgoingQueue = toWriteQueue $ recorderInput outgoingIrcRecorder
                   , botStateReplQueue = ReadQueue replQueue
                   , botStateChannels = joinedChannels
                   , botStateSqliteConnection = dbConn
@@ -194,7 +194,7 @@ mainWithArgs (configPath:databasePath:_) = do
                   }
               , recorderThread incomingIrcRecorder
               , recorderThread outgoingIrcRecorder
-              ] $ \_ -> do
+              ] $ \_ ->
               replThread $
                 ReplState
                   { replStateChannels = joinedChannels
