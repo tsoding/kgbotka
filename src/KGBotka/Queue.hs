@@ -14,6 +14,7 @@ newtype WriteQueue a = WriteQueue
 
 writeQueue :: WriteQueue a -> a -> STM ()
 writeQueue = writeTQueue . getWriteQueue
+{-# INLINE writeQueue #-}
 
 newtype ReadQueue a = ReadQueue
   { getReadQueue :: TQueue a
@@ -21,6 +22,8 @@ newtype ReadQueue a = ReadQueue
 
 readQueue :: ReadQueue a -> STM a
 readQueue = readTQueue . getReadQueue
+{-# INLINE readQueue #-}
 
 tryReadQueue :: ReadQueue a -> STM (Maybe a)
 tryReadQueue = tryReadTQueue . getReadQueue
+{-# INLINE tryReadQueue #-}
