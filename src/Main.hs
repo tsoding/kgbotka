@@ -137,6 +137,7 @@ recorderThread :: Recorder a -> IO ()
 recorderThread state@Recorder { recorderLog = logs
                               , recorderOutput = maybeOutputQueue
                               } = do
+  threadDelay 10000 -- to prevent busy looping
   now <- getCurrentTime
   atomically $ do
     maybeInput <- tryReadQueue $ recorderInput state
@@ -160,8 +161,9 @@ mainWithArgs (configPath:databasePath:_) = do
       recorderIrcQueue <- atomically newTQueue
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
-      replQueue <- atomically newTQueue
-      joinedChannels <- atomically $ newTVar S.empty
+      replQueue        <- atomically newTQueue
+      joinedChannels   <- atomically $ newTVar S.empty
+      recorderMsgLog   <- atomically $ newTVar []
       withSqliteConnection databasePath $ \dbConn -> do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
@@ -180,7 +182,6 @@ mainWithArgs (configPath:databasePath:_) = do
                      , botStateSqliteConnection = dbConn
                      , botStateLogHandle = logHandler
                      }) $ \_ -> do
-                  recorderMsgLog <- atomically $ newTVar []
                   withForkIO
                     (recorderThread $
                      Recorder
@@ -198,9 +199,9 @@ mainWithArgs (configPath:databasePath:_) = do
                         , replStateConfigTwitch = config
                         , replStateManager = manager
                         }
-                    outgoingLog <- atomically $ readTVar recorderMsgLog
-                    traverse_ (putStrLn . show) $ sortOn fst outgoingLog
-                    putStrLn "Done"
+      outgoingLog <- atomically $ readTVar recorderMsgLog
+      traverse_ (putStrLn . show) $ sortOn fst outgoingLog
+      putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Not enough arguments provided"
