@@ -14,6 +14,7 @@ import Control.Exception
 import Data.Aeson
 import Data.Foldable
 import Data.Functor
+import Data.List
 import qualified Data.Set as S
 import Data.Time
 import Data.Traversable
@@ -31,7 +32,6 @@ import Network.Socket (Family(AF_INET))
 import System.Environment
 import System.Exit
 import System.IO
-import Data.List
 
 -- TODO(#2): friday video queue
 migrations :: [Migration]
@@ -150,8 +150,8 @@ recorderThread state@Recorder { recorderLog = logs
       Nothing -> return ()
   recorderThread state
 
-withForkIO :: IO () -> (ThreadId -> IO b) -> IO b
-withForkIO io = bracket (forkIO io) killThread
+withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b
+withForkIOs ios = bracket (traverse forkIO ios) (traverse_ killThread)
 
 mainWithArgs :: [String] -> IO ()
 mainWithArgs (configPath:databasePath:_) = do
@@ -161,44 +161,43 @@ mainWithArgs (configPath:databasePath:_) = do
       outgoingIrcQueueRecorder <- atomically newTQueue
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
-      replQueue        <- atomically newTQueue
-      joinedChannels   <- atomically $ newTVar S.empty
-      recorderMsgLog   <- atomically $ newTVar []
+      replQueue <- atomically newTQueue
+      joinedChannels <- atomically $ newTVar S.empty
+      recorderMsgLog <- atomically $ newTVar []
+      manager <- TLS.newTlsManager
       withSqliteConnection databasePath $ \dbConn -> do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
           withFile "twitch.log" AppendMode $ \logHandler -> do
-            withForkIO (twitchIncomingThread conn $ WriteQueue incomingIrcQueue) $ \_ -> do
-              withForkIO
-                (twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue) $ \_ -> do
-                withForkIO
-                  (botThread $
-                   BotState
-                     { botStateIncomingQueue = (ReadQueue incomingIrcQueue)
-                     , botStateOutgoingQueue = (WriteQueue outgoingIrcQueueRecorder)
-                     , botStateReplQueue = (ReadQueue replQueue)
-                     , botStateChannels = joinedChannels
-                     , botStateSqliteConnection = dbConn
-                     , botStateLogHandle = logHandler
-                     }) $ \_ -> do
-                  withForkIO
-                    (recorderThread $
-                     Recorder
-                       { recorderInput = ReadQueue outgoingIrcQueueRecorder
-                       , recorderOutput = Just $ WriteQueue outgoingIrcQueue
-                       , recorderLog = recorderMsgLog
-                       }) $ \_ -> do
-                    manager <- TLS.newTlsManager
-                    replThread $
-                      ReplState
-                        { replStateChannels = joinedChannels
-                        , replStateSqliteConnection = dbConn
-                        , replStateCurrentChannel = Nothing
-                        , replStateCommandQueue = WriteQueue replQueue
-                        , replStateConfigTwitch = config
-                        , replStateManager = manager
-                        }
+            withForkIOs
+              [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
+              , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
+              , botThread $
+                BotState
+                  { botStateIncomingQueue = ReadQueue incomingIrcQueue
+                  , botStateOutgoingQueue = WriteQueue outgoingIrcQueueRecorder
+                  , botStateReplQueue = ReadQueue replQueue
+                  , botStateChannels = joinedChannels
+                  , botStateSqliteConnection = dbConn
+                  , botStateLogHandle = logHandler
+                  }
+              , recorderThread $
+                Recorder
+                  { recorderInput = ReadQueue outgoingIrcQueueRecorder
+                  , recorderOutput = Just $ WriteQueue outgoingIrcQueue
+                  , recorderLog = recorderMsgLog
+                  }
+              ] $ \_ -> do
+              replThread $
+                ReplState
+                  { replStateChannels = joinedChannels
+                  , replStateSqliteConnection = dbConn
+                  , replStateCurrentChannel = Nothing
+                  , replStateCommandQueue = WriteQueue replQueue
+                  , replStateConfigTwitch = config
+                  , replStateManager = manager
+                  }
       outgoingLog <- atomically $ readTVar recorderMsgLog
       traverse_ (putStrLn . show) $ sortOn fst outgoingLog
       putStrLn "Done"
