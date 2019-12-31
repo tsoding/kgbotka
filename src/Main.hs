@@ -14,7 +14,6 @@ import Control.Exception
 import Data.Aeson
 import Data.Foldable
 import Data.Functor
-import Data.List
 import qualified Data.Set as S
 import Data.Time
 import Data.Traversable
@@ -134,9 +133,7 @@ data Recorder a = Recorder
   }
 
 recorderThread :: Recorder a -> IO ()
-recorderThread state@Recorder { recorderLog = logs
-                              , recorderOutput = outputQueue
-                              } = do
+recorderThread state@Recorder {recorderLog = logs, recorderOutput = outputQueue} = do
   threadDelay 10000 -- to prevent busy looping
   now <- getCurrentTime
   atomically $ do
@@ -170,8 +167,10 @@ mainWithArgs (configPath:databasePath:_) = do
     Right config -> do
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
-      incomingIrcRecorder <- atomically $ newInputRecorder $ ReadQueue incomingIrcQueue
-      outgoingIrcRecorder <- atomically $ newOutputRecorder $ WriteQueue outgoingIrcQueue
+      incomingIrcRecorder <-
+        atomically $ newInputRecorder $ ReadQueue incomingIrcQueue
+      outgoingIrcRecorder <-
+        atomically $ newOutputRecorder $ WriteQueue outgoingIrcQueue
       replQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
@@ -185,8 +184,10 @@ mainWithArgs (configPath:databasePath:_) = do
               , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
               , botThread $
                 BotState
-                  { botStateIncomingQueue = toReadQueue $ recorderOutput incomingIrcRecorder
-                  , botStateOutgoingQueue = toWriteQueue $ recorderInput outgoingIrcRecorder
+                  { botStateIncomingQueue =
+                      toReadQueue $ recorderOutput incomingIrcRecorder
+                  , botStateOutgoingQueue =
+                      toWriteQueue $ recorderInput outgoingIrcRecorder
                   , botStateReplQueue = ReadQueue replQueue
                   , botStateChannels = joinedChannels
                   , botStateSqliteConnection = dbConn
@@ -196,14 +197,14 @@ mainWithArgs (configPath:databasePath:_) = do
               , recorderThread outgoingIrcRecorder
               ] $ \_ ->
               replThread $
-                ReplState
-                  { replStateChannels = joinedChannels
-                  , replStateSqliteConnection = dbConn
-                  , replStateCurrentChannel = Nothing
-                  , replStateCommandQueue = WriteQueue replQueue
-                  , replStateConfigTwitch = config
-                  , replStateManager = manager
-                  }
+              ReplState
+                { replStateChannels = joinedChannels
+                , replStateSqliteConnection = dbConn
+                , replStateCurrentChannel = Nothing
+                , replStateCommandQueue = WriteQueue replQueue
+                , replStateConfigTwitch = config
+                , replStateManager = manager
+                }
       putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
