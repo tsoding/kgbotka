@@ -122,6 +122,9 @@ twitchOutgoingThread conn queue = do
   sendMsg conn rawMsg
   twitchOutgoingThread conn queue
 
+withForkIO :: IO () -> (ThreadId -> IO b) -> IO b
+withForkIO io = bracket (forkIO io) killThread
+
 mainWithArgs :: [String] -> IO ()
 mainWithArgs (configPath:databasePath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
@@ -136,34 +139,29 @@ mainWithArgs (configPath:databasePath:_) = do
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
           withFile "twitch.log" AppendMode $ \logHandler -> do
-            incomingThreadId <-
-              forkIO $ twitchIncomingThread conn (WriteQueue incomingIrcQueue)
-            outgoingThreadId <-
-              forkIO $ twitchOutgoingThread conn (ReadQueue outgoingIrcQueue)
-            botThreadId <-
-              forkIO $
-              botThread $
-              BotState
-                { botStateIncomingQueue = (ReadQueue incomingIrcQueue)
-                , botStateOutgoingQueue = (WriteQueue outgoingIrcQueue)
-                , botStateReplQueue = (ReadQueue replQueue)
-                , botStateChannels = joinedChannels
-                , botStateSqliteConnection = dbConn
-                , botStateLogHandle = logHandler
-                }
-            manager <- TLS.newTlsManager
-            replThread $
-              ReplState
-                { replStateChannels = joinedChannels
-                , replStateSqliteConnection = dbConn
-                , replStateCurrentChannel = Nothing
-                , replStateCommandQueue = WriteQueue replQueue
-                , replStateConfigTwitch = config
-                , replStateManager = manager
-                }
-            killThread incomingThreadId
-            killThread outgoingThreadId
-            killThread botThreadId
+            withForkIO (twitchIncomingThread conn $ WriteQueue incomingIrcQueue) $ \_ -> do
+              withForkIO
+                (twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue) $ \_ -> do
+                withForkIO
+                  (botThread $
+                   BotState
+                     { botStateIncomingQueue = (ReadQueue incomingIrcQueue)
+                     , botStateOutgoingQueue = (WriteQueue outgoingIrcQueue)
+                     , botStateReplQueue = (ReadQueue replQueue)
+                     , botStateChannels = joinedChannels
+                     , botStateSqliteConnection = dbConn
+                     , botStateLogHandle = logHandler
+                     }) $ \_ -> do
+                  manager <- TLS.newTlsManager
+                  replThread $
+                    ReplState
+                      { replStateChannels = joinedChannels
+                      , replStateSqliteConnection = dbConn
+                      , replStateCurrentChannel = Nothing
+                      , replStateCommandQueue = WriteQueue replQueue
+                      , replStateConfigTwitch = config
+                      , replStateManager = manager
+                      }
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Not enough arguments provided"
