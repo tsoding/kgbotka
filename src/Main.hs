@@ -4,6 +4,8 @@
 module Main
   ( main
   , ConfigTwitch(..)
+  , recorderThread
+  , Recorder(..)
   ) where
 
 import Control.Concurrent
@@ -11,7 +13,9 @@ import Control.Concurrent.STM
 import Control.Exception
 import Data.Aeson
 import Data.Foldable
+import Data.Functor
 import qualified Data.Set as S
+import Data.Time
 import Data.Traversable
 import qualified Database.SQLite.Simple as Sqlite
 import Hookup
@@ -27,6 +31,7 @@ import Network.Socket (Family(AF_INET))
 import System.Environment
 import System.Exit
 import System.IO
+import Data.List
 
 -- TODO(#2): friday video queue
 migrations :: [Migration]
@@ -122,6 +127,28 @@ twitchOutgoingThread conn queue = do
   sendMsg conn rawMsg
   twitchOutgoingThread conn queue
 
+data Recorder a = Recorder
+  { recorderInput :: !(ReadQueue a)
+  , recorderOutput :: !(Maybe (WriteQueue a))
+  , recorderLog :: !(TVar [(UTCTime, a)])
+  }
+
+recorderThread :: Recorder a -> IO ()
+recorderThread state@Recorder { recorderLog = logs
+                              , recorderOutput = maybeOutputQueue
+                              } = do
+  now <- getCurrentTime
+  atomically $ do
+    maybeInput <- tryReadQueue $ recorderInput state
+    case maybeInput of
+      Just input -> do
+        modifyTVar logs ((now, input) :)
+        case maybeOutputQueue of
+          Just outputQueue -> void $ writeQueue outputQueue input
+          Nothing -> return ()
+      Nothing -> return ()
+  recorderThread state
+
 withForkIO :: IO () -> (ThreadId -> IO b) -> IO b
 withForkIO io = bracket (forkIO io) killThread
 
@@ -130,6 +157,7 @@ mainWithArgs (configPath:databasePath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
   eitherDecodeFileStrict configPath >>= \case
     Right config -> do
+      recorderIrcQueue <- atomically newTQueue
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
       replQueue <- atomically newTQueue
@@ -146,22 +174,33 @@ mainWithArgs (configPath:databasePath:_) = do
                   (botThread $
                    BotState
                      { botStateIncomingQueue = (ReadQueue incomingIrcQueue)
-                     , botStateOutgoingQueue = (WriteQueue outgoingIrcQueue)
+                     , botStateOutgoingQueue = (WriteQueue recorderIrcQueue)
                      , botStateReplQueue = (ReadQueue replQueue)
                      , botStateChannels = joinedChannels
                      , botStateSqliteConnection = dbConn
                      , botStateLogHandle = logHandler
                      }) $ \_ -> do
-                  manager <- TLS.newTlsManager
-                  replThread $
-                    ReplState
-                      { replStateChannels = joinedChannels
-                      , replStateSqliteConnection = dbConn
-                      , replStateCurrentChannel = Nothing
-                      , replStateCommandQueue = WriteQueue replQueue
-                      , replStateConfigTwitch = config
-                      , replStateManager = manager
-                      }
+                  recorderMsgLog <- atomically $ newTVar []
+                  withForkIO
+                    (recorderThread $
+                     Recorder
+                       { recorderInput = ReadQueue recorderIrcQueue
+                       , recorderOutput = Just $ WriteQueue outgoingIrcQueue
+                       , recorderLog = recorderMsgLog
+                       }) $ \_ -> do
+                    manager <- TLS.newTlsManager
+                    replThread $
+                      ReplState
+                        { replStateChannels = joinedChannels
+                        , replStateSqliteConnection = dbConn
+                        , replStateCurrentChannel = Nothing
+                        , replStateCommandQueue = WriteQueue replQueue
+                        , replStateConfigTwitch = config
+                        , replStateManager = manager
+                        }
+                    outgoingLog <- atomically $ readTVar recorderMsgLog
+                    traverse_ (putStrLn . show) $ sortOn fst outgoingLog
+                    putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Not enough arguments provided"
