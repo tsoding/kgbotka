@@ -65,7 +65,7 @@ replThread state = do
         isMember <- S.member channelId <$> readTVar (replStateChannels state)
         when isMember $
           writeQueue (replStateCommandQueue state) $ PartChannel channelId
-      replThread state
+      replThread $ state { replStateCurrentChannel = Nothing }
     ("ls":_, _) -> do
       traverse_ (putStrLn . T.unpack . idText) =<<
         S.toList <$> readTVarIO (replStateChannels state)
