@@ -158,8 +158,9 @@ mainWithArgs (configPath:databasePath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
   eitherDecodeFileStrict configPath >>= \case
     Right config -> do
-      outgoingIrcQueueRecorder <- atomically newTQueue
+      incomingIrcQueueRecorder <- atomically newTQueue
       incomingIrcQueue <- atomically newTQueue
+      outgoingIrcQueueRecorder <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
       replQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
@@ -175,7 +176,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
               , botThread $
                 BotState
-                  { botStateIncomingQueue = ReadQueue incomingIrcQueue
+                  { botStateIncomingQueue = ReadQueue incomingIrcQueueRecorder
                   , botStateOutgoingQueue = WriteQueue outgoingIrcQueueRecorder
                   , botStateReplQueue = ReadQueue replQueue
                   , botStateChannels = joinedChannels
@@ -186,6 +187,12 @@ mainWithArgs (configPath:databasePath:_) = do
                 Recorder
                   { recorderInput = ReadQueue outgoingIrcQueueRecorder
                   , recorderOutput = Just $ WriteQueue outgoingIrcQueue
+                  , recorderLog = recorderMsgLog
+                  }
+              , recorderThread $
+                Recorder
+                  { recorderInput = ReadQueue incomingIrcQueue
+                  , recorderOutput = Just $ WriteQueue incomingIrcQueueRecorder
                   , recorderLog = recorderMsgLog
                   }
               ] $ \_ -> do
