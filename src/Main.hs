@@ -129,13 +129,13 @@ twitchOutgoingThread conn queue = do
 
 data Recorder a = Recorder
   { recorderInput :: !(ReadQueue a)
-  , recorderOutput :: !(Maybe (WriteQueue a))
+  , recorderOutput :: !(WriteQueue a)
   , recorderLog :: !(TVar [(UTCTime, a)])
   }
 
 recorderThread :: Recorder a -> IO ()
 recorderThread state@Recorder { recorderLog = logs
-                              , recorderOutput = maybeOutputQueue
+                              , recorderOutput = outputQueue
                               } = do
   threadDelay 10000 -- to prevent busy looping
   now <- getCurrentTime
@@ -144,11 +144,21 @@ recorderThread state@Recorder { recorderLog = logs
     case maybeInput of
       Just input -> do
         modifyTVar logs ((now, input) :)
-        case maybeOutputQueue of
-          Just outputQueue -> void $ writeQueue outputQueue input
-          Nothing -> return ()
+        void $ writeQueue outputQueue input
       Nothing -> return ()
   recorderThread state
+
+newInputRecorder :: ReadQueue a -> STM (Recorder a)
+newInputRecorder input = do
+  output <- WriteQueue <$> newTQueue
+  logs <- newTVar []
+  return $ Recorder input output logs
+
+newOutputRecorder :: WriteQueue a -> STM (Recorder a)
+newOutputRecorder output = do
+  input <- ReadQueue <$> newTQueue
+  logs <- newTVar []
+  return $ Recorder input output logs
 
 withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b
 withForkIOs ios = bracket (traverse forkIO ios) (traverse_ killThread)
@@ -158,13 +168,12 @@ mainWithArgs (configPath:databasePath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
   eitherDecodeFileStrict configPath >>= \case
     Right config -> do
-      incomingIrcQueueRecorder <- atomically newTQueue
       incomingIrcQueue <- atomically newTQueue
-      outgoingIrcQueueRecorder <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
+      incomingIrcRecorder <- atomically $ newInputRecorder $ ReadQueue $ incomingIrcQueue
+      outgoingIrcRecorder <- atomically $ newOutputRecorder $ WriteQueue $ outgoingIrcQueue
       replQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
-      recorderMsgLog <- atomically $ newTVar []
       manager <- TLS.newTlsManager
       withSqliteConnection databasePath $ \dbConn -> do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
@@ -176,25 +185,15 @@ mainWithArgs (configPath:databasePath:_) = do
               , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
               , botThread $
                 BotState
-                  { botStateIncomingQueue = ReadQueue incomingIrcQueueRecorder
-                  , botStateOutgoingQueue = WriteQueue outgoingIrcQueueRecorder
+                  { botStateIncomingQueue = toReadQueue $ recorderOutput incomingIrcRecorder
+                  , botStateOutgoingQueue = toWriteQueue $ recorderInput $ outgoingIrcRecorder
                   , botStateReplQueue = ReadQueue replQueue
                   , botStateChannels = joinedChannels
                   , botStateSqliteConnection = dbConn
                   , botStateLogHandle = logHandler
                   }
-              , recorderThread $
-                Recorder
-                  { recorderInput = ReadQueue outgoingIrcQueueRecorder
-                  , recorderOutput = Just $ WriteQueue outgoingIrcQueue
-                  , recorderLog = recorderMsgLog
-                  }
-              , recorderThread $
-                Recorder
-                  { recorderInput = ReadQueue incomingIrcQueue
-                  , recorderOutput = Just $ WriteQueue incomingIrcQueueRecorder
-                  , recorderLog = recorderMsgLog
-                  }
+              , recorderThread incomingIrcRecorder
+              , recorderThread outgoingIrcRecorder
               ] $ \_ -> do
               replThread $
                 ReplState
@@ -205,8 +204,6 @@ mainWithArgs (configPath:databasePath:_) = do
                   , replStateConfigTwitch = config
                   , replStateManager = manager
                   }
-      outgoingLog <- atomically $ readTVar recorderMsgLog
-      traverse_ (putStrLn . show) $ sortOn fst outgoingLog
       putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
