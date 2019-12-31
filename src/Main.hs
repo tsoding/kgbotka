@@ -158,7 +158,7 @@ mainWithArgs (configPath:databasePath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
   eitherDecodeFileStrict configPath >>= \case
     Right config -> do
-      recorderIrcQueue <- atomically newTQueue
+      outgoingIrcQueueRecorder <- atomically newTQueue
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
       replQueue        <- atomically newTQueue
@@ -176,7 +176,7 @@ mainWithArgs (configPath:databasePath:_) = do
                   (botThread $
                    BotState
                      { botStateIncomingQueue = (ReadQueue incomingIrcQueue)
-                     , botStateOutgoingQueue = (WriteQueue recorderIrcQueue)
+                     , botStateOutgoingQueue = (WriteQueue outgoingIrcQueueRecorder)
                      , botStateReplQueue = (ReadQueue replQueue)
                      , botStateChannels = joinedChannels
                      , botStateSqliteConnection = dbConn
@@ -185,7 +185,7 @@ mainWithArgs (configPath:databasePath:_) = do
                   withForkIO
                     (recorderThread $
                      Recorder
-                       { recorderInput = ReadQueue recorderIrcQueue
+                       { recorderInput = ReadQueue outgoingIrcQueueRecorder
                        , recorderOutput = Just $ WriteQueue outgoingIrcQueue
                        , recorderLog = recorderMsgLog
                        }) $ \_ -> do
