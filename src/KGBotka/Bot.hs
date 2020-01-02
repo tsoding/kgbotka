@@ -31,20 +31,23 @@ import System.IO
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 
-evalExpr :: M.Map T.Text T.Text -> Expr -> T.Text
-evalExpr _ (TextExpr t) = t
+evalExpr :: M.Map T.Text T.Text -> Expr -> IO T.Text
+evalExpr _ (TextExpr t) = return t
 evalExpr vars (FunCallExpr "or" args) =
-  fromMaybe "" $ listToMaybe $ dropWhile T.null $ map (evalExpr vars) args
+  fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM (evalExpr vars) args
 evalExpr vars (FunCallExpr "urlencode" args) =
-  T.concat $ map (T.pack . encodeURI . T.unpack . evalExpr vars) args
+  T.concat . map (T.pack . encodeURI . T.unpack) <$> mapM (evalExpr vars) args
   where
     encodeURI = escapeURIString (const False)
 evalExpr vars (FunCallExpr "flip" args) =
-  T.concat $ map (flipText . evalExpr vars) args
-evalExpr vars (FunCallExpr funame _) = fromMaybe "" $ M.lookup funame vars
+  T.concat . map flipText <$> mapM (evalExpr vars) args
+evalExpr _ (FunCallExpr "friday" _) =
+  return "Not implemented yet"
+evalExpr vars (FunCallExpr funame _) =
+  return $ fromMaybe "" $ M.lookup funame vars
 
-evalExprs :: M.Map T.Text T.Text -> [Expr] -> T.Text
-evalExprs vars = T.concat . map (evalExpr vars)
+evalExprs :: M.Map T.Text T.Text -> [Expr] -> IO T.Text
+evalExprs vars = fmap T.concat . mapM (evalExpr vars)
 
 textContainsLink :: T.Text -> Bool
 textContainsLink t =
@@ -151,11 +154,12 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                           Right codeAst' -> do
                             hPutStrLn logHandle $ "[AST] " <> show codeAst'
                             hFlush logHandle
+                            commandResponse <-
+                              evalExprs (M.fromList [("1", args)]) codeAst'
                             atomically $
                               writeQueue outgoingQueue $
                               ircPrivmsg (idText channelId) $
-                              twitchCmdEscape $
-                              evalExprs (M.fromList [("1", args)]) codeAst'
+                              twitchCmdEscape $ commandResponse
                           Left err ->
                             hPutStrLn logHandle $ "[ERROR] " <> show err
                   Nothing -> return ()
