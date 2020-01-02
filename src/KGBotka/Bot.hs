@@ -50,7 +50,7 @@ evalExpr context (FunCallExpr "urlencode" args) =
     encodeURI = escapeURIString (const False)
 evalExpr context (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM (evalExpr context) args
--- FIXME: non-rolers can submit !friday videos
+-- FIXME(#15): non-rolers can submit !friday videos
 -- FIXME: !friday submissions may contain YouTube link
 -- FIXME: there is no !nextvideo command
 -- FIXME: Friday video list is not published on gist
