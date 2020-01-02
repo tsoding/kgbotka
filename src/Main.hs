@@ -54,6 +54,13 @@ migrations =
     \  roleId INTEGER NOT NULL REFERENCES TwitchRoles(id) ON DELETE CASCADE, \
     \  UNIQUE(userId, roleId) ON CONFLICT IGNORE \
     \);"
+  , "CREATE TABLE FridayVideo ( \
+    \  id INTEGER PRIMARY KEY, \
+    \  submissionText TEXT NOT NULL, \
+    \  submissionTime DATETIME NOT NULL, \
+    \  authorTwitchId TEXT NOT NULL, \
+    \  watchedAt DATETIME \
+    \)"
   ]
 
 maxIrcMessage :: Int
