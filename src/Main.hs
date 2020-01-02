@@ -28,7 +28,6 @@ import System.Environment
 import System.Exit
 import System.IO
 
--- TODO(#2): friday video queue
 migrations :: [Migration]
 migrations =
   [ "CREATE TABLE Log (\
