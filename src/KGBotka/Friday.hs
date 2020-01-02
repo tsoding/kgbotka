@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module KGBotka.Friday (submitVideo) where
 
 import Data.Time

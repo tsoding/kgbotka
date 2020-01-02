@@ -30,8 +30,14 @@ import Network.URI
 import System.IO
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import Data.Time
+import KGBotka.Friday
 
-data EvalContext = EvalContext (M.Map T.Text T.Text) Sqlite.Connection
+data EvalContext = EvalContext
+  { evalContextVars :: (M.Map T.Text T.Text)
+  , evalContextSqliteConnection :: Sqlite.Connection
+  , evalContextSenderId :: Maybe TwitchUserId
+  }
 
 evalExpr :: EvalContext -> Expr -> IO T.Text
 evalExpr _ (TextExpr t) = return t
@@ -44,9 +50,20 @@ evalExpr context (FunCallExpr "urlencode" args) =
     encodeURI = escapeURIString (const False)
 evalExpr context (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM (evalExpr context) args
-evalExpr _ (FunCallExpr "friday" _) = return "Not implemented yet"
-evalExpr (EvalContext vars _) (FunCallExpr funame _) =
-  return $ fromMaybe "" $ M.lookup funame vars
+evalExpr context (FunCallExpr "friday" args) = do
+  submissionText <- T.concat <$> mapM (evalExpr context) args
+  now <- getCurrentTime
+  case evalContextSenderId context of
+    Just senderId -> do
+      submitVideo
+        (evalContextSqliteConnection context)
+        submissionText
+        now
+        senderId
+      return "Add your video to suggestions"
+    Nothing -> return "Only humans can submit friday videos"
+evalExpr context (FunCallExpr funame _) =
+  return $ fromMaybe "" $ M.lookup funame (evalContextVars context)
 
 evalExprs :: EvalContext -> [Expr] -> IO T.Text
 evalExprs context = fmap T.concat . mapM (evalExpr context)
@@ -158,7 +175,10 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                             hFlush logHandle
                             commandResponse <-
                               evalExprs
-                                (EvalContext (M.fromList [("1", args)]) dbConn)
+                                (EvalContext
+                                   (M.fromList [("1", args)])
+                                   dbConn
+                                   (userIdFromRawIrcMsg rawMsg))
                                 codeAst'
                             atomically $
                               writeQueue outgoingQueue $
