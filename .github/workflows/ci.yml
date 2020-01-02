@@ -1,0 +1,22 @@
+name: CI
+on: [push, pull_request]
+
+# FIXME(#21): CI does not run hlint
+# FIXME(#22): CI does not check formatting with hindent
+jobs:
+  build-linux-ghc:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-haskell@v1
+        with:
+          ghc-version: '8.6.5'
+          cabal-version: '3.0'
+      - uses: actions/cache@v1
+        with:
+          path: ~/.cabal
+          key: ${{ runner.os }}-haskell
+      - name: install dependencies
+        run: cabal v2-update
+      - name: build
+        run: cabal v2-build
