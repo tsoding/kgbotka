@@ -39,7 +39,6 @@ migrations =
     \  id INTEGER PRIMARY KEY,\
     \  code TEXT NOT NULL\
     \);"
-  -- TODO(#4): do we need to to cascade delete CommandName-s when the Command is deleted?
   , "CREATE TABLE CommandName (\
     \  name TEXT NOT NULL,\
     \  commandId INTEGER NOT NULL REFERENCES Command(id) ON DELETE CASCADE,\
