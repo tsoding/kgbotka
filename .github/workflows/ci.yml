@@ -1,0 +1,15 @@
+name: CI
+on: [push, pull_request]
+
+# FIXME: CI does not run hlint
+# FIXME: CI does not check formatting with hindent
+jobs:
+  build-linux-ghc:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-haskell@v1
+        with:
+          ghc-version: '8.6.5'
+          cabal-version: '3.0'
+      - run: cabal v2-build
