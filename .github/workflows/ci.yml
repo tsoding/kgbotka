@@ -12,4 +12,7 @@ jobs:
         with:
           ghc-version: '8.6.5'
           cabal-version: '3.0'
-      - run: cabal v2-build
+      - name: install dependencies
+        run: cabal v2-update
+      - name: build
+        run: cabal v2-build
