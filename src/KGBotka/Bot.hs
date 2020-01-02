@@ -31,23 +31,25 @@ import System.IO
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 
-evalExpr :: M.Map T.Text T.Text -> Expr -> IO T.Text
+data EvalContext = EvalContext (M.Map T.Text T.Text) Sqlite.Connection
+
+evalExpr :: EvalContext -> Expr -> IO T.Text
 evalExpr _ (TextExpr t) = return t
-evalExpr vars (FunCallExpr "or" args) =
-  fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM (evalExpr vars) args
-evalExpr vars (FunCallExpr "urlencode" args) =
-  T.concat . map (T.pack . encodeURI . T.unpack) <$> mapM (evalExpr vars) args
+evalExpr context (FunCallExpr "or" args) =
+  fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM (evalExpr context) args
+evalExpr context (FunCallExpr "urlencode" args) =
+  T.concat . map (T.pack . encodeURI . T.unpack) <$>
+  mapM (evalExpr context) args
   where
     encodeURI = escapeURIString (const False)
-evalExpr vars (FunCallExpr "flip" args) =
-  T.concat . map flipText <$> mapM (evalExpr vars) args
-evalExpr _ (FunCallExpr "friday" _) =
-  return "Not implemented yet"
-evalExpr vars (FunCallExpr funame _) =
+evalExpr context (FunCallExpr "flip" args) =
+  T.concat . map flipText <$> mapM (evalExpr context) args
+evalExpr _ (FunCallExpr "friday" _) = return "Not implemented yet"
+evalExpr (EvalContext vars _) (FunCallExpr funame _) =
   return $ fromMaybe "" $ M.lookup funame vars
 
-evalExprs :: M.Map T.Text T.Text -> [Expr] -> IO T.Text
-evalExprs vars = fmap T.concat . mapM (evalExpr vars)
+evalExprs :: EvalContext -> [Expr] -> IO T.Text
+evalExprs context = fmap T.concat . mapM (evalExpr context)
 
 textContainsLink :: T.Text -> Bool
 textContainsLink t =
@@ -155,7 +157,9 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                             hPutStrLn logHandle $ "[AST] " <> show codeAst'
                             hFlush logHandle
                             commandResponse <-
-                              evalExprs (M.fromList [("1", args)]) codeAst'
+                              evalExprs
+                                (EvalContext (M.fromList [("1", args)]) dbConn)
+                                codeAst'
                             atomically $
                               writeQueue outgoingQueue $
                               ircPrivmsg (idText channelId) $
