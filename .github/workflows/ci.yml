@@ -1,7 +1,7 @@
 name: CI
 on: [push, pull_request]
 
-# FIXME: CI does not run hlint
+# FIXME(#21): CI does not run hlint
 # FIXME: CI does not check formatting with hindent
 jobs:
   build-linux-ghc:
