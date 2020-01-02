@@ -37,6 +37,8 @@ data EvalContext = EvalContext
   { evalContextVars :: (M.Map T.Text T.Text)
   , evalContextSqliteConnection :: Sqlite.Connection
   , evalContextSenderId :: Maybe TwitchUserId
+  , evalContextBadgeRoles :: [TwitchBadgeRole]
+  , evalContextRoles :: [TwitchRole]
   }
 
 evalExpr :: EvalContext -> Expr -> IO T.Text
@@ -50,10 +52,11 @@ evalExpr context (FunCallExpr "urlencode" args) =
     encodeURI = escapeURIString (const False)
 evalExpr context (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM (evalExpr context) args
--- FIXME(#15): non-rolers can submit !friday videos
 -- FIXME(#16): !friday submissions may contain YouTube link
 -- FIXME(#17): there is no !nextvideo command
 -- FIXME(#18): Friday video list is not published on gist
+evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
+  return "You have to be trusted to submit Friday videos"
 evalExpr context (FunCallExpr "friday" args) = do
   submissionText <- T.concat <$> mapM (evalExpr context) args
   now <- getCurrentTime
@@ -182,7 +185,9 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                                 (EvalContext
                                    (M.fromList [("1", args)])
                                    dbConn
-                                   (userIdFromRawIrcMsg rawMsg))
+                                   (userIdFromRawIrcMsg rawMsg)
+                                   badgeRoles
+                                   roles)
                                 codeAst'
                             atomically $
                               writeQueue outgoingQueue $
