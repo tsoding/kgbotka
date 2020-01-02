@@ -53,7 +53,7 @@ evalExpr context (FunCallExpr "flip" args) =
 -- FIXME(#15): non-rolers can submit !friday videos
 -- FIXME(#16): !friday submissions may contain YouTube link
 -- FIXME(#17): there is no !nextvideo command
--- FIXME: Friday video list is not published on gist
+-- FIXME(#18): Friday video list is not published on gist
 evalExpr context (FunCallExpr "friday" args) = do
   submissionText <- T.concat <$> mapM (evalExpr context) args
   now <- getCurrentTime
