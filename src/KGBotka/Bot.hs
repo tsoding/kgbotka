@@ -2,6 +2,7 @@
 
 module KGBotka.Bot
   ( botThread
+  , BotState(..)
   ) where
 
 import Control.Concurrent
@@ -95,76 +96,82 @@ userIdFromRawIrcMsg :: RawIrcMsg -> Maybe TwitchUserId
 userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
   TwitchUserId <$> lookupEntryValue "user-id" tags
 
-botThread ::
-     ReadQueue RawIrcMsg
-  -> WriteQueue RawIrcMsg
-  -> ReadQueue ReplCommand
-  -> TVar (S.Set Identifier)
-  -> Sqlite.Connection
-  -> FilePath
-  -> IO ()
-botThread incomingQueue outgoingQueue replQueue state dbConn logFilePath =
-  withFile logFilePath AppendMode $ \logHandle -> botLoop logHandle
+data BotState = BotState
+  { botStateIncomingQueue :: !(ReadQueue RawIrcMsg)
+  , botStateOutgoingQueue :: !(WriteQueue RawIrcMsg)
+  , botStateReplQueue :: !(ReadQueue ReplCommand)
+  , botStateChannels :: !(TVar (S.Set Identifier))
+  , botStateSqliteConnection :: !Sqlite.Connection
+  , botStateLogHandle :: !Handle
+  }
+
+botThread :: BotState -> IO ()
+botThread state@BotState { botStateIncomingQueue = incomingQueue
+                         , botStateOutgoingQueue = outgoingQueue
+                         , botStateReplQueue = replQueue
+                         , botStateChannels = channels
+                         , botStateSqliteConnection = dbConn
+                         , botStateLogHandle = logHandle
+                         } = do
+  threadDelay 10000 -- to prevent busy looping
+  maybeRawMsg <- atomically $ tryReadQueue incomingQueue
+  for_ maybeRawMsg $ \rawMsg -> do
+    let cookedMsg = cookIrcMsg rawMsg
+    hPutStrLn logHandle $ "[TWITCH] " <> show rawMsg
+    hFlush logHandle
+    case cookedMsg of
+      Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
+      Join _ channelId _ ->
+        atomically $ modifyTVar channels $ S.insert channelId
+      Part _ channelId _ ->
+        atomically $ modifyTVar channels $ S.delete channelId
+      Privmsg userInfo channelId message -> do
+        roles <-
+          maybe
+            (return [])
+            (getTwitchUserRoles dbConn)
+            (userIdFromRawIrcMsg rawMsg)
+        let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
+        case (roles, badgeRoles) of
+          ([], [])
+            | textContainsLink message ->
+              atomically $
+              writeQueue outgoingQueue $
+              ircPrivmsg
+                (idText channelId)
+                ("/timeout " <> idText (userNick userInfo) <> " 1")
+          _ ->
+            case parseCommandCall "!" message of
+              Just (CommandCall name args) -> do
+                command <- commandByName dbConn name
+                case command of
+                  Just (Command _ code) ->
+                    let codeAst = snd <$> runParser exprs code
+                     in case codeAst of
+                          Right codeAst' -> do
+                            hPutStrLn logHandle $ "[AST] " <> show codeAst'
+                            hFlush logHandle
+                            atomically $
+                              writeQueue outgoingQueue $
+                              ircPrivmsg (idText channelId) $
+                              twitchCmdEscape $
+                              evalExprs (M.fromList [("1", args)]) codeAst'
+                          Left err ->
+                            hPutStrLn logHandle $ "[ERROR] " <> show err
+                  Nothing -> return ()
+              _ -> return ()
+      _ -> return ()
+  atomically $ do
+    replCommand <- tryReadQueue replQueue
+    case replCommand of
+      Just (Say channel msg) ->
+        writeQueue outgoingQueue $ ircPrivmsg channel msg
+      Just (JoinChannel channel) ->
+        writeQueue outgoingQueue $ ircJoin channel Nothing
+      Just (PartChannel channelId) ->
+        writeQueue outgoingQueue $ ircPart channelId ""
+      Nothing -> return ()
+  botThread state
   where
-    botLoop logHandle = do
-      threadDelay 10000 -- to prevent busy looping
-      maybeRawMsg <- atomically $ tryReadQueue incomingQueue
-      for_ maybeRawMsg $ \rawMsg -> do
-        let cookedMsg = cookIrcMsg rawMsg
-        hPutStrLn logHandle $ "[TWITCH] " <> show rawMsg
-        hFlush logHandle
-        case cookedMsg of
-          Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
-          Join _ channelId _ ->
-            atomically $ modifyTVar state $ S.insert channelId
-          Part _ channelId _ ->
-            atomically $ modifyTVar state $ S.delete channelId
-          Privmsg userInfo channelId message -> do
-            roles <-
-              maybe
-                (return [])
-                (getTwitchUserRoles dbConn)
-                (userIdFromRawIrcMsg rawMsg)
-            let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
-            case (roles, badgeRoles) of
-              ([], [])
-                | textContainsLink message ->
-                  atomically $
-                  writeQueue outgoingQueue $
-                  ircPrivmsg
-                    (idText channelId)
-                    ("/timeout " <> idText (userNick userInfo) <> " 1")
-              _ ->
-                case parseCommandCall "!" message of
-                  Just (CommandCall name args) -> do
-                    command <- commandByName dbConn name
-                    case command of
-                      Just (Command _ code) ->
-                        let codeAst = snd <$> runParser exprs code
-                         in case codeAst of
-                              Right codeAst' -> do
-                                hPutStrLn logHandle $ "[AST] " <> show codeAst'
-                                hFlush logHandle
-                                atomically $
-                                  writeQueue outgoingQueue $
-                                  ircPrivmsg (idText channelId) $
-                                  twitchCmdEscape $
-                                  evalExprs (M.fromList [("1", args)]) codeAst'
-                              Left err ->
-                                hPutStrLn logHandle $ "[ERROR] " <> show err
-                      Nothing -> return ()
-                  _ -> return ()
-          _ -> return ()
-      atomically $ do
-        replCommand <- tryReadQueue replQueue
-        case replCommand of
-          Just (Say channel msg) ->
-            writeQueue outgoingQueue $ ircPrivmsg channel msg
-          Just (JoinChannel channel) ->
-            writeQueue outgoingQueue $ ircJoin channel Nothing
-          Just (PartChannel channelId) ->
-            writeQueue outgoingQueue $ ircPart channelId ""
-          Nothing -> return ()
-      botLoop logHandle
     twitchCmdEscape :: T.Text -> T.Text
     twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip

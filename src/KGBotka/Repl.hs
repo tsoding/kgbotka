@@ -23,12 +23,12 @@ import qualified Network.HTTP.Client as HTTP
 import System.IO
 
 data ReplState = ReplState
-  { replStateChannels :: TVar (S.Set Identifier)
-  , replStateSqliteConnection :: Sqlite.Connection
-  , replStateCurrentChannel :: Maybe T.Text
-  , replStateCommandQueue :: WriteQueue ReplCommand
-  , replStateConfigTwitch :: ConfigTwitch
-  , replStateManager :: HTTP.Manager
+  { replStateChannels :: !(TVar (S.Set Identifier))
+  , replStateSqliteConnection :: !Sqlite.Connection
+  , replStateCurrentChannel :: !(Maybe T.Text)
+  , replStateCommandQueue :: !(WriteQueue ReplCommand)
+  , replStateConfigTwitch :: !ConfigTwitch
+  , replStateManager :: !HTTP.Manager
   }
 
 data ReplCommand
@@ -65,7 +65,7 @@ replThread state = do
         isMember <- S.member channelId <$> readTVar (replStateChannels state)
         when isMember $
           writeQueue (replStateCommandQueue state) $ PartChannel channelId
-      replThread state
+      replThread $ state {replStateCurrentChannel = Nothing}
     ("ls":_, _) -> do
       traverse_ (putStrLn . T.unpack . idText) =<<
         S.toList <$> readTVarIO (replStateChannels state)

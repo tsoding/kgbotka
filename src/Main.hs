@@ -122,6 +122,9 @@ twitchOutgoingThread conn queue = do
   sendMsg conn rawMsg
   twitchOutgoingThread conn queue
 
+withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b
+withForkIOs ios = bracket (traverse forkIO ios) (traverse_ killThread)
+
 mainWithArgs :: [String] -> IO ()
 mainWithArgs (configPath:databasePath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
@@ -131,36 +134,35 @@ mainWithArgs (configPath:databasePath:_) = do
       outgoingIrcQueue <- atomically newTQueue
       replQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
+      manager <- TLS.newTlsManager
       withSqliteConnection databasePath $ \dbConn -> do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
-          incomingThreadId <-
-            forkIO $ twitchIncomingThread conn (WriteQueue incomingIrcQueue)
-          outgoingThreadId <-
-            forkIO $ twitchOutgoingThread conn (ReadQueue outgoingIrcQueue)
-          botThreadId <-
-            forkIO $
-            botThread
-              (ReadQueue incomingIrcQueue)
-              (WriteQueue outgoingIrcQueue)
-              (ReadQueue replQueue)
-              joinedChannels
-              dbConn
-              "twitch.log"
-          manager <- TLS.newTlsManager
-          replThread $
-            ReplState
-              { replStateChannels = joinedChannels
-              , replStateSqliteConnection = dbConn
-              , replStateCurrentChannel = Nothing
-              , replStateCommandQueue = WriteQueue replQueue
-              , replStateConfigTwitch = config
-              , replStateManager = manager
-              }
-          killThread incomingThreadId
-          killThread outgoingThreadId
-          killThread botThreadId
+          withFile "twitch.log" AppendMode $ \logHandler ->
+            withForkIOs
+              [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
+              , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
+              , botThread $
+                BotState
+                  { botStateIncomingQueue = ReadQueue incomingIrcQueue
+                  , botStateOutgoingQueue = WriteQueue outgoingIrcQueue
+                  , botStateReplQueue = ReadQueue replQueue
+                  , botStateChannels = joinedChannels
+                  , botStateSqliteConnection = dbConn
+                  , botStateLogHandle = logHandler
+                  }
+              ] $ \_ ->
+              replThread $
+              ReplState
+                { replStateChannels = joinedChannels
+                , replStateSqliteConnection = dbConn
+                , replStateCurrentChannel = Nothing
+                , replStateCommandQueue = WriteQueue replQueue
+                , replStateConfigTwitch = config
+                , replStateManager = manager
+                }
+      putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Not enough arguments provided"
