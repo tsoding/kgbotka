@@ -4,8 +4,6 @@
 module Main
   ( main
   , ConfigTwitch(..)
-  , recorderThread
-  , Recorder(..)
   ) where
 
 import Control.Concurrent
@@ -13,9 +11,7 @@ import Control.Concurrent.STM
 import Control.Exception
 import Data.Aeson
 import Data.Foldable
-import Data.Functor
 import qualified Data.Set as S
-import Data.Time
 import Data.Traversable
 import qualified Database.SQLite.Simple as Sqlite
 import Hookup
@@ -126,37 +122,6 @@ twitchOutgoingThread conn queue = do
   sendMsg conn rawMsg
   twitchOutgoingThread conn queue
 
-data Recorder a = Recorder
-  { recorderInput :: !(ReadQueue a)
-  , recorderOutput :: !(WriteQueue a)
-  , recorderLog :: !(TVar [(UTCTime, a)])
-  }
-
-recorderThread :: Recorder a -> IO ()
-recorderThread state@Recorder {recorderLog = logs, recorderOutput = outputQueue} = do
-  threadDelay 10000 -- to prevent busy looping
-  now <- getCurrentTime
-  atomically $ do
-    maybeInput <- tryReadQueue $ recorderInput state
-    case maybeInput of
-      Just input -> do
-        modifyTVar logs ((now, input) :)
-        void $ writeQueue outputQueue input
-      Nothing -> return ()
-  recorderThread state
-
-newInputRecorder :: ReadQueue a -> STM (Recorder a)
-newInputRecorder input = do
-  output <- WriteQueue <$> newTQueue
-  logs <- newTVar []
-  return $ Recorder input output logs
-
-newOutputRecorder :: WriteQueue a -> STM (Recorder a)
-newOutputRecorder output = do
-  input <- ReadQueue <$> newTQueue
-  logs <- newTVar []
-  return $ Recorder input output logs
-
 withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b
 withForkIOs ios = bracket (traverse forkIO ios) (traverse_ killThread)
 
@@ -167,10 +132,6 @@ mainWithArgs (configPath:databasePath:_) = do
     Right config -> do
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
-      incomingIrcRecorder <-
-        atomically $ newInputRecorder $ ReadQueue incomingIrcQueue
-      outgoingIrcRecorder <-
-        atomically $ newOutputRecorder $ WriteQueue outgoingIrcQueue
       replQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
@@ -184,17 +145,13 @@ mainWithArgs (configPath:databasePath:_) = do
               , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
               , botThread $
                 BotState
-                  { botStateIncomingQueue =
-                      toReadQueue $ recorderOutput incomingIrcRecorder
-                  , botStateOutgoingQueue =
-                      toWriteQueue $ recorderInput outgoingIrcRecorder
+                  { botStateIncomingQueue = ReadQueue incomingIrcQueue
+                  , botStateOutgoingQueue = WriteQueue outgoingIrcQueue
                   , botStateReplQueue = ReadQueue replQueue
                   , botStateChannels = joinedChannels
                   , botStateSqliteConnection = dbConn
                   , botStateLogHandle = logHandler
                   }
-              , recorderThread incomingIrcRecorder
-              , recorderThread outgoingIrcRecorder
               ] $ \_ ->
               replThread $
               ReplState
