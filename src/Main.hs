@@ -39,7 +39,6 @@ migrations =
     \  id INTEGER PRIMARY KEY,\
     \  code TEXT NOT NULL\
     \);"
-  -- TODO(#4): do we need to to cascade delete CommandName-s when the Command is deleted?
   , "CREATE TABLE CommandName (\
     \  name TEXT NOT NULL,\
     \  commandId INTEGER NOT NULL REFERENCES Command(id) ON DELETE CASCADE,\
@@ -54,6 +53,13 @@ migrations =
     \  roleId INTEGER NOT NULL REFERENCES TwitchRoles(id) ON DELETE CASCADE, \
     \  UNIQUE(userId, roleId) ON CONFLICT IGNORE \
     \);"
+  , "CREATE TABLE FridayVideo ( \
+    \  id INTEGER PRIMARY KEY, \
+    \  submissionText TEXT NOT NULL, \
+    \  submissionTime DATETIME NOT NULL, \
+    \  authorTwitchId TEXT NOT NULL, \
+    \  watchedAt DATETIME \
+    \)"
   ]
 
 maxIrcMessage :: Int

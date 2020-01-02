@@ -30,21 +30,47 @@ import Network.URI
 import System.IO
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import Data.Time
+import KGBotka.Friday
 
-evalExpr :: M.Map T.Text T.Text -> Expr -> T.Text
-evalExpr _ (TextExpr t) = t
-evalExpr vars (FunCallExpr "or" args) =
-  fromMaybe "" $ listToMaybe $ dropWhile T.null $ map (evalExpr vars) args
-evalExpr vars (FunCallExpr "urlencode" args) =
-  T.concat $ map (T.pack . encodeURI . T.unpack . evalExpr vars) args
+data EvalContext = EvalContext
+  { evalContextVars :: (M.Map T.Text T.Text)
+  , evalContextSqliteConnection :: Sqlite.Connection
+  , evalContextSenderId :: Maybe TwitchUserId
+  }
+
+evalExpr :: EvalContext -> Expr -> IO T.Text
+evalExpr _ (TextExpr t) = return t
+evalExpr context (FunCallExpr "or" args) =
+  fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM (evalExpr context) args
+evalExpr context (FunCallExpr "urlencode" args) =
+  T.concat . map (T.pack . encodeURI . T.unpack) <$>
+  mapM (evalExpr context) args
   where
     encodeURI = escapeURIString (const False)
-evalExpr vars (FunCallExpr "flip" args) =
-  T.concat $ map (flipText . evalExpr vars) args
-evalExpr vars (FunCallExpr funame _) = fromMaybe "" $ M.lookup funame vars
+evalExpr context (FunCallExpr "flip" args) =
+  T.concat . map flipText <$> mapM (evalExpr context) args
+-- FIXME(#15): non-rolers can submit !friday videos
+-- FIXME(#16): !friday submissions may contain YouTube link
+-- FIXME(#17): there is no !nextvideo command
+-- FIXME(#18): Friday video list is not published on gist
+evalExpr context (FunCallExpr "friday" args) = do
+  submissionText <- T.concat <$> mapM (evalExpr context) args
+  now <- getCurrentTime
+  case evalContextSenderId context of
+    Just senderId -> do
+      submitVideo
+        (evalContextSqliteConnection context)
+        submissionText
+        now
+        senderId
+      return "Add your video to suggestions"
+    Nothing -> return "Only humans can submit friday videos"
+evalExpr context (FunCallExpr funame _) =
+  return $ fromMaybe "" $ M.lookup funame (evalContextVars context)
 
-evalExprs :: M.Map T.Text T.Text -> [Expr] -> T.Text
-evalExprs vars = T.concat . map (evalExpr vars)
+evalExprs :: EvalContext -> [Expr] -> IO T.Text
+evalExprs context = fmap T.concat . mapM (evalExpr context)
 
 textContainsLink :: T.Text -> Bool
 textContainsLink t =
@@ -151,11 +177,17 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                           Right codeAst' -> do
                             hPutStrLn logHandle $ "[AST] " <> show codeAst'
                             hFlush logHandle
+                            commandResponse <-
+                              evalExprs
+                                (EvalContext
+                                   (M.fromList [("1", args)])
+                                   dbConn
+                                   (userIdFromRawIrcMsg rawMsg))
+                                codeAst'
                             atomically $
                               writeQueue outgoingQueue $
                               ircPrivmsg (idText channelId) $
-                              twitchCmdEscape $
-                              evalExprs (M.fromList [("1", args)]) codeAst'
+                              twitchCmdEscape $ commandResponse
                           Left err ->
                             hPutStrLn logHandle $ "[ERROR] " <> show err
                   Nothing -> return ()
