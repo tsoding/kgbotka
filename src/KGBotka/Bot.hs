@@ -115,7 +115,7 @@ evalExpr context (FunCallExpr "friday" args) = do
               (evalContextSqliteConnection context)
               submissionText
               senderId
-          return "Add your video to suggestions"
+          return "Added your video to suggestions"
         Nothing -> return "Only humans can submit friday videos"
     Left Nothing -> return "Your suggestion should contain YouTube link"
     Left (Just failReason) -> do
