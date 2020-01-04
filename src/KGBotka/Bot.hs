@@ -242,7 +242,10 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                               runExceptT $
                               evalExprs
                                 (EvalContext
-                                   (M.fromList [("1", args)])
+                                   (M.fromList
+                                      [ ("1", args)
+                                      , ("sender", idText (userNick userInfo))
+                                      ])
                                    dbConn
                                    (userIdFromRawIrcMsg rawMsg)
                                    badgeRoles
