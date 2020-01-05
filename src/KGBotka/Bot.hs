@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module KGBotka.Bot
   ( botThread
@@ -30,8 +31,11 @@ import Network.URI
 import System.IO
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Data.Time
 import KGBotka.Friday
+import Data.Array
+import qualified Text.Regex.Base.RegexLike as Regex
+import Control.Monad.Trans.Except
+import Control.Monad.Trans.Class
 
 data EvalContext = EvalContext
   { evalContextVars :: (M.Map T.Text T.Text)
@@ -41,7 +45,51 @@ data EvalContext = EvalContext
   , evalContextRoles :: [TwitchRole]
   }
 
-evalExpr :: EvalContext -> Expr -> IO T.Text
+ytLinkRegex :: Either String Regex
+ytLinkRegex =
+  compile
+    defaultCompOpt
+    defaultExecOpt
+    "https?:\\/\\/(www\\.)?youtu(be\\.com\\/watch\\?v=|\\.be\\/)([a-zA-Z0-9_-]+)"
+
+mapLeft :: (a -> c) -> Either a b -> Either c b
+mapLeft f (Left x) = Left (f x)
+mapLeft _ (Right x) = Right x
+
+-- | Extracts YouTube Video ID from the string
+-- Results:
+-- - `Right ytId` - extracted successfully
+-- - `Left (Just failReason)` - extraction failed because of
+--    the application's fault. The reason explained in `failReason`.
+--    `failReason` should be logged and later investigated by the devs.
+--    `failReason` should not be shown to the users.
+-- - `Left Nothing` - extraction failed because of the user's fault.
+--    Tell the user that their message does not contain any YouTube
+--    links.
+ytLinkId :: T.Text -> Either (Maybe String) T.Text
+ytLinkId text = do
+  regex <- mapLeft Just ytLinkRegex
+  result <- mapLeft Just $ execute regex (T.unpack text)
+  case result of
+    Just matches ->
+      case map (T.pack . flip Regex.extract (T.unpack text)) $ elems matches of
+        [_, _, _, ytId] -> Right ytId
+        _ ->
+          Left $
+          Just
+            "Matches were not captured correctly. \
+            \Most likely somebody changed the YouTube \
+            \link regular expression (`ytLinkRegex`) and didn't \
+            \update `ytLinkId` function to extract capture \
+            \groups correctly. ( =_=)"
+    Nothing -> Left Nothing
+
+data EvalError = EvalError
+  { evalErrorUserMessage :: T.Text
+  , evalErrorLogMessage :: T.Text
+  } deriving (Show)
+
+evalExpr :: EvalContext -> Expr -> ExceptT EvalError IO T.Text
 evalExpr _ (TextExpr t) = return t
 evalExpr context (FunCallExpr "or" args) =
   fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM (evalExpr context) args
@@ -52,27 +100,38 @@ evalExpr context (FunCallExpr "urlencode" args) =
     encodeURI = escapeURIString (const False)
 evalExpr context (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM (evalExpr context) args
--- FIXME(#16): !friday submissions may contain YouTube link
 -- FIXME(#17): there is no !nextvideo command
 -- FIXME(#18): Friday video list is not published on gist
 evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
   return "You have to be trusted to submit Friday videos"
 evalExpr context (FunCallExpr "friday" args) = do
   submissionText <- T.concat <$> mapM (evalExpr context) args
-  now <- getCurrentTime
-  case evalContextSenderId context of
-    Just senderId -> do
-      submitVideo
-        (evalContextSqliteConnection context)
-        submissionText
-        now
-        senderId
-      return "Add your video to suggestions"
-    Nothing -> return "Only humans can submit friday videos"
+  case ytLinkId submissionText of
+    Right _ -> do
+      case evalContextSenderId context of
+        Just senderId -> do
+          lift $
+            submitVideo
+              (evalContextSqliteConnection context)
+              submissionText
+              senderId
+          return "Added your video to suggestions"
+        Nothing -> return "Only humans can submit friday videos"
+    Left Nothing -> return "Your suggestion should contain YouTube link"
+    Left (Just failReason) -> do
+      throwE $
+        EvalError
+          { evalErrorUserMessage =
+              "Something went wrong while parsing your subsmission. \
+              \We are already looking into it. Kapp"
+          , evalErrorLogMessage =
+              T.pack $
+              "An error occured while parsing YouTube link: " <> failReason
+          }
 evalExpr context (FunCallExpr funame _) =
   return $ fromMaybe "" $ M.lookup funame (evalContextVars context)
 
-evalExprs :: EvalContext -> [Expr] -> IO T.Text
+evalExprs :: EvalContext -> [Expr] -> ExceptT EvalError IO T.Text
 evalExprs context = fmap T.concat . mapM (evalExpr context)
 
 textContainsLink :: T.Text -> Bool
@@ -161,6 +220,7 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
             (getTwitchUserRoles dbConn)
             (userIdFromRawIrcMsg rawMsg)
         let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
+        -- FIXME: Link filtering is not disablable
         case (roles, badgeRoles) of
           ([], [])
             | textContainsLink message ->
@@ -178,21 +238,33 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                     let codeAst = snd <$> runParser exprs code
                      in case codeAst of
                           Right codeAst' -> do
-                            hPutStrLn logHandle $ "[AST] " <> show codeAst'
-                            hFlush logHandle
-                            commandResponse <-
+                            evalResult <-
+                              runExceptT $
                               evalExprs
                                 (EvalContext
-                                   (M.fromList [("1", args)])
+                                   (M.fromList
+                                      [ ("1", args)
+                                      , ("sender", idText (userNick userInfo))
+                                      ])
                                    dbConn
                                    (userIdFromRawIrcMsg rawMsg)
                                    badgeRoles
                                    roles)
                                 codeAst'
-                            atomically $
-                              writeQueue outgoingQueue $
-                              ircPrivmsg (idText channelId) $
-                              twitchCmdEscape $ commandResponse
+                            case evalResult of
+                              Right commandResponse ->
+                                atomically $
+                                writeQueue outgoingQueue $
+                                ircPrivmsg (idText channelId) $
+                                twitchCmdEscape $ commandResponse
+                              Left (EvalError userMsg logMsg) -> do
+                                hPutStrLn logHandle $
+                                  "[ERROR] " <> T.unpack logMsg
+                                hFlush logHandle
+                                atomically $
+                                  writeQueue outgoingQueue $
+                                  ircPrivmsg (idText channelId) $
+                                  twitchCmdEscape $ userMsg
                           Left err ->
                             hPutStrLn logHandle $ "[ERROR] " <> show err
                   Nothing -> return ()
