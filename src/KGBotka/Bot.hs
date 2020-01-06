@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
 
 module KGBotka.Bot
   ( botThread
@@ -8,6 +7,9 @@ module KGBotka.Bot
 
 import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
+import Data.Array
 import Data.Either
 import Data.Foldable
 import qualified Data.Map as M
@@ -23,22 +25,19 @@ import Irc.UserInfo (userNick)
 import KGBotka.Command
 import KGBotka.Expr
 import KGBotka.Flip
+import KGBotka.Friday
 import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
 import Network.URI
 import System.IO
+import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import KGBotka.Friday
-import Data.Array
-import qualified Text.Regex.Base.RegexLike as Regex
-import Control.Monad.Trans.Except
-import Control.Monad.Trans.Class
 
 data EvalContext = EvalContext
-  { evalContextVars :: (M.Map T.Text T.Text)
+  { evalContextVars :: M.Map T.Text T.Text
   , evalContextSqliteConnection :: Sqlite.Connection
   , evalContextSenderId :: Maybe TwitchUserId
   , evalContextBadgeRoles :: [TwitchBadgeRole]
@@ -107,7 +106,7 @@ evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCal
 evalExpr context (FunCallExpr "friday" args) = do
   submissionText <- T.concat <$> mapM (evalExpr context) args
   case ytLinkId submissionText of
-    Right _ -> do
+    Right _ ->
       case evalContextSenderId context of
         Just senderId -> do
           lift $
@@ -118,16 +117,16 @@ evalExpr context (FunCallExpr "friday" args) = do
           return "Added your video to suggestions"
         Nothing -> return "Only humans can submit friday videos"
     Left Nothing -> return "Your suggestion should contain YouTube link"
-    Left (Just failReason) -> do
+    Left (Just failReason) ->
       throwE $
-        EvalError
-          { evalErrorUserMessage =
-              "Something went wrong while parsing your subsmission. \
+      EvalError
+        { evalErrorUserMessage =
+            "Something went wrong while parsing your subsmission. \
               \We are already looking into it. Kapp"
-          , evalErrorLogMessage =
-              T.pack $
-              "An error occured while parsing YouTube link: " <> failReason
-          }
+        , evalErrorLogMessage =
+            T.pack $
+            "An error occured while parsing YouTube link: " <> failReason
+        }
 evalExpr context (FunCallExpr funame _) =
   return $ fromMaybe "" $ M.lookup funame (evalContextVars context)
 
@@ -256,7 +255,7 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                                 atomically $
                                 writeQueue outgoingQueue $
                                 ircPrivmsg (idText channelId) $
-                                twitchCmdEscape $ commandResponse
+                                twitchCmdEscape commandResponse
                               Left (EvalError userMsg logMsg) -> do
                                 hPutStrLn logHandle $
                                   "[ERROR] " <> T.unpack logMsg
@@ -264,7 +263,7 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                                 atomically $
                                   writeQueue outgoingQueue $
                                   ircPrivmsg (idText channelId) $
-                                  twitchCmdEscape $ userMsg
+                                  twitchCmdEscape userMsg
                           Left err ->
                             hPutStrLn logHandle $ "[ERROR] " <> show err
                   Nothing -> return ()
