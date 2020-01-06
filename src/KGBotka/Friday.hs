@@ -9,7 +9,7 @@ submitVideo :: Connection
             -> T.Text
             -> TwitchUserId
             -> IO ()
-submitVideo conn subText authorTwitchId = do
+submitVideo conn subText authorTwitchId =
   executeNamed
     conn
     "INSERT INTO FridayVideo \
