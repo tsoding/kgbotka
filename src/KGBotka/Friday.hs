@@ -1,14 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
-module KGBotka.Friday (submitVideo) where
+
+module KGBotka.Friday
+  ( submitVideo
+  ) where
 
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import KGBotka.Roles (TwitchUserId)
 
-submitVideo :: Connection
-            -> T.Text
-            -> TwitchUserId
-            -> IO ()
+submitVideo :: Connection -> T.Text -> TwitchUserId -> IO ()
 submitVideo conn subText authorTwitchId =
   executeNamed
     conn
@@ -16,6 +16,4 @@ submitVideo conn subText authorTwitchId =
     \(submissionText, submissionTime, authorTwitchId) \
     \VALUES \
     \(:submissionText, datetime('now'), :authorTwitchId)"
-    [ ":submissionText" := subText
-    , ":authorTwitchId" := authorTwitchId
-    ]
+    [":submissionText" := subText, ":authorTwitchId" := authorTwitchId]
