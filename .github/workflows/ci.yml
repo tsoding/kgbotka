@@ -16,12 +16,8 @@ jobs:
           path: ~/.cabal
           key: ${{ runner.os }}-haskell
       - name: install dependencies
-        run: |
-          cabal v2-update
-          if [ ! -f ~/.cabal/bin/hlint ]; then
-              cabal v2-install hlint
-          fi
+        run: cabal v2-update
       - name: build
         run: cabal v2-build
       - name: lint
-        run: ~/.cabal/bin/hlint src/
+        run: curl -sL https://raw.github.com/ndmitchell/hlint/master/misc/travis.sh | sh -s .
