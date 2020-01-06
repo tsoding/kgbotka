@@ -171,7 +171,7 @@ mainWithArgs (configPath:databasePath:_) = do
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
   hPutStrLn stderr "[ERROR] Not enough arguments provided"
-  hPutStrLn stderr "Usage: ./kgbotka <config.json> <database.db>"
+  hPutStrLn stderr $ "Usage: ./kgbotka <config.json> <database.db>"
   exitFailure
 
 main :: IO ()
