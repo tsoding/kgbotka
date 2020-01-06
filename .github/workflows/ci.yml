@@ -1,7 +1,6 @@
 name: CI
 on: [push, pull_request]
 
-# FIXME(#21): CI does not run hlint
 # FIXME(#22): CI does not check formatting with hindent
 jobs:
   build-linux-ghc:
@@ -17,6 +16,10 @@ jobs:
           path: ~/.cabal
           key: ${{ runner.os }}-haskell
       - name: install dependencies
-        run: cabal v2-update
+        run: |
+          cabal v2-update
+          cabal v2-install hlint
       - name: build
         run: cabal v2-build
+      - name: lint
+        run: hlint src/
