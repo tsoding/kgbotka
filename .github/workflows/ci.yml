@@ -18,7 +18,7 @@ jobs:
       - name: install dependencies
         run: |
           cabal v2-update
-          if [ ! -f ~/.cabal/bin/hlint src/ ]; then
+          if [ ! -f ~/.cabal/bin/hlint ]; then
               cabal v2-install hlint
           fi
       - name: build
