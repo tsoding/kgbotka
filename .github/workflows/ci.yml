@@ -22,4 +22,4 @@ jobs:
       - name: build
         run: cabal v2-build
       - name: lint
-        run: hlint src/
+        run: ~/.cabal/bin/hlint src/
