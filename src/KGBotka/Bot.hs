@@ -226,7 +226,7 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
             (getTwitchUserRoles dbConn)
             (userIdFromRawIrcMsg rawMsg)
         let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
-        -- FIXME: Link filtering is not disablable
+        -- FIXME(#31): Link filtering is not disablable
         case (roles, badgeRoles) of
           ([], [])
             | textContainsLink message ->
