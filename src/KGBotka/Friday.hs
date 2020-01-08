@@ -28,6 +28,6 @@ submitVideo conn subText authorTwitchId =
     \(:submissionText, datetime('now'), :authorTwitchId)"
     [":submissionText" := subText, ":authorTwitchId" := authorTwitchId]
 
--- TODO: KGBotka.Friday.nextVideo is not implemented
+-- TODO(#32): KGBotka.Friday.nextVideo is not implemented
 nextVideo :: Connection -> IO (Maybe FridayVideo)
 nextVideo _ = return Nothing
