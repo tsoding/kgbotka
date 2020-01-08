@@ -29,5 +29,5 @@ submitVideo conn subText authorTwitchId =
     [":submissionText" := subText, ":authorTwitchId" := authorTwitchId]
 
 -- TODO: KGBotka.Friday.nextVideo is not implemented
-nextVideo :: Connection -> IO FridayVideo
-nextVideo = undefined
+nextVideo :: Connection -> IO (Maybe FridayVideo)
+nextVideo _ = return Nothing

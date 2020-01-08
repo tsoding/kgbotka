@@ -100,10 +100,16 @@ evalExpr context (FunCallExpr "urlencode" args) =
 evalExpr context (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM (evalExpr context) args
 -- FIXME(#18): Friday video list is not published on gist
-evalExpr EvalContext {evalContextBadgeRoles = [TwitchBroadcaster]} (FunCallExpr "nextvideo" _) =
-  return ""
-evalExpr _ (FunCallExpr "nextvideo" _) =
-  throwE $ EvalError "Only for mr strimmer :)"
+-- FIXME: %nextvideo does not display the submitter
+evalExpr EvalContext { evalContextBadgeRoles = roles
+                     , evalContextSqliteConnection = dbConn
+                     } (FunCallExpr "nextvideo" _)
+  | TwitchBroadcaster `elem` roles = do
+    video <- lift $ nextVideo dbConn
+    case video of
+      Just (FridayVideo {fridayVideoSubText = subText}) -> return subText
+      Nothing -> return "No videos in the queue"
+  | otherwise = throwE $ EvalError "Only for mr strimmer :)"
 evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
   return "You have to be trusted to submit Friday videos"
 evalExpr context (FunCallExpr "friday" args) = do
@@ -152,7 +158,7 @@ data TwitchBadgeRole
   | TwitchVip
   | TwitchBroadcaster
   | TwitchMod
-  deriving (Show)
+  deriving (Eq, Show)
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
