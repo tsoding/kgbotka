@@ -107,7 +107,7 @@ evalExpr EvalContext { evalContextBadgeRoles = roles
   | TwitchBroadcaster `elem` roles = do
     video <- lift $ nextVideo dbConn
     case video of
-      Just (FridayVideo {fridayVideoSubText = subText}) -> return subText
+      Just FridayVideo {fridayVideoSubText = subText} -> return subText
       Nothing -> return "No videos in the queue"
   | otherwise = throwE $ EvalError "Only for mr strimmer :)"
 evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
