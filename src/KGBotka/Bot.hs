@@ -42,6 +42,7 @@ data EvalContext = EvalContext
   , evalContextSenderId :: Maybe TwitchUserId
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
+  , evalContextLogHandle :: Handle
   }
 
 ytLinkRegex :: Either String Regex
@@ -83,10 +84,9 @@ ytLinkId text = do
             \groups correctly. ( =_=)"
     Nothing -> Left Nothing
 
-data EvalError = EvalError
-  { evalErrorUserMessage :: T.Text
-  , evalErrorLogMessage :: T.Text
-  } deriving (Show)
+newtype EvalError =
+  EvalError T.Text
+  deriving (Show)
 
 evalExpr :: EvalContext -> Expr -> ExceptT EvalError IO T.Text
 evalExpr _ (TextExpr t) = return t
@@ -99,8 +99,17 @@ evalExpr context (FunCallExpr "urlencode" args) =
     encodeURI = escapeURIString (const False)
 evalExpr context (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM (evalExpr context) args
--- FIXME(#17): there is no !nextvideo command
 -- FIXME(#18): Friday video list is not published on gist
+-- FIXME(#30): %nextvideo does not display the submitter
+evalExpr EvalContext { evalContextBadgeRoles = roles
+                     , evalContextSqliteConnection = dbConn
+                     } (FunCallExpr "nextvideo" _)
+  | TwitchBroadcaster `elem` roles = do
+    video <- lift $ nextVideo dbConn
+    case video of
+      Just FridayVideo {fridayVideoSubText = subText} -> return subText
+      Nothing -> return "No videos in the queue"
+  | otherwise = throwE $ EvalError "Only for mr strimmer :)"
 evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
   return "You have to be trusted to submit Friday videos"
 evalExpr context (FunCallExpr "friday" args) = do
@@ -117,16 +126,14 @@ evalExpr context (FunCallExpr "friday" args) = do
           return "Added your video to suggestions"
         Nothing -> return "Only humans can submit friday videos"
     Left Nothing -> return "Your suggestion should contain YouTube link"
-    Left (Just failReason) ->
+    Left (Just failReason) -> do
+      lift $
+        hPutStrLn (evalContextLogHandle context) $
+        "An error occured while parsing YouTube link: " <> failReason
       throwE $
-      EvalError
-        { evalErrorUserMessage =
-            "Something went wrong while parsing your subsmission. \
-              \We are already looking into it. Kapp"
-        , evalErrorLogMessage =
-            T.pack $
-            "An error occured while parsing YouTube link: " <> failReason
-        }
+        EvalError
+          "Something went wrong while parsing your subsmission. \
+          \We are already looking into it. Kapp"
 evalExpr context (FunCallExpr funame _) =
   return $ fromMaybe "" $ M.lookup funame (evalContextVars context)
 
@@ -151,7 +158,7 @@ data TwitchBadgeRole
   | TwitchVip
   | TwitchBroadcaster
   | TwitchMod
-  deriving (Show)
+  deriving (Eq, Show)
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
@@ -219,7 +226,7 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
             (getTwitchUserRoles dbConn)
             (userIdFromRawIrcMsg rawMsg)
         let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
-        -- FIXME: Link filtering is not disablable
+        -- FIXME(#31): Link filtering is not disablable
         case (roles, badgeRoles) of
           ([], [])
             | textContainsLink message ->
@@ -248,19 +255,16 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                                    dbConn
                                    (userIdFromRawIrcMsg rawMsg)
                                    badgeRoles
-                                   roles)
+                                   roles
+                                   logHandle)
                                 codeAst'
-                            case evalResult of
-                              Right commandResponse ->
-                                atomically $
-                                writeQueue outgoingQueue $
-                                ircPrivmsg (idText channelId) $
-                                twitchCmdEscape commandResponse
-                              Left (EvalError userMsg logMsg) -> do
-                                hPutStrLn logHandle $
-                                  "[ERROR] " <> T.unpack logMsg
-                                hFlush logHandle
-                                atomically $
+                            atomically $
+                              case evalResult of
+                                Right commandResponse ->
+                                  writeQueue outgoingQueue $
+                                  ircPrivmsg (idText channelId) $
+                                  twitchCmdEscape commandResponse
+                                Left (EvalError userMsg) ->
                                   writeQueue outgoingQueue $
                                   ircPrivmsg (idText channelId) $
                                   twitchCmdEscape userMsg
