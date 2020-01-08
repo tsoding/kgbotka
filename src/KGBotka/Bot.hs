@@ -84,8 +84,8 @@ ytLinkId text = do
     Nothing -> Left Nothing
 
 data EvalError = EvalError
-  { evalErrorUserMessage :: T.Text
-  , evalErrorLogMessage :: T.Text
+  { evalErrorUserMessage :: Maybe T.Text
+  , evalErrorLogMessage :: Maybe T.Text
   } deriving (Show)
 
 evalExpr :: EvalContext -> Expr -> ExceptT EvalError IO T.Text
@@ -99,8 +99,15 @@ evalExpr context (FunCallExpr "urlencode" args) =
     encodeURI = escapeURIString (const False)
 evalExpr context (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM (evalExpr context) args
--- FIXME(#17): there is no !nextvideo command
 -- FIXME(#18): Friday video list is not published on gist
+evalExpr EvalContext {evalContextBadgeRoles = [TwitchBroadcaster]} (FunCallExpr "nextvideo" _) =
+  return ""
+evalExpr _ (FunCallExpr "nextvideo" _) =
+  throwE
+    EvalError
+      { evalErrorLogMessage = Nothing
+      , evalErrorUserMessage = Just "Only for mr strimmer :)"
+      }
 evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
   return "You have to be trusted to submit Friday videos"
 evalExpr context (FunCallExpr "friday" args) = do
@@ -121,9 +128,11 @@ evalExpr context (FunCallExpr "friday" args) = do
       throwE $
       EvalError
         { evalErrorUserMessage =
-            "Something went wrong while parsing your subsmission. \
+            Just
+              "Something went wrong while parsing your subsmission. \
               \We are already looking into it. Kapp"
         , evalErrorLogMessage =
+            Just $
             T.pack $
             "An error occured while parsing YouTube link: " <> failReason
         }
@@ -257,13 +266,15 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                                 ircPrivmsg (idText channelId) $
                                 twitchCmdEscape commandResponse
                               Left (EvalError userMsg logMsg) -> do
-                                hPutStrLn logHandle $
-                                  "[ERROR] " <> T.unpack logMsg
-                                hFlush logHandle
-                                atomically $
+                                for_ logMsg $ \msg -> do
+                                  hPutStrLn logHandle $
+                                    "[ERROR] " <> T.unpack msg
+                                  hFlush logHandle
+                                for_ userMsg $ \msg ->
+                                  atomically $
                                   writeQueue outgoingQueue $
                                   ircPrivmsg (idText channelId) $
-                                  twitchCmdEscape userMsg
+                                  twitchCmdEscape msg
                           Left err ->
                             hPutStrLn logHandle $ "[ERROR] " <> show err
                   Nothing -> return ()
