@@ -100,7 +100,7 @@ evalExpr context (FunCallExpr "urlencode" args) =
 evalExpr context (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM (evalExpr context) args
 -- FIXME(#18): Friday video list is not published on gist
--- FIXME: %nextvideo does not display the submitter
+-- FIXME(#30): %nextvideo does not display the submitter
 evalExpr EvalContext { evalContextBadgeRoles = roles
                      , evalContextSqliteConnection = dbConn
                      } (FunCallExpr "nextvideo" _)
