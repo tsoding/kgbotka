@@ -7,9 +7,9 @@ module KGBotka.Friday
   ) where
 
 import qualified Data.Text as T
+import Data.Time
 import Database.SQLite.Simple
 import KGBotka.Roles (TwitchUserId)
-import Data.Time
 
 data FridayVideo = FridayVideo
   { fridayVideoId :: Int
