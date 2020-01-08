@@ -42,6 +42,7 @@ data EvalContext = EvalContext
   , evalContextSenderId :: Maybe TwitchUserId
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
+  , evalContextLogHandle :: Handle
   }
 
 ytLinkRegex :: Either String Regex
@@ -83,10 +84,9 @@ ytLinkId text = do
             \groups correctly. ( =_=)"
     Nothing -> Left Nothing
 
-data EvalError = EvalError
-  { evalErrorUserMessage :: Maybe T.Text
-  , evalErrorLogMessage :: Maybe T.Text
-  } deriving (Show)
+newtype EvalError =
+  EvalError T.Text
+  deriving (Show)
 
 evalExpr :: EvalContext -> Expr -> ExceptT EvalError IO T.Text
 evalExpr _ (TextExpr t) = return t
@@ -103,11 +103,7 @@ evalExpr context (FunCallExpr "flip" args) =
 evalExpr EvalContext {evalContextBadgeRoles = [TwitchBroadcaster]} (FunCallExpr "nextvideo" _) =
   return ""
 evalExpr _ (FunCallExpr "nextvideo" _) =
-  throwE
-    EvalError
-      { evalErrorLogMessage = Nothing
-      , evalErrorUserMessage = Just "Only for mr strimmer :)"
-      }
+  throwE $ EvalError "Only for mr strimmer :)"
 evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
   return "You have to be trusted to submit Friday videos"
 evalExpr context (FunCallExpr "friday" args) = do
@@ -124,18 +120,14 @@ evalExpr context (FunCallExpr "friday" args) = do
           return "Added your video to suggestions"
         Nothing -> return "Only humans can submit friday videos"
     Left Nothing -> return "Your suggestion should contain YouTube link"
-    Left (Just failReason) ->
+    Left (Just failReason) -> do
+      lift $
+        hPutStrLn (evalContextLogHandle context) $
+        "An error occured while parsing YouTube link: " <> failReason
       throwE $
-      EvalError
-        { evalErrorUserMessage =
-            Just
-              "Something went wrong while parsing your subsmission. \
-              \We are already looking into it. Kapp"
-        , evalErrorLogMessage =
-            Just $
-            T.pack $
-            "An error occured while parsing YouTube link: " <> failReason
-        }
+        EvalError
+          "Something went wrong while parsing your subsmission. \
+          \We are already looking into it. Kapp"
 evalExpr context (FunCallExpr funame _) =
   return $ fromMaybe "" $ M.lookup funame (evalContextVars context)
 
@@ -257,24 +249,19 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                                    dbConn
                                    (userIdFromRawIrcMsg rawMsg)
                                    badgeRoles
-                                   roles)
+                                   roles
+                                   logHandle)
                                 codeAst'
-                            case evalResult of
-                              Right commandResponse ->
-                                atomically $
-                                writeQueue outgoingQueue $
-                                ircPrivmsg (idText channelId) $
-                                twitchCmdEscape commandResponse
-                              Left (EvalError userMsg logMsg) -> do
-                                for_ logMsg $ \msg -> do
-                                  hPutStrLn logHandle $
-                                    "[ERROR] " <> T.unpack msg
-                                  hFlush logHandle
-                                for_ userMsg $ \msg ->
-                                  atomically $
+                            atomically $
+                              case evalResult of
+                                Right commandResponse ->
                                   writeQueue outgoingQueue $
                                   ircPrivmsg (idText channelId) $
-                                  twitchCmdEscape msg
+                                  twitchCmdEscape commandResponse
+                                Left (EvalError userMsg) ->
+                                  writeQueue outgoingQueue $
+                                  ircPrivmsg (idText channelId) $
+                                  twitchCmdEscape userMsg
                           Left err ->
                             hPutStrLn logHandle $ "[ERROR] " <> show err
                   Nothing -> return ()
