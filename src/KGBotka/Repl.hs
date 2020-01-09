@@ -55,6 +55,7 @@ replThread state = do
       putStrLn "No current channel to say anything to is selected"
       replThread state
     ("quit":_, _) -> return ()
+    ("q":_, _) -> return ()
     ("join":channel:_, _) -> do
       atomically $
         writeQueue (replStateCommandQueue state) $ JoinChannel channel
