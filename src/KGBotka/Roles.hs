@@ -13,6 +13,7 @@ import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.ToField
+import Database.SQLite.Simple.FromField
 
 newtype TwitchUserId = TwitchUserId
   { twitchUserId :: T.Text
@@ -25,6 +26,12 @@ data TwitchRole = TwitchRole
 
 instance ToField TwitchUserId where
   toField = toField . twitchUserId
+
+instance FromField TwitchUserId where
+  fromField f = TwitchUserId <$> fromField f
+
+instance FromRow TwitchUserId where
+  fromRow = TwitchUserId <$> field
 
 instance FromRow TwitchRole where
   fromRow = TwitchRole <$> field <*> field
