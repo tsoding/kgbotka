@@ -38,6 +38,7 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import Control.Monad
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -97,68 +98,72 @@ newtype EvalError =
   EvalError T.Text
   deriving (Show)
 
--- FIXME: integrate evalExpr with EvalT
-evalExpr :: EvalContext -> Expr -> ExceptT EvalError IO T.Text
-evalExpr _ (TextExpr t) = return t
-evalExpr context (FunCallExpr "or" args) =
-  fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM (evalExpr context) args
-evalExpr context (FunCallExpr "urlencode" args) =
-  T.concat . map (T.pack . encodeURI . T.unpack) <$>
-  mapM (evalExpr context) args
+evalExpr :: Expr -> EvalT T.Text
+evalExpr (TextExpr t) = return t
+evalExpr (FunCallExpr "or" args) =
+  fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM evalExpr args
+evalExpr (FunCallExpr "urlencode" args) =
+  T.concat . map (T.pack . encodeURI . T.unpack) <$> mapM evalExpr args
   where
     encodeURI = escapeURIString (const False)
-evalExpr context (FunCallExpr "flip" args) =
-  T.concat . map flipText <$> mapM (evalExpr context) args
+evalExpr (FunCallExpr "flip" args) =
+  T.concat . map flipText <$> mapM evalExpr args
 -- FIXME(#18): Friday video list is not published on gist
 -- FIXME(#30): %nextvideo does not display the submitter
-evalExpr EvalContext { evalContextBadgeRoles = roles
-                     , evalContextSqliteConnection = dbConn
-                     , evalContextChannel = channel
-                     } (FunCallExpr "nextvideo" _)
-  | TwitchBroadcaster `elem` roles = do
-    fridayVideo <-
-      maybeToExceptT (EvalError "Video queue is empty") $
-      nextVideo dbConn channel
-    return $ fridayVideoSubText fridayVideo
-  | otherwise = throwE $ EvalError "Only for mr strimmer :)"
-evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
-  return "You have to be trusted to submit Friday videos"
-evalExpr context (FunCallExpr "friday" args) = do
-  submissionText <- T.concat <$> mapM (evalExpr context) args
+evalExpr (FunCallExpr "nextvideo" _) = do
+  badgeRoles <- evalContextBadgeRoles <$> get
+  if TwitchBroadcaster `elem` badgeRoles
+    then do
+      dbConn <- evalContextSqliteConnection <$> get
+      channel <- evalContextChannel <$> get
+      fridayVideo <-
+        lift $
+        maybeToExceptT (EvalError "Video queue is empty") $
+        nextVideo dbConn channel
+      return $ fridayVideoSubText fridayVideo
+    else lift $ throwE $ EvalError "Only for mr strimmer :)"
+evalExpr (FunCallExpr "friday" args) = do
+  roles <- evalContextRoles <$> get
+  badgeRoles <- evalContextBadgeRoles <$> get
+  when (null roles && null badgeRoles) $
+    lift $ throwE $ EvalError "You have to be trusted to submit Friday videos"
+  submissionText <- T.concat <$> mapM evalExpr args
   case ytLinkId submissionText of
-    Right _ ->
-      case evalContextSenderId context of
+    Right _ -> do
+      sender <- evalContextSenderId <$> get
+      case sender of
         Just senderId -> do
-          lift $
-            submitVideo
-              (evalContextSqliteConnection context)
-              submissionText
-              (evalContextChannel context)
-              senderId
+          dbConn <- evalContextSqliteConnection <$> get
+          channel <- evalContextChannel <$> get
+          lift $ lift $ submitVideo dbConn submissionText channel senderId
           return "Added your video to suggestions"
         Nothing ->
+          lift $
           throwE $
           EvalError
             "Sender not found. \
             \It's need for submitting Friday videos"
     Left Nothing ->
-      throwE $ EvalError "Your suggestion should contain YouTube link"
+      lift $ throwE $ EvalError "Your suggestion should contain YouTube link"
     Left (Just failReason) -> do
+      logHandle <- evalContextLogHandle <$> get
       lift $
-        hPutStrLn (evalContextLogHandle context) $
+        lift $
+        hPutStrLn logHandle $
         "An error occured while parsing YouTube link: " <> failReason
-      throwE $
+      lift $
+        throwE $
         EvalError
           "Something went wrong while parsing your subsmission. \
           \We are already looking into it. Kapp"
-evalExpr context (FunCallExpr funame _) =
-  maybeToExceptT (EvalError $ "Function `" <> funame <> "` does not exists") $
-  hoistMaybe $ M.lookup funame (evalContextVars context)
+evalExpr (FunCallExpr funame _) = do
+  vars <- evalContextVars <$> get
+  lift $
+    maybeToExceptT (EvalError $ "Function `" <> funame <> "` does not exists") $
+    hoistMaybe $ M.lookup funame vars
 
 evalExprs :: [Expr] -> EvalT T.Text
-evalExprs exprs' = do
-  context <- get
-  lift (T.concat <$> mapM (evalExpr context) exprs')
+evalExprs exprs' = T.concat <$> mapM evalExpr exprs'
 
 textContainsLink :: T.Text -> Bool
 textContainsLink t =
