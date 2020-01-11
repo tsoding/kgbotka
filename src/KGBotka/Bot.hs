@@ -9,6 +9,7 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Maybe
 import Data.Array
 import Data.Either
 import Data.Foldable
@@ -40,6 +41,7 @@ data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
   , evalContextSqliteConnection :: Sqlite.Connection
   , evalContextSenderId :: Maybe TwitchUserId
+  , evalContextChannel :: Channel
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
   , evalContextLogHandle :: Handle
@@ -103,12 +105,13 @@ evalExpr context (FunCallExpr "flip" args) =
 -- FIXME(#30): %nextvideo does not display the submitter
 evalExpr EvalContext { evalContextBadgeRoles = roles
                      , evalContextSqliteConnection = dbConn
+                     , evalContextChannel = channel
                      } (FunCallExpr "nextvideo" _)
   | TwitchBroadcaster `elem` roles = do
-    video <- lift $ nextVideo dbConn
-    case video of
-      Just FridayVideo {fridayVideoSubText = subText} -> return subText
-      Nothing -> return "No videos in the queue"
+    fridayVideo <-
+      maybeToExceptT (EvalError "Video queue is empty") $
+      nextVideo dbConn channel
+    return $ fridayVideoSubText fridayVideo
   | otherwise = throwE $ EvalError "Only for mr strimmer :)"
 evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
   return "You have to be trusted to submit Friday videos"
@@ -122,6 +125,7 @@ evalExpr context (FunCallExpr "friday" args) = do
             submitVideo
               (evalContextSqliteConnection context)
               submissionText
+              (evalContextChannel context)
               senderId
           return "Added your video to suggestions"
         Nothing -> return "Only humans can submit friday videos"
@@ -209,70 +213,72 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                          } = do
   threadDelay 10000 -- to prevent busy looping
   maybeRawMsg <- atomically $ tryReadQueue incomingQueue
-  for_ maybeRawMsg $ \rawMsg -> do
-    let cookedMsg = cookIrcMsg rawMsg
-    hPutStrLn logHandle $ "[TWITCH] " <> show rawMsg
-    hFlush logHandle
-    case cookedMsg of
-      Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
-      Join _ channelId _ ->
-        atomically $ modifyTVar channels $ S.insert channelId
-      Part _ channelId _ ->
-        atomically $ modifyTVar channels $ S.delete channelId
-      Privmsg userInfo channelId message -> do
-        roles <-
-          maybe
-            (return [])
-            (getTwitchUserRoles dbConn)
-            (userIdFromRawIrcMsg rawMsg)
-        let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
+  for_ maybeRawMsg $ \rawMsg ->
+    Sqlite.withTransaction dbConn $ do
+      let cookedMsg = cookIrcMsg rawMsg
+      hPutStrLn logHandle $ "[TWITCH] " <> show rawMsg
+      hFlush logHandle
+      case cookedMsg of
+        Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
+        Join _ channelId _ ->
+          atomically $ modifyTVar channels $ S.insert channelId
+        Part _ channelId _ ->
+          atomically $ modifyTVar channels $ S.delete channelId
+        Privmsg userInfo channelId message -> do
+          roles <-
+            maybe
+              (return [])
+              (getTwitchUserRoles dbConn)
+              (userIdFromRawIrcMsg rawMsg)
+          let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
         -- FIXME(#31): Link filtering is not disablable
-        case (roles, badgeRoles) of
-          ([], [])
-            | textContainsLink message ->
-              atomically $
-              writeQueue outgoingQueue $
-              ircPrivmsg
-                (idText channelId)
-                ("/timeout " <> idText (userNick userInfo) <> " 1")
-          _ ->
-            case parseCommandCall "!" message of
-              Just (CommandCall name args) -> do
-                command <- commandByName dbConn name
-                case command of
-                  Just (Command _ code) ->
-                    let codeAst = snd <$> runParser exprs code
-                     in case codeAst of
-                          Right codeAst' -> do
-                            evalResult <-
-                              runExceptT $
-                              evalExprs
-                                (EvalContext
-                                   (M.fromList
-                                      [ ("1", args)
-                                      , ("sender", idText (userNick userInfo))
-                                      ])
-                                   dbConn
-                                   (userIdFromRawIrcMsg rawMsg)
-                                   badgeRoles
-                                   roles
-                                   logHandle)
-                                codeAst'
-                            atomically $
-                              case evalResult of
-                                Right commandResponse ->
-                                  writeQueue outgoingQueue $
-                                  ircPrivmsg (idText channelId) $
-                                  twitchCmdEscape commandResponse
-                                Left (EvalError userMsg) ->
-                                  writeQueue outgoingQueue $
-                                  ircPrivmsg (idText channelId) $
-                                  twitchCmdEscape userMsg
-                          Left err ->
-                            hPutStrLn logHandle $ "[ERROR] " <> show err
-                  Nothing -> return ()
-              _ -> return ()
-      _ -> return ()
+          case (roles, badgeRoles) of
+            ([], [])
+              | textContainsLink message ->
+                atomically $
+                writeQueue outgoingQueue $
+                ircPrivmsg
+                  (idText channelId)
+                  ("/timeout " <> idText (userNick userInfo) <> " 1")
+            _ ->
+              case parseCommandCall "!" message of
+                Just (CommandCall name args) -> do
+                  command <- commandByName dbConn name
+                  case command of
+                    Just (Command _ code) ->
+                      let codeAst = snd <$> runParser exprs code
+                       in case codeAst of
+                            Right codeAst' -> do
+                              evalResult <-
+                                runExceptT $
+                                evalExprs
+                                  (EvalContext
+                                     (M.fromList
+                                        [ ("1", args)
+                                        , ("sender", idText (userNick userInfo))
+                                        ])
+                                     dbConn
+                                     (userIdFromRawIrcMsg rawMsg)
+                                     (Channel channelId)
+                                     badgeRoles
+                                     roles
+                                     logHandle)
+                                  codeAst'
+                              atomically $
+                                case evalResult of
+                                  Right commandResponse ->
+                                    writeQueue outgoingQueue $
+                                    ircPrivmsg (idText channelId) $
+                                    twitchCmdEscape commandResponse
+                                  Left (EvalError userMsg) ->
+                                    writeQueue outgoingQueue $
+                                    ircPrivmsg (idText channelId) $
+                                    twitchCmdEscape userMsg
+                            Left err ->
+                              hPutStrLn logHandle $ "[ERROR] " <> show err
+                    Nothing -> return ()
+                _ -> return ()
+        _ -> return ()
   atomically $ do
     replCommand <- tryReadQueue replQueue
     case replCommand of

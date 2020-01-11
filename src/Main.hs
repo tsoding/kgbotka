@@ -59,6 +59,13 @@ migrations =
     \  authorTwitchId TEXT NOT NULL, \
     \  watchedAt DATETIME \
     \)"
+  , "ALTER TABLE FridayVideo \
+    \ADD channel TEXT NOT NULL DEFAULT \"#tsoding\""
+  , "CREATE TABLE FridayVideoRobin ( \
+    \  robinTwitchId TEXT, \
+    \  channel TEXT NOT NULL, \
+    \  UNIQUE(channel) ON CONFLICT REPLACE \
+    \)"
   ]
 
 maxIrcMessage :: Int
