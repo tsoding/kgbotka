@@ -111,9 +111,7 @@ evalExpr EvalContext { evalContextBadgeRoles = roles
     fridayVideo <-
       maybeToExceptT (EvalError "Video queue is empty") $
       nextVideo dbConn channel
-    return $
-      (fridayVideoSubText fridayVideo <> " " <>
-       T.pack (show (fridayVideoAuthor fridayVideo)))
+    return $ fridayVideoSubText fridayVideo
   | otherwise = throwE $ EvalError "Only for mr strimmer :)"
 evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
   return "You have to be trusted to submit Friday videos"
