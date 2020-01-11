@@ -7,6 +7,7 @@ module KGBotka.Bot
 
 import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
@@ -38,7 +39,6 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Control.Monad
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
