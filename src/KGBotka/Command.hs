@@ -99,4 +99,4 @@ parseCommandCall prefix source =
   T.stripPrefix prefix (T.dropWhile isSpace source)
 
 ccArgsModify :: (T.Text -> T.Text) -> CommandCall -> CommandCall
-ccArgsModify f cc = cc { ccArgs = f $ ccArgs cc }
+ccArgsModify f cc = cc {ccArgs = f $ ccArgs cc}
