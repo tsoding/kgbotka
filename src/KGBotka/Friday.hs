@@ -7,19 +7,19 @@ module KGBotka.Friday
   , Channel(..)
   ) where
 
+import Control.Applicative
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
+import qualified Data.Map as M
+import Data.Maybe
+import Data.String
 import qualified Data.Text as T
 import Data.Time
 import Database.SQLite.Simple
-import Database.SQLite.Simple.ToField
 import Database.SQLite.Simple.FromField
-import KGBotka.Roles (TwitchUserId(..))
-import Data.Maybe
+import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
-import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Class
-import Control.Applicative
-import Data.String
-import qualified Data.Map as M
+import KGBotka.Roles (TwitchUserId(..))
 
 data FridayVideo = FridayVideo
   { fridayVideoId :: Int
@@ -47,7 +47,8 @@ submitVideo conn subText channel authorTwitchId =
     , ":channel" := channel
     ]
 
-newtype Channel = Channel Identifier
+newtype Channel =
+  Channel Identifier
 
 instance IsString Channel where
   fromString = Channel . fromString

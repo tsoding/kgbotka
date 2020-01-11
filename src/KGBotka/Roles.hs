@@ -10,11 +10,11 @@ module KGBotka.Roles
   ) where
 
 import Data.Maybe
+import Data.String
 import qualified Data.Text as T
 import Database.SQLite.Simple
-import Database.SQLite.Simple.ToField
 import Database.SQLite.Simple.FromField
-import Data.String
+import Database.SQLite.Simple.ToField
 
 newtype TwitchUserId = TwitchUserId
   { twitchUserId :: T.Text
