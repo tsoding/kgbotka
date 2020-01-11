@@ -97,7 +97,7 @@ newtype EvalError =
   EvalError T.Text
   deriving (Show)
 
--- FIXMEa: integrate evalExpr with EvalT
+-- FIXME: integrate evalExpr with EvalT
 evalExpr :: EvalContext -> Expr -> ExceptT EvalError IO T.Text
 evalExpr _ (TextExpr t) = return t
 evalExpr context (FunCallExpr "or" args) =
@@ -136,8 +136,13 @@ evalExpr context (FunCallExpr "friday" args) = do
               (evalContextChannel context)
               senderId
           return "Added your video to suggestions"
-        Nothing -> return "Only humans can submit friday videos"
-    Left Nothing -> return "Your suggestion should contain YouTube link"
+        Nothing ->
+          throwE $
+          EvalError
+            "Sender not found. \
+            \It's need for submitting Friday videos"
+    Left Nothing ->
+      throwE $ EvalError "Your suggestion should contain YouTube link"
     Left (Just failReason) -> do
       lift $
         hPutStrLn (evalContextLogHandle context) $
