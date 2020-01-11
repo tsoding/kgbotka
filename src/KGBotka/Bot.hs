@@ -10,6 +10,7 @@ import Control.Concurrent.STM
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Maybe.Extra
 import Control.Monad.Trans.State
 import Data.Array
 import Data.Either
@@ -146,7 +147,8 @@ evalExpr context (FunCallExpr "friday" args) = do
           "Something went wrong while parsing your subsmission. \
           \We are already looking into it. Kapp"
 evalExpr context (FunCallExpr funame _) =
-  return $ fromMaybe "" $ M.lookup funame (evalContextVars context)
+  maybeToExceptT (EvalError $ "Function `" <> funame <> "` does not exists") $
+  hoistMaybe $ M.lookup funame (evalContextVars context)
 
 evalExprs :: [Expr] -> EvalT T.Text
 evalExprs exprs' = do
