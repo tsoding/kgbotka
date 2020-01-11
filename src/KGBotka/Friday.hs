@@ -4,9 +4,7 @@ module KGBotka.Friday
   ( submitVideo
   , FridayVideo(..)
   , nextVideo
-  , currentRobin
   , Channel(..)
-  , fakeFridayVideo
   ) where
 
 import qualified Data.Text as T
@@ -20,23 +18,21 @@ import Irc.Identifier (Identifier, idText, mkId)
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Class
 import Control.Applicative
-import Control.Monad
+import Data.String
+import qualified Data.Map as M
 
 data FridayVideo = FridayVideo
   { fridayVideoId :: Int
   , fridayVideoSubText :: T.Text
   , fridayVideoSubTime :: UTCTime
   , fridayVideoAuthor :: TwitchUserId
+  , fridayVideoWatchedAT :: Maybe UTCTime
   , fridayVideoChannel :: Channel
   }
 
-fakeFridayVideo :: IO FridayVideo
-fakeFridayVideo = do
-  now <- getCurrentTime
-  return $ FridayVideo 0 "" now (TwitchUserId "") (Channel $ mkId "")
-
 instance FromRow FridayVideo where
-  fromRow = FridayVideo <$> field <*> field <*> field <*> field <*> field
+  fromRow =
+    FridayVideo <$> field <*> field <*> field <*> field <*> field <*> field
 
 submitVideo :: Connection -> T.Text -> Channel -> TwitchUserId -> IO ()
 submitVideo conn subText channel authorTwitchId =
@@ -53,85 +49,63 @@ submitVideo conn subText channel authorTwitchId =
 
 newtype Channel = Channel Identifier
 
+instance IsString Channel where
+  fromString = Channel . fromString
+
 instance FromField Channel where
   fromField f = Channel . mkId <$> fromField f
 
 instance ToField Channel where
-    toField (Channel ident) = toField $ idText ident
+  toField (Channel ident) = toField $ idText ident
 
-currentRobin :: Connection -> Channel -> MaybeT IO TwitchUserId
-currentRobin conn channel = current <|> first
-  where
-    current = do
-      robin <-
-        MaybeT
-          (listToMaybe <$>
-           queryNamed
-             conn
-             "SELECT robinTwitchId \
-             \FROM FridayVideoRobin \
-             \WHERE channel = :channel"
-             [":channel" := channel])
-      MaybeT $ return $ fromOnly $ robin
-    first =
-      MaybeT
-        (listToMaybe <$>
-         queryNamed
-           conn
-           "SELECT DISTINCT authorTwitchId a \
-           \FROM FridayVideo \
-           \WHERE watchedAt is NULL \
-           \ORDER BY a \
-           \ LIMIT 1"
-           [])
+queueSlice :: Connection -> Channel -> IO (M.Map TwitchUserId FridayVideo)
+queueSlice conn channel =
+  M.fromList . map (\x -> (fridayVideoAuthor x, x)) <$>
+  queryNamed
+    conn
+    "SELECT id, \
+    \       submissionText, \
+    \       min(submissionTime), \
+    \       authorTwitchId, \
+    \       watchedAt, \
+    \       channel \
+    \FROM FridayVideo  \
+    \WHERE watchedAt is NULL \
+    \AND channel = :channel \
+    \GROUP BY authorTwitchId"
+    [":channel" := channel]
 
-watchVideo :: Connection -> Channel -> TwitchUserId -> MaybeT IO FridayVideo
-watchVideo conn channel robin = do
-  fridayVideo <-
-    MaybeT
-      (listToMaybe <$>
-       queryNamed
-         conn
-         "SELECT id, submissionText, submissionTime, authorTwitchId, channel \
-         \FROM FridayVideo \
-         \WHERE authorTwitchId = :authorTwitchId \
-         \AND channel = :channel \
-         \AND watchedAt is NULL \
-         \ORDER BY submissionTime LIMIT 1"
-         [":authorTwitchId" := robin, ":channel" := channel])
-  lift $
-    executeNamed
-      conn
-      "UPDATE FridayVideo \
-      \SET watchedAt = datetime('now') \
-      \WHERE id = :fridayVideoId"
-      [":fridayVideoId" := fridayVideoId fridayVideo]
-  return fridayVideo
+lastWatchedAuthor :: Connection -> Channel -> MaybeT IO TwitchUserId
+lastWatchedAuthor conn channel =
+  MaybeT
+    (listToMaybe <$>
+     queryNamed
+       conn
+       "SELECT authorTwitchId FROM FridayVideo \
+       \WHERE watchedAt IS NOT NULL \
+       \  AND channel = :channel \
+       \ORDER BY watchedAt DESC \
+       \LIMIT 1"
+       [":channel" := channel])
 
-advanceRobin :: Connection -> Channel -> TwitchUserId -> IO ()
-advanceRobin conn channel robin = do
-  nextRobin <-
-    listToMaybe <$>
-    queryNamed
-      conn
-      "SELECT DISTINCT authorTwitchId a \
-      \FROM FridayVideo \
-      \WHERE authorTwitchId > :authorTwitchId \
-      \AND channel = :channel \
-      \AND watchedAt is NULL \
-      \ORDER BY a LIMIT 1"
-      [":authorTwitchId" := robin, ":channel" := channel]
+watchVideoById :: Connection -> Int -> IO ()
+watchVideoById conn videoId =
   executeNamed
     conn
-    "INSERT INTO FridayVideoRobin (robinTwitchId, channel) \
-    \VALUES (:robinTwitchId, :channel)"
-    [ ":robinTwitchId" := (join (fromOnly <$> nextRobin) :: Maybe TwitchUserId)
-    , ":channel" := channel
-    ]
+    "UPDATE FridayVideo \
+    \SET watchedAt = datetime('now') \
+    \WHERE id = :id"
+    [":id" := videoId]
+
+hoistMaybe :: Monad m => Maybe a -> MaybeT m a
+hoistMaybe = MaybeT . return
 
 nextVideo :: Connection -> Channel -> MaybeT IO FridayVideo
 nextVideo conn channel = do
-  robin <- currentRobin conn channel
-  video <- watchVideo conn channel robin
-  lift $ advanceRobin conn channel robin
+  author <- lastWatchedAuthor conn channel <|> return ""
+  slice <- lift $ queueSlice conn channel
+  video <-
+    hoistMaybe (snd <$> M.lookupGT author slice) <|>
+    hoistMaybe (snd <$> M.lookupGT "" slice)
+  lift $ watchVideoById conn $ fridayVideoId video
   return video

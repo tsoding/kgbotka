@@ -14,15 +14,14 @@ import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.ToField
 import Database.SQLite.Simple.FromField
+import Data.String
 
 newtype TwitchUserId = TwitchUserId
   { twitchUserId :: T.Text
-  } deriving (Show, Eq)
+  } deriving (Show, Eq, Ord)
 
-data TwitchRole = TwitchRole
-  { twitchRoleId :: Int
-  , twitchRoleName :: T.Text
-  } deriving (Show)
+instance IsString TwitchUserId where
+  fromString = TwitchUserId . fromString
 
 instance ToField TwitchUserId where
   toField = toField . twitchUserId
@@ -32,6 +31,11 @@ instance FromField TwitchUserId where
 
 instance FromRow TwitchUserId where
   fromRow = TwitchUserId <$> field
+
+data TwitchRole = TwitchRole
+  { twitchRoleId :: Int
+  , twitchRoleName :: T.Text
+  } deriving (Show)
 
 instance FromRow TwitchRole where
   fromRow = TwitchRole <$> field <*> field
