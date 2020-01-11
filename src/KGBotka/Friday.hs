@@ -10,6 +10,7 @@ module KGBotka.Friday
 import Control.Applicative
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Maybe.Extra
 import qualified Data.Map as M
 import Data.Maybe
 import Data.String
@@ -97,9 +98,6 @@ watchVideoById conn videoId =
     \SET watchedAt = datetime('now') \
     \WHERE id = :id"
     [":id" := videoId]
-
-hoistMaybe :: Monad m => Maybe a -> MaybeT m a
-hoistMaybe = MaybeT . return
 
 nextVideo :: Connection -> Channel -> MaybeT IO FridayVideo
 nextVideo conn channel = do

@@ -7,9 +7,12 @@ module KGBotka.Bot
 
 import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Maybe.Extra
+import Control.Monad.Trans.State
 import Data.Array
 import Data.Either
 import Data.Foldable
@@ -46,6 +49,11 @@ data EvalContext = EvalContext
   , evalContextRoles :: [TwitchRole]
   , evalContextLogHandle :: Handle
   }
+
+evalContextVarsModify ::
+     (M.Map T.Text T.Text -> M.Map T.Text T.Text) -> EvalContext -> EvalContext
+evalContextVarsModify f context =
+  context {evalContextVars = f $ evalContextVars context}
 
 ytLinkRegex :: Either String Regex
 ytLinkRegex =
@@ -90,59 +98,72 @@ newtype EvalError =
   EvalError T.Text
   deriving (Show)
 
-evalExpr :: EvalContext -> Expr -> ExceptT EvalError IO T.Text
-evalExpr _ (TextExpr t) = return t
-evalExpr context (FunCallExpr "or" args) =
-  fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM (evalExpr context) args
-evalExpr context (FunCallExpr "urlencode" args) =
-  T.concat . map (T.pack . encodeURI . T.unpack) <$>
-  mapM (evalExpr context) args
+evalExpr :: Expr -> EvalT T.Text
+evalExpr (TextExpr t) = return t
+evalExpr (FunCallExpr "or" args) =
+  fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM evalExpr args
+evalExpr (FunCallExpr "urlencode" args) =
+  T.concat . map (T.pack . encodeURI . T.unpack) <$> mapM evalExpr args
   where
     encodeURI = escapeURIString (const False)
-evalExpr context (FunCallExpr "flip" args) =
-  T.concat . map flipText <$> mapM (evalExpr context) args
+evalExpr (FunCallExpr "flip" args) =
+  T.concat . map flipText <$> mapM evalExpr args
 -- FIXME(#18): Friday video list is not published on gist
 -- FIXME(#30): %nextvideo does not display the submitter
-evalExpr EvalContext { evalContextBadgeRoles = roles
-                     , evalContextSqliteConnection = dbConn
-                     , evalContextChannel = channel
-                     } (FunCallExpr "nextvideo" _)
-  | TwitchBroadcaster `elem` roles = do
-    fridayVideo <-
-      maybeToExceptT (EvalError "Video queue is empty") $
-      nextVideo dbConn channel
-    return $ fridayVideoSubText fridayVideo
-  | otherwise = throwE $ EvalError "Only for mr strimmer :)"
-evalExpr EvalContext {evalContextRoles = [], evalContextBadgeRoles = []} (FunCallExpr "friday" _) =
-  return "You have to be trusted to submit Friday videos"
-evalExpr context (FunCallExpr "friday" args) = do
-  submissionText <- T.concat <$> mapM (evalExpr context) args
+evalExpr (FunCallExpr "nextvideo" _) = do
+  badgeRoles <- evalContextBadgeRoles <$> get
+  if TwitchBroadcaster `elem` badgeRoles
+    then do
+      dbConn <- evalContextSqliteConnection <$> get
+      channel <- evalContextChannel <$> get
+      fridayVideo <-
+        lift $
+        maybeToExceptT (EvalError "Video queue is empty") $
+        nextVideo dbConn channel
+      return $ fridayVideoSubText fridayVideo
+    else lift $ throwE $ EvalError "Only for mr strimmer :)"
+evalExpr (FunCallExpr "friday" args) = do
+  roles <- evalContextRoles <$> get
+  badgeRoles <- evalContextBadgeRoles <$> get
+  when (null roles && null badgeRoles) $
+    lift $ throwE $ EvalError "You have to be trusted to submit Friday videos"
+  submissionText <- T.concat <$> mapM evalExpr args
   case ytLinkId submissionText of
-    Right _ ->
-      case evalContextSenderId context of
+    Right _ -> do
+      sender <- evalContextSenderId <$> get
+      case sender of
         Just senderId -> do
-          lift $
-            submitVideo
-              (evalContextSqliteConnection context)
-              submissionText
-              (evalContextChannel context)
-              senderId
+          dbConn <- evalContextSqliteConnection <$> get
+          channel <- evalContextChannel <$> get
+          lift $ lift $ submitVideo dbConn submissionText channel senderId
           return "Added your video to suggestions"
-        Nothing -> return "Only humans can submit friday videos"
-    Left Nothing -> return "Your suggestion should contain YouTube link"
+        Nothing ->
+          lift $
+          throwE $
+          EvalError
+            "Sender not found. \
+            \It's need for submitting Friday videos"
+    Left Nothing ->
+      lift $ throwE $ EvalError "Your suggestion should contain YouTube link"
     Left (Just failReason) -> do
+      logHandle <- evalContextLogHandle <$> get
       lift $
-        hPutStrLn (evalContextLogHandle context) $
+        lift $
+        hPutStrLn logHandle $
         "An error occured while parsing YouTube link: " <> failReason
-      throwE $
+      lift $
+        throwE $
         EvalError
           "Something went wrong while parsing your subsmission. \
           \We are already looking into it. Kapp"
-evalExpr context (FunCallExpr funame _) =
-  return $ fromMaybe "" $ M.lookup funame (evalContextVars context)
+evalExpr (FunCallExpr funame _) = do
+  vars <- evalContextVars <$> get
+  lift $
+    maybeToExceptT (EvalError $ "Function `" <> funame <> "` does not exists") $
+    hoistMaybe $ M.lookup funame vars
 
-evalExprs :: EvalContext -> [Expr] -> ExceptT EvalError IO T.Text
-evalExprs context = fmap T.concat . mapM (evalExpr context)
+evalExprs :: [Expr] -> EvalT T.Text
+evalExprs exprs' = T.concat <$> mapM evalExpr exprs'
 
 textContainsLink :: T.Text -> Bool
 textContainsLink t =
@@ -203,14 +224,34 @@ data BotState = BotState
   , botStateLogHandle :: !Handle
   }
 
+type EvalT = StateT EvalContext (ExceptT EvalError IO)
+
+evalCommandCall :: CommandCall -> EvalT T.Text
+evalCommandCall (CommandCall name args) = do
+  modify $ evalContextVarsModify $ M.insert "1" args
+  dbConn <- evalContextSqliteConnection <$> get
+  command <- lift $ lift $ commandByName dbConn name
+  case command of
+    Just (Command _ code) -> do
+      codeAst <-
+        lift $
+        withExceptT (EvalError . T.pack . show) $
+        except (snd <$> runParser exprs code)
+      evalExprs codeAst
+    Nothing -> return ""
+
+evalCommandPipe :: [CommandCall] -> EvalT T.Text
+evalCommandPipe =
+  foldlM (\args -> evalCommandCall . ccArgsModify (`T.append` args)) ""
+
 botThread :: BotState -> IO ()
-botThread state@BotState { botStateIncomingQueue = incomingQueue
-                         , botStateOutgoingQueue = outgoingQueue
-                         , botStateReplQueue = replQueue
-                         , botStateChannels = channels
-                         , botStateSqliteConnection = dbConn
-                         , botStateLogHandle = logHandle
-                         } = do
+botThread botState@BotState { botStateIncomingQueue = incomingQueue
+                            , botStateOutgoingQueue = outgoingQueue
+                            , botStateReplQueue = replQueue
+                            , botStateChannels = channels
+                            , botStateSqliteConnection = dbConn
+                            , botStateLogHandle = logHandle
+                            } = do
   threadDelay 10000 -- to prevent busy looping
   maybeRawMsg <- atomically $ tryReadQueue incomingQueue
   for_ maybeRawMsg $ \rawMsg ->
@@ -231,7 +272,7 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
               (getTwitchUserRoles dbConn)
               (userIdFromRawIrcMsg rawMsg)
           let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
-        -- FIXME(#31): Link filtering is not disablable
+          -- FIXME(#31): Link filtering is not disablable
           case (roles, badgeRoles) of
             ([], [])
               | textContainsLink message ->
@@ -240,44 +281,27 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
                 ircPrivmsg
                   (idText channelId)
                   ("/timeout " <> idText (userNick userInfo) <> " 1")
-            _ ->
-              case parseCommandCall "!" message of
-                Just (CommandCall name args) -> do
-                  command <- commandByName dbConn name
-                  case command of
-                    Just (Command _ code) ->
-                      let codeAst = snd <$> runParser exprs code
-                       in case codeAst of
-                            Right codeAst' -> do
-                              evalResult <-
-                                runExceptT $
-                                evalExprs
-                                  (EvalContext
-                                     (M.fromList
-                                        [ ("1", args)
-                                        , ("sender", idText (userNick userInfo))
-                                        ])
-                                     dbConn
-                                     (userIdFromRawIrcMsg rawMsg)
-                                     (Channel channelId)
-                                     badgeRoles
-                                     roles
-                                     logHandle)
-                                  codeAst'
-                              atomically $
-                                case evalResult of
-                                  Right commandResponse ->
-                                    writeQueue outgoingQueue $
-                                    ircPrivmsg (idText channelId) $
-                                    twitchCmdEscape commandResponse
-                                  Left (EvalError userMsg) ->
-                                    writeQueue outgoingQueue $
-                                    ircPrivmsg (idText channelId) $
-                                    twitchCmdEscape userMsg
-                            Left err ->
-                              hPutStrLn logHandle $ "[ERROR] " <> show err
-                    Nothing -> return ()
-                _ -> return ()
+            _ -> do
+              evalResult <-
+                runExceptT $
+                evalStateT (evalCommandPipe $ parseCommandPipe "!" "|" message) $
+                EvalContext
+                  (M.fromList [("sender", idText (userNick userInfo))])
+                  dbConn
+                  (userIdFromRawIrcMsg rawMsg)
+                  (Channel channelId)
+                  badgeRoles
+                  roles
+                  logHandle
+              atomically $
+                case evalResult of
+                  Right commandResponse ->
+                    writeQueue outgoingQueue $
+                    ircPrivmsg (idText channelId) $
+                    twitchCmdEscape commandResponse
+                  Left (EvalError userMsg) ->
+                    writeQueue outgoingQueue $
+                    ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
         _ -> return ()
   atomically $ do
     replCommand <- tryReadQueue replQueue
@@ -289,7 +313,7 @@ botThread state@BotState { botStateIncomingQueue = incomingQueue
       Just (PartChannel channelId) ->
         writeQueue outgoingQueue $ ircPart channelId ""
       Nothing -> return ()
-  botThread state
+  botThread botState
   where
     twitchCmdEscape :: T.Text -> T.Text
     twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip

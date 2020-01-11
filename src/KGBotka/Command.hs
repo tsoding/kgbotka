@@ -3,12 +3,14 @@
 module KGBotka.Command
   ( CommandCall(..)
   , parseCommandCall
+  , parseCommandPipe
   , Command(..)
   , commandByName
   , addCommand
   , addCommandName
   , deleteCommandByName
   , deleteCommandName
+  , ccArgsModify
   ) where
 
 import Data.Char
@@ -86,7 +88,15 @@ data CommandCall = CommandCall
   , ccArgs :: T.Text
   } deriving (Eq, Show)
 
+parseCommandPipe :: T.Text -> T.Text -> T.Text -> [CommandCall]
+parseCommandPipe callPrefix pipeSuffix source =
+  fromMaybe [] $
+  mapM (parseCommandCall callPrefix) $ T.splitOn pipeSuffix source
+
 parseCommandCall :: T.Text -> T.Text -> Maybe CommandCall
-parseCommandCall prefix text =
+parseCommandCall prefix source =
   uncurry CommandCall . fmap T.strip . T.span isAlphaNum <$>
-  T.stripPrefix prefix (T.dropWhile isSpace text)
+  T.stripPrefix prefix (T.dropWhile isSpace source)
+
+ccArgsModify :: (T.Text -> T.Text) -> CommandCall -> CommandCall
+ccArgsModify f cc = cc {ccArgs = f $ ccArgs cc}
