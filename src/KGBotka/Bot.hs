@@ -110,7 +110,7 @@ evalExpr (FunCallExpr "urlencode" args) =
 evalExpr (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM evalExpr args
 -- FIXME(#18): Friday video list is not published on gist
--- FIXME: %nextvideo does not inform how many times a video was suggested
+-- FIXME(#38): %nextvideo does not inform how many times a video was suggested
 evalExpr (FunCallExpr "nextvideo" _) = do
   badgeRoles <- evalContextBadgeRoles <$> get
   if TwitchBroadcaster `elem` badgeRoles
