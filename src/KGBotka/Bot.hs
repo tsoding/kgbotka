@@ -44,6 +44,7 @@ data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
   , evalContextSqliteConnection :: Sqlite.Connection
   , evalContextSenderId :: Maybe TwitchUserId
+  , evalContextSenderName :: T.Text
   , evalContextChannel :: Channel
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
@@ -109,7 +110,7 @@ evalExpr (FunCallExpr "urlencode" args) =
 evalExpr (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM evalExpr args
 -- FIXME(#18): Friday video list is not published on gist
--- FIXME(#30): %nextvideo does not display the submitter
+-- FIXME: %nextvideo does not inform how many times a video was suggested
 evalExpr (FunCallExpr "nextvideo" _) = do
   badgeRoles <- evalContextBadgeRoles <$> get
   if TwitchBroadcaster `elem` badgeRoles
@@ -120,8 +121,16 @@ evalExpr (FunCallExpr "nextvideo" _) = do
         lift $
         maybeToExceptT (EvalError "Video queue is empty") $
         nextVideo dbConn channel
-      return $ fridayVideoSubText fridayVideo
+      return $ fridayVideoAsMessage fridayVideo
     else lift $ throwE $ EvalError "Only for mr strimmer :)"
+  where
+    fridayVideoAsMessage :: FridayVideo -> T.Text
+    fridayVideoAsMessage FridayVideo { fridayVideoSubText = subText
+                                     , fridayVideoSubTime = subTime
+                                     , fridayVideoAuthorTwitchName = authorTwitchName
+                                     } =
+      T.pack (show subTime) <> " <" <> authorTwitchName <> "> " <> subText
+-- FIXME: %friday does not inform how many times a video was suggested
 evalExpr (FunCallExpr "friday" args) = do
   roles <- evalContextRoles <$> get
   badgeRoles <- evalContextBadgeRoles <$> get
@@ -135,7 +144,9 @@ evalExpr (FunCallExpr "friday" args) = do
         Just senderId -> do
           dbConn <- evalContextSqliteConnection <$> get
           channel <- evalContextChannel <$> get
-          lift $ lift $ submitVideo dbConn submissionText channel senderId
+          senderName <- evalContextSenderName <$> get
+          lift $
+            lift $ submitVideo dbConn submissionText channel senderId senderName
           return "Added your video to suggestions"
         Nothing ->
           lift $
@@ -286,13 +297,16 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
                 runExceptT $
                 evalStateT (evalCommandPipe $ parseCommandPipe "!" "|" message) $
                 EvalContext
-                  (M.fromList [("sender", idText (userNick userInfo))])
-                  dbConn
-                  (userIdFromRawIrcMsg rawMsg)
-                  (Channel channelId)
-                  badgeRoles
-                  roles
-                  logHandle
+                  { evalContextVars =
+                      (M.fromList [("sender", idText (userNick userInfo))])
+                  , evalContextSqliteConnection = dbConn
+                  , evalContextSenderId = (userIdFromRawIrcMsg rawMsg)
+                  , evalContextSenderName = (idText (userNick userInfo))
+                  , evalContextChannel = (Channel channelId)
+                  , evalContextBadgeRoles = badgeRoles
+                  , evalContextRoles = roles
+                  , evalContextLogHandle = logHandle
+                  }
               atomically $
                 case evalResult of
                   Right commandResponse ->
