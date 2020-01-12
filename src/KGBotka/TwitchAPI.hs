@@ -7,6 +7,7 @@ module KGBotka.TwitchAPI
   , TwitchUserId(..)
   , JsonResponse(..)
   , getUsersByLogins
+  , Channel(..)
   ) where
 
 import Data.Aeson
@@ -20,6 +21,7 @@ import Data.String
 import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
+import Irc.Identifier (Identifier, idText, mkId)
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -39,6 +41,18 @@ instance FromRow TwitchUserId where
 
 instance FromJSON TwitchUserId where
   parseJSON v = TwitchUserId <$> parseJSON v
+
+newtype Channel =
+  Channel Identifier
+
+instance IsString Channel where
+  fromString = Channel . fromString
+
+instance FromField Channel where
+  fromField f = Channel . mkId <$> fromField f
+
+instance ToField Channel where
+  toField (Channel ident) = toField $ idText ident
 
 data TwitchUser = TwitchUser
   { twitchUserId :: TwitchUserId

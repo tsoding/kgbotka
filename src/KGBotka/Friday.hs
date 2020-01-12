@@ -13,14 +13,10 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extra
 import qualified Data.Map as M
 import Data.Maybe
-import Data.String
 import qualified Data.Text as T
 import Data.Time
 import Database.SQLite.Simple
-import Database.SQLite.Simple.FromField
-import Database.SQLite.Simple.ToField
-import Irc.Identifier (Identifier, idText, mkId)
-import KGBotka.Roles (TwitchUserId(..))
+import KGBotka.TwitchAPI
 
 data FridayVideo = FridayVideo
   { fridayVideoId :: Int
@@ -51,18 +47,6 @@ submitVideo conn subText channel authorTwitchId authorTwitchName =
     , ":authorTwitchName" := authorTwitchName
     , ":channel" := channel
     ]
-
-newtype Channel =
-  Channel Identifier
-
-instance IsString Channel where
-  fromString = Channel . fromString
-
-instance FromField Channel where
-  fromField f = Channel . mkId <$> fromField f
-
-instance ToField Channel where
-  toField (Channel ident) = toField $ idText ident
 
 queueSlice :: Connection -> Channel -> IO (M.Map TwitchUserId FridayVideo)
 queueSlice conn channel =
