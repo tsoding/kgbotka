@@ -1,10 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
-module KGBotka.Log (logMessage) where
 
-import KGBotka.TwitchAPI
+module KGBotka.Log
+  ( logMessage
+  ) where
+
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import KGBotka.Roles
+import KGBotka.TwitchAPI
 
 logMessage ::
      Connection

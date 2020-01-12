@@ -47,7 +47,8 @@ submitVideo conn subText channel authorTwitchId authorTwitchName =
     , ":channel" := channel
     ]
 
-queueSlice :: Connection -> TwitchIrcChannel -> IO (M.Map TwitchUserId FridayVideo)
+queueSlice ::
+     Connection -> TwitchIrcChannel -> IO (M.Map TwitchUserId FridayVideo)
 queueSlice conn channel =
   M.fromList . map (\x -> (fridayVideoAuthorTwitchId x, x)) <$>
   queryNamed

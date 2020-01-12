@@ -14,14 +14,14 @@ import Data.Aeson
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as BS
 import Data.List
+import Data.String
 import qualified Data.Text as T
 import Data.Text.Encoding
-import Network.HTTP.Client
-import Data.String
 import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
+import Network.HTTP.Client
 
 newtype TwitchUserId =
   TwitchUserId T.Text
