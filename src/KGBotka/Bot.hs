@@ -298,11 +298,11 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
                 evalStateT (evalCommandPipe $ parseCommandPipe "!" "|" message) $
                 EvalContext
                   { evalContextVars =
-                      (M.fromList [("sender", idText (userNick userInfo))])
+                      M.fromList [("sender", idText (userNick userInfo))]
                   , evalContextSqliteConnection = dbConn
-                  , evalContextSenderId = (userIdFromRawIrcMsg rawMsg)
-                  , evalContextSenderName = (idText (userNick userInfo))
-                  , evalContextChannel = (Channel channelId)
+                  , evalContextSenderId = userIdFromRawIrcMsg rawMsg
+                  , evalContextSenderName = idText (userNick userInfo)
+                  , evalContextChannel = Channel channelId
                   , evalContextBadgeRoles = badgeRoles
                   , evalContextRoles = roles
                   , evalContextLogHandle = logHandle
