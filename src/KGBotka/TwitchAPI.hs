@@ -7,7 +7,7 @@ module KGBotka.TwitchAPI
   , TwitchUserId(..)
   , JsonResponse(..)
   , getUsersByLogins
-  , Channel(..)
+  , TwitchIrcChannel(..)
   ) where
 
 import Data.Aeson
@@ -42,17 +42,17 @@ instance FromRow TwitchUserId where
 instance FromJSON TwitchUserId where
   parseJSON v = TwitchUserId <$> parseJSON v
 
-newtype Channel =
-  Channel Identifier
+newtype TwitchIrcChannel =
+  TwitchIrcChannel Identifier
 
-instance IsString Channel where
-  fromString = Channel . fromString
+instance IsString TwitchIrcChannel where
+  fromString = TwitchIrcChannel . fromString
 
-instance FromField Channel where
-  fromField f = Channel . mkId <$> fromField f
+instance FromField TwitchIrcChannel where
+  fromField f = TwitchIrcChannel . mkId <$> fromField f
 
-instance ToField Channel where
-  toField (Channel ident) = toField $ idText ident
+instance ToField TwitchIrcChannel where
+  toField (TwitchIrcChannel ident) = toField $ idText ident
 
 data TwitchUser = TwitchUser
   { twitchUserId :: TwitchUserId

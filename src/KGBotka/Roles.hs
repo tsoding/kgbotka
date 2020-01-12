@@ -6,7 +6,6 @@ module KGBotka.Roles
   , getTwitchUserRoles
   , getTwitchRoleByName
   , TwitchRole(..)
-  , TwitchUserId(..)
   ) where
 
 import Data.Maybe

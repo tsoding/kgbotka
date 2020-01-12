@@ -39,13 +39,14 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import KGBotka.TwitchAPI
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
   , evalContextSqliteConnection :: Sqlite.Connection
   , evalContextSenderId :: Maybe TwitchUserId
   , evalContextSenderName :: T.Text
-  , evalContextChannel :: Channel
+  , evalContextChannel :: TwitchIrcChannel
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
   , evalContextLogHandle :: Handle
@@ -302,7 +303,7 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
                   , evalContextSqliteConnection = dbConn
                   , evalContextSenderId = userIdFromRawIrcMsg rawMsg
                   , evalContextSenderName = idText (userNick userInfo)
-                  , evalContextChannel = Channel channelId
+                  , evalContextChannel = TwitchIrcChannel channelId
                   , evalContextBadgeRoles = badgeRoles
                   , evalContextRoles = roles
                   , evalContextLogHandle = logHandle
