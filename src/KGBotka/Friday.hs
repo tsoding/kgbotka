@@ -26,25 +26,29 @@ data FridayVideo = FridayVideo
   { fridayVideoId :: Int
   , fridayVideoSubText :: T.Text
   , fridayVideoSubTime :: UTCTime
-  , fridayVideoAuthor :: TwitchUserId
-  , fridayVideoWatchedAT :: Maybe UTCTime
+  , fridayVideoAuthorTwitchId :: TwitchUserId
+  , fridayVideoAuthorTwitchName :: T.Text
+  , fridayVideoWatchedAt :: Maybe UTCTime
   , fridayVideoChannel :: Channel
   }
 
 instance FromRow FridayVideo where
   fromRow =
-    FridayVideo <$> field <*> field <*> field <*> field <*> field <*> field
+    FridayVideo <$> field <*> field <*> field <*> field <*> field <*> field <*>
+    field
 
-submitVideo :: Connection -> T.Text -> Channel -> TwitchUserId -> IO ()
-submitVideo conn subText channel authorTwitchId =
+submitVideo ::
+     Connection -> T.Text -> Channel -> TwitchUserId -> T.Text -> IO ()
+submitVideo conn subText channel authorTwitchId authorTwitchName =
   executeNamed
     conn
     "INSERT INTO FridayVideo \
-    \(submissionText, submissionTime, authorTwitchId, channel) \
+    \(submissionText, submissionTime, authorTwitchId, authorTwitchName, channel) \
     \VALUES \
-    \(:submissionText, datetime('now'), :authorTwitchId, :channel)"
+    \(:submissionText, datetime('now'), :authorTwitchId, :authorTwitchName, :channel)"
     [ ":submissionText" := subText
     , ":authorTwitchId" := authorTwitchId
+    , ":authorTwitchName" := authorTwitchName
     , ":channel" := channel
     ]
 
@@ -62,13 +66,14 @@ instance ToField Channel where
 
 queueSlice :: Connection -> Channel -> IO (M.Map TwitchUserId FridayVideo)
 queueSlice conn channel =
-  M.fromList . map (\x -> (fridayVideoAuthor x, x)) <$>
+  M.fromList . map (\x -> (fridayVideoAuthorTwitchId x, x)) <$>
   queryNamed
     conn
     "SELECT id, \
     \       submissionText, \
     \       min(submissionTime), \
     \       authorTwitchId, \
+    \       authorTwitchName, \
     \       watchedAt, \
     \       channel \
     \FROM FridayVideo  \
