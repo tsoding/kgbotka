@@ -40,7 +40,10 @@ logMessage conn channel senderTwitchId senderTwitchName senderTwitchDisplayName 
     , ":senderTwitchId" := senderTwitchId
     , ":senderTwitchName" := senderTwitchName
     , ":senderTwitchDisplayName" := senderTwitchDisplayName
-    -- FIXME: roles are not serialized properly?
+    -- NOTE: Roles and BadgeRoles in this table are supposed to be
+    -- informative. Basically they are just a reflection of what they
+    -- were at the time. Should not be generally used for any
+    -- authentication or decision making.
     , ":senderTwitchRoles" := show senderTwitchRoles
     , ":senderTwitchBadgeRoles" := show senderTwitchBadgeRoles
     , ":message" := message
