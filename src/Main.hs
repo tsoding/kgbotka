@@ -30,11 +30,7 @@ import System.IO
 
 migrations :: [Migration]
 migrations =
-  [ "CREATE TABLE Log (\
-    \  id INTEGER PRIMARY KEY,\
-    \  message TEXT NOT NULL\
-    \);"
-  , "CREATE TABLE Command (\
+  [ "CREATE TABLE Command (\
     \  id INTEGER PRIMARY KEY,\
     \  code TEXT NOT NULL\
     \);"
@@ -57,14 +53,8 @@ migrations =
     \  submissionText TEXT NOT NULL, \
     \  submissionTime DATETIME NOT NULL, \
     \  authorTwitchId TEXT NOT NULL, \
-    \  watchedAt DATETIME \
-    \)"
-  , "ALTER TABLE FridayVideo \
-    \ADD channel TEXT NOT NULL DEFAULT \"#tsoding\""
-  , "CREATE TABLE FridayVideoRobin ( \
-    \  robinTwitchId TEXT, \
-    \  channel TEXT NOT NULL, \
-    \  UNIQUE(channel) ON CONFLICT REPLACE \
+    \  watchedAt DATETIME, \
+    \  channel TEXT NOT NULL \
     \)"
   ]
 
