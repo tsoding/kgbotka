@@ -100,8 +100,7 @@ replThread state = do
         case (response, maybeRole) of
           (Right twitchUsers, Just role') ->
             traverse_
-              (assTwitchRoleToUser dbConn (twitchRoleId role') .
-               TwitchUserId . userId)
+              (assTwitchRoleToUser dbConn (twitchRoleId role') . twitchUserId)
               twitchUsers
           (Left message, _) -> putStrLn $ "[ERROR] " <> message
           (_, Nothing) -> putStrLn "[ERROR] Such role does not exist"

@@ -4,6 +4,7 @@
 module KGBotka.TwitchAPI
   ( TwitchUser(..)
   , TwitchRes(..)
+  , TwitchUserId(..)
   , JsonResponse(..)
   , getUsersByLogins
   ) where
@@ -15,10 +16,33 @@ import Data.List
 import qualified Data.Text as T
 import Data.Text.Encoding
 import Network.HTTP.Client
+import Data.String
+import Database.SQLite.Simple
+import Database.SQLite.Simple.FromField
+import Database.SQLite.Simple.ToField
+
+newtype TwitchUserId =
+  TwitchUserId T.Text
+  deriving (Show, Eq, Ord)
+
+instance IsString TwitchUserId where
+  fromString = TwitchUserId . fromString
+
+instance ToField TwitchUserId where
+  toField (TwitchUserId userId) = toField userId
+
+instance FromField TwitchUserId where
+  fromField f = TwitchUserId <$> fromField f
+
+instance FromRow TwitchUserId where
+  fromRow = TwitchUserId <$> field
+
+instance FromJSON TwitchUserId where
+  parseJSON v = TwitchUserId <$> parseJSON v
 
 data TwitchUser = TwitchUser
-  { userId :: T.Text
-  , userLogin :: T.Text
+  { twitchUserId :: TwitchUserId
+  , twitchUserLogin :: T.Text
   } deriving (Show)
 
 newtype TwitchRes a = TwitchRes
