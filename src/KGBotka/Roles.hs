@@ -6,12 +6,20 @@ module KGBotka.Roles
   , getTwitchUserRoles
   , getTwitchRoleByName
   , TwitchRole(..)
+  , TwitchBadgeRole(..)
   ) where
 
 import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import KGBotka.TwitchAPI
+
+data TwitchBadgeRole
+  = TwitchSub
+  | TwitchVip
+  | TwitchBroadcaster
+  | TwitchMod
+  deriving (Eq, Show)
 
 data TwitchRole = TwitchRole
   { twitchRoleId :: Int

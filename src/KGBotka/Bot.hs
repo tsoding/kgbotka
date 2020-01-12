@@ -190,13 +190,6 @@ textContainsLink t =
       Just x -> Right x
       Nothing -> Left "No match found"
 
-data TwitchBadgeRole
-  = TwitchSub
-  | TwitchVip
-  | TwitchBroadcaster
-  | TwitchMod
-  deriving (Eq, Show)
-
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
   | "subscriber" `T.isPrefixOf` badge = Just TwitchSub
