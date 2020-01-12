@@ -130,7 +130,7 @@ evalExpr (FunCallExpr "nextvideo" _) = do
                                      , fridayVideoAuthorTwitchName = authorTwitchName
                                      } =
       T.pack (show subTime) <> " <" <> authorTwitchName <> "> " <> subText
--- FIXME: %friday does not inform how many times a video was suggested
+-- FIXME(#39): %friday does not inform how many times a video was suggested
 evalExpr (FunCallExpr "friday" args) = do
   roles <- evalContextRoles <$> get
   badgeRoles <- evalContextBadgeRoles <$> get
