@@ -16,7 +16,7 @@ logMessage ::
   -> [TwitchBadgeRole]
   -> T.Text
   -> IO ()
-logMessage conn channel senderTwitchId senderTwitchName senderTwitchDisplayName senderTwitchRoles senderTwitchBadgeRoles message = do
+logMessage conn channel senderTwitchId senderTwitchName senderTwitchDisplayName senderTwitchRoles senderTwitchBadgeRoles message =
   executeNamed
     conn
     "INSERT INTO TwitchLog ( \
