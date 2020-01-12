@@ -40,6 +40,7 @@ import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 import KGBotka.TwitchAPI
+import KGBotka.Log
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -277,6 +278,16 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
               (getTwitchUserRoles dbConn)
               (userIdFromRawIrcMsg rawMsg)
           let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
+          let displayName = lookupEntryValue "display-name" $ _msgTags rawMsg
+          logMessage
+            dbConn
+            (TwitchIrcChannel channelId)
+            (userIdFromRawIrcMsg rawMsg)
+            (idText $ userNick userInfo)
+            displayName
+            roles
+            badgeRoles
+            message
           -- FIXME(#31): Link filtering is not disablable
           case (roles, badgeRoles) of
             ([], [])
