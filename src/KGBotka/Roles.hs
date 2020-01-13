@@ -6,31 +6,20 @@ module KGBotka.Roles
   , getTwitchUserRoles
   , getTwitchRoleByName
   , TwitchRole(..)
-  , TwitchUserId(..)
+  , TwitchBadgeRole(..)
   ) where
 
 import Data.Maybe
-import Data.String
 import qualified Data.Text as T
 import Database.SQLite.Simple
-import Database.SQLite.Simple.FromField
-import Database.SQLite.Simple.ToField
+import KGBotka.TwitchAPI
 
-newtype TwitchUserId = TwitchUserId
-  { twitchUserId :: T.Text
-  } deriving (Show, Eq, Ord)
-
-instance IsString TwitchUserId where
-  fromString = TwitchUserId . fromString
-
-instance ToField TwitchUserId where
-  toField = toField . twitchUserId
-
-instance FromField TwitchUserId where
-  fromField f = TwitchUserId <$> fromField f
-
-instance FromRow TwitchUserId where
-  fromRow = TwitchUserId <$> field
+data TwitchBadgeRole
+  = TwitchSub
+  | TwitchVip
+  | TwitchBroadcaster
+  | TwitchMod
+  deriving (Eq, Show)
 
 data TwitchRole = TwitchRole
   { twitchRoleId :: Int

@@ -57,6 +57,17 @@ migrations =
     \  watchedAt DATETIME, \
     \  channel TEXT NOT NULL \
     \)"
+  , "CREATE TABLE TwitchLog ( \
+    \  id INTEGER PRIMARY KEY, \
+    \  channel TEXT NOT NULL, \
+    \  senderTwitchId TEXT, \
+    \  senderTwitchName TEXT NOT NULL, \
+    \  senderTwitchDisplayName TEXT, \
+    \  senderTwitchRoles TEXT NOT NULL, \
+    \  senderTwitchBadgeRoles TEXT NOT NULL, \
+    \  message TEXT NOT NULL, \
+    \  messageTime DATETIME DEFAULT (datetime('now')) NOT NULL \
+    \)"
   ]
 
 maxIrcMessage :: Int

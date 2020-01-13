@@ -30,10 +30,12 @@ import KGBotka.Command
 import KGBotka.Expr
 import KGBotka.Flip
 import KGBotka.Friday
+import KGBotka.Log
 import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
+import KGBotka.TwitchAPI
 import Network.URI
 import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
@@ -45,7 +47,7 @@ data EvalContext = EvalContext
   , evalContextSqliteConnection :: Sqlite.Connection
   , evalContextSenderId :: Maybe TwitchUserId
   , evalContextSenderName :: T.Text
-  , evalContextChannel :: Channel
+  , evalContextChannel :: TwitchIrcChannel
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
   , evalContextLogHandle :: Handle
@@ -189,13 +191,6 @@ textContainsLink t =
       Just x -> Right x
       Nothing -> Left "No match found"
 
-data TwitchBadgeRole
-  = TwitchSub
-  | TwitchVip
-  | TwitchBroadcaster
-  | TwitchMod
-  deriving (Eq, Show)
-
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
   | "subscriber" `T.isPrefixOf` badge = Just TwitchSub
@@ -283,6 +278,16 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
               (getTwitchUserRoles dbConn)
               (userIdFromRawIrcMsg rawMsg)
           let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
+          let displayName = lookupEntryValue "display-name" $ _msgTags rawMsg
+          logMessage
+            dbConn
+            (TwitchIrcChannel channelId)
+            (userIdFromRawIrcMsg rawMsg)
+            (idText $ userNick userInfo)
+            displayName
+            roles
+            badgeRoles
+            message
           -- FIXME(#31): Link filtering is not disablable
           case (roles, badgeRoles) of
             ([], [])
@@ -302,7 +307,7 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
                   , evalContextSqliteConnection = dbConn
                   , evalContextSenderId = userIdFromRawIrcMsg rawMsg
                   , evalContextSenderName = idText (userNick userInfo)
-                  , evalContextChannel = Channel channelId
+                  , evalContextChannel = TwitchIrcChannel channelId
                   , evalContextBadgeRoles = badgeRoles
                   , evalContextRoles = roles
                   , evalContextLogHandle = logHandle

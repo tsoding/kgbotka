@@ -4,7 +4,6 @@ module KGBotka.Friday
   ( submitVideo
   , FridayVideo(..)
   , nextVideo
-  , Channel(..)
   ) where
 
 import Control.Applicative
@@ -13,14 +12,10 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extra
 import qualified Data.Map as M
 import Data.Maybe
-import Data.String
 import qualified Data.Text as T
 import Data.Time
 import Database.SQLite.Simple
-import Database.SQLite.Simple.FromField
-import Database.SQLite.Simple.ToField
-import Irc.Identifier (Identifier, idText, mkId)
-import KGBotka.Roles (TwitchUserId(..))
+import KGBotka.TwitchAPI
 
 data FridayVideo = FridayVideo
   { fridayVideoId :: Int
@@ -29,7 +24,7 @@ data FridayVideo = FridayVideo
   , fridayVideoAuthorTwitchId :: TwitchUserId
   , fridayVideoAuthorTwitchName :: T.Text
   , fridayVideoWatchedAt :: Maybe UTCTime
-  , fridayVideoChannel :: Channel
+  , fridayVideoChannel :: TwitchIrcChannel
   }
 
 instance FromRow FridayVideo where
@@ -38,7 +33,7 @@ instance FromRow FridayVideo where
     field
 
 submitVideo ::
-     Connection -> T.Text -> Channel -> TwitchUserId -> T.Text -> IO ()
+     Connection -> T.Text -> TwitchIrcChannel -> TwitchUserId -> T.Text -> IO ()
 submitVideo conn subText channel authorTwitchId authorTwitchName =
   executeNamed
     conn
@@ -52,19 +47,8 @@ submitVideo conn subText channel authorTwitchId authorTwitchName =
     , ":channel" := channel
     ]
 
-newtype Channel =
-  Channel Identifier
-
-instance IsString Channel where
-  fromString = Channel . fromString
-
-instance FromField Channel where
-  fromField f = Channel . mkId <$> fromField f
-
-instance ToField Channel where
-  toField (Channel ident) = toField $ idText ident
-
-queueSlice :: Connection -> Channel -> IO (M.Map TwitchUserId FridayVideo)
+queueSlice ::
+     Connection -> TwitchIrcChannel -> IO (M.Map TwitchUserId FridayVideo)
 queueSlice conn channel =
   M.fromList . map (\x -> (fridayVideoAuthorTwitchId x, x)) <$>
   queryNamed
@@ -82,7 +66,7 @@ queueSlice conn channel =
     \GROUP BY authorTwitchId"
     [":channel" := channel]
 
-lastWatchedAuthor :: Connection -> Channel -> MaybeT IO TwitchUserId
+lastWatchedAuthor :: Connection -> TwitchIrcChannel -> MaybeT IO TwitchUserId
 lastWatchedAuthor conn channel =
   MaybeT
     (listToMaybe <$>
@@ -104,7 +88,7 @@ watchVideoById conn videoId =
     \WHERE id = :id"
     [":id" := videoId]
 
-nextVideo :: Connection -> Channel -> MaybeT IO FridayVideo
+nextVideo :: Connection -> TwitchIrcChannel -> MaybeT IO FridayVideo
 nextVideo conn channel = do
   author <- lastWatchedAuthor conn channel <|> return ""
   slice <- lift $ queueSlice conn channel
