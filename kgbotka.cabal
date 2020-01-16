@@ -71,6 +71,7 @@ executable kgbotka
                      , KGBotka.Config
                      , KGBotka.Friday
                      , KGBotka.Log
+                     , KGBotka.Markov
                      , Control.Monad.Trans.Maybe.Extra
 
   -- LANGUAGE extensions used by modules in this package.
@@ -97,6 +98,7 @@ executable kgbotka
                      , http-client-tls >=0.3.5 && <0.4
                      , regex-base >=0.94.0 && <0.95
                      , regex-tdfa >=1.3.1 && <1.4
+                     , random >=1.1 && <1.2
 
   -- Directories containing source files.
   hs-source-dirs:      src
