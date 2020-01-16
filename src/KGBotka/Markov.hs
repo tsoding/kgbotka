@@ -12,7 +12,7 @@ import System.Random
 import Data.List
 
 -- TODO(#46): Markov does not split models by twitch channels
--- TODO: there is no way to retrain the model from the TwitchLog
+-- TODO(#47): there is no way to retrain the model from the TwitchLog
 -- TODO: KGBotka does not response with Markov when mentioned
 
 data Event
