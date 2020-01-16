@@ -68,6 +68,13 @@ migrations =
     \  message TEXT NOT NULL, \
     \  messageTime DATETIME DEFAULT (datetime('now')) NOT NULL \
     \)"
+  , "CREATE TABLE Markov ( \
+    \  event1 TEXT NOT NULL, \
+    \  event2 TEXT NOT NULL, \
+    \  n INTEGER NOT NULL, \
+    \  UNIQUE (event1, event2) ON CONFLICT REPLACE \
+    \); \
+    \CREATE INDEX markov_event1_index ON Markov (event1);"
   ]
 
 maxIrcMessage :: Int
