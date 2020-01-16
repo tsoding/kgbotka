@@ -11,7 +11,7 @@ import Control.Monad.Trans.Maybe
 import System.Random
 import Data.List
 
--- TODO: Markov does not split models by twitch channels
+-- TODO(#46): Markov does not split models by twitch channels
 -- TODO: there is no way to retrain the model from the TwitchLog
 -- TODO: KGBotka does not response with Markov when mentioned
 
