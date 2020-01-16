@@ -1,20 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module KGBotka.Markov where
 
-import qualified Data.Text as T
-import Database.SQLite.Simple
-import Database.SQLite.Simple.ToField
-import Database.SQLite.Simple.FromField
-import Data.Maybe
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import System.Random
 import Data.List
+import Data.Maybe
+import qualified Data.Text as T
+import Database.SQLite.Simple
+import Database.SQLite.Simple.FromField
+import Database.SQLite.Simple.ToField
+import System.Random
 
 -- TODO(#46): Markov does not split models by twitch channels
 -- TODO(#47): there is no way to retrain the model from the TwitchLog
 -- TODO(#48): KGBotka does not response with Markov when mentioned
-
 data Event
   = Begin
   | Word T.Text
@@ -63,7 +63,6 @@ nextMarkovEvent conn event1 = do
   case a of
     [] -> return End
     (event', _):_ -> return event'
-
 
 seqMarkovEvents :: Event -> Event -> Connection -> IO [Event]
 seqMarkovEvents begin end m

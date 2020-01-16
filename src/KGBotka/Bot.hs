@@ -32,6 +32,7 @@ import KGBotka.Expr
 import KGBotka.Flip
 import KGBotka.Friday
 import KGBotka.Log
+import KGBotka.Markov
 import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Repl
@@ -42,7 +43,6 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import KGBotka.Markov
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
