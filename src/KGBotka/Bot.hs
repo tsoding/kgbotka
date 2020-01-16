@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module KGBotka.Bot
   ( botThread
@@ -41,6 +42,7 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import KGBotka.Markov
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -109,6 +111,19 @@ evalExpr (FunCallExpr "urlencode" args) =
   T.concat . map (T.pack . encodeURI . T.unpack) <$> mapM evalExpr args
   where
     encodeURI = escapeURIString (const False)
+evalExpr (FunCallExpr "markov" _) = do
+  dbConn <- evalContextSqliteConnection <$> get
+  logHandle <- evalContextLogHandle <$> get
+  events <- lift $ lift $ seqMarkovEvents Begin End dbConn
+  lift $ lift $ hPutStrLn logHandle $ "[MARKOV] " <> show events
+  return $
+    T.unwords $
+    mapMaybe
+      (\case
+         Begin -> Nothing
+         End -> Nothing
+         Word x -> Just x)
+      events
 evalExpr (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM evalExpr args
 -- FIXME(#18): Friday video list is not published on gist
@@ -288,6 +303,7 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
             roles
             badgeRoles
             message
+          addMarkovSentence dbConn message
           -- FIXME(#31): Link filtering is not disablable
           case (roles, badgeRoles) of
             ([], [])
