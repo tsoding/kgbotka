@@ -274,9 +274,9 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
                             , botStateLogHandle = logHandle
                             } = do
   threadDelay 10000 -- to prevent busy looping
-  maybeRawMsg <- atomically $ tryReadQueue incomingQueue
-  for_ maybeRawMsg $ \rawMsg ->
-    Sqlite.withTransaction dbConn $ do
+  maybeRawMsg <- atomically $ flushQueue incomingQueue
+  Sqlite.withTransaction dbConn $
+    for_ maybeRawMsg $ \rawMsg -> do
       let cookedMsg = cookIrcMsg rawMsg
       hPutStrLn logHandle $ "[TWITCH] " <> show rawMsg
       hFlush logHandle
