@@ -6,6 +6,7 @@ module KGBotka.Queue
   , tryReadQueue
   , toWriteQueue
   , toReadQueue
+  , flushQueue
   ) where
 
 import Control.Concurrent.STM
@@ -29,6 +30,10 @@ readQueue = readTQueue . getReadQueue
 {-# INLINE tryReadQueue #-}
 tryReadQueue :: ReadQueue a -> STM (Maybe a)
 tryReadQueue = tryReadTQueue . getReadQueue
+
+{-# INLINE flushQueue #-}
+flushQueue :: ReadQueue a -> STM [a]
+flushQueue = flushTQueue . getReadQueue
 
 {-# INLINE toWriteQueue #-}
 toWriteQueue :: ReadQueue a -> WriteQueue a
