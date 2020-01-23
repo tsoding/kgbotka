@@ -168,8 +168,9 @@ mainWithArgs (configPath:databasePath:_) = do
                   , botStateSqliteFileName = databasePath
                   , botStateLogHandle = logHandler
                   }
-              ] $ \_ ->
+              ] $ \_
               -- TODO: backdoor port is hardcoded
+             ->
               backdoorThread "6969" $
               ReplState
                 { replStateChannels = joinedChannels

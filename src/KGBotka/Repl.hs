@@ -9,6 +9,7 @@ module KGBotka.Repl
 
 import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Exception
 import Control.Monad
 import Data.Foldable
 import Data.Maybe
@@ -23,9 +24,8 @@ import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
-import System.IO
 import Network.Socket
-import Control.Exception
+import System.IO
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set Identifier))
@@ -51,6 +51,10 @@ replThread initState
     Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
     replThread' conn initState
 
+-- TODO: there is no shutdown command that shuts down the whole bot
+-- Since we introduce backdoor connections the quit command does
+-- not serve such purpose anymore, 'cause it only closes the current
+-- REPL connection
 replThread' :: Sqlite.Connection -> ReplState -> IO ()
 replThread' dbConn state = do
   let replHandle = replStateHandle state
@@ -114,7 +118,8 @@ replThread' dbConn state = do
               (assTwitchRoleToUser dbConn (twitchRoleId role') . twitchUserId)
               twitchUsers
           (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
-          (_, Nothing) -> hPutStrLn replHandle "[ERROR] Such role does not exist"
+          (_, Nothing) ->
+            hPutStrLn replHandle "[ERROR] Such role does not exist"
       replThread' dbConn state
     (unknown:_, _) -> do
       hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
@@ -141,8 +146,9 @@ backdoorThread port' initState = do
       return sock
     loop sock = do
       (conn, _) <- accept sock
+      -- TODO: backdoor repl connection is not always closed upon the quit command
       void $ forkFinally (talk conn) (const $ close conn)
       loop sock
     talk conn = do
       connHandle <- socketToHandle conn ReadWriteMode
-      replThread $ initState { replStateHandle = connHandle } 
+      replThread $ initState {replStateHandle = connHandle}
