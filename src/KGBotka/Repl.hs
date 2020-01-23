@@ -146,7 +146,7 @@ backdoorThread port' initState = do
       return sock
     loop sock = do
       (conn, _) <- accept sock
-      -- TODO: backdoor repl connection is not always closed upon the quit command
+      -- TODO(#62): backdoor repl connection is not always closed upon the quit command
       void $ forkFinally (talk conn) (const $ close conn)
       loop sock
     talk conn = do
