@@ -57,7 +57,7 @@ replThread' dbConn state = do
   hPutStr replHandle $
     "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
   hFlush (replStateHandle state)
-  cmd <- T.words . T.pack <$> getLine
+  cmd <- T.words . T.pack <$> hGetLine replHandle
   case (cmd, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
       replThread' dbConn $ state {replStateCurrentChannel = Just channel}
@@ -122,8 +122,8 @@ replThread' dbConn state = do
     _ -> replThread' dbConn state
 
 -- TODO: backdoor does not log incoming connections
-backdoorThread :: String -> WriteQueue ReplCommand -> IO ()
-backdoorThread port' _{-replCommands-} = do
+backdoorThread :: String -> ReplState -> IO ()
+backdoorThread port' initState = do
   addr <- resolve port'
   bracket (open addr) close loop
   where
@@ -143,6 +143,6 @@ backdoorThread port' _{-replCommands-} = do
       (conn, _) <- accept sock
       void $ forkFinally (talk conn) (const $ close conn)
       loop sock
-    talk _{-conn-} = undefined --do
-      --connHandle <- socketToHandle conn ReadWriteMode
-      --evalStateT (consoleEnv console) $ HandleChannel connHandle connHandle
+    talk conn = do
+      connHandle <- socketToHandle conn ReadWriteMode
+      replThread $ initState { replStateHandle = connHandle } 
