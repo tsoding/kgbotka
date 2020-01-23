@@ -18,10 +18,10 @@ import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Queue
 import KGBotka.Roles
+import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import System.IO
-import KGBotka.Sqlite
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set Identifier))
@@ -39,8 +39,9 @@ data ReplCommand
   | PartChannel Identifier
 
 replThread :: ReplState -> IO ()
-replThread initState =
+replThread initState
   -- TODO: redesign Bot and Repl threads with database lock situations in mind
+ =
   withConnectionAndPragmas (replStateSqliteFileName initState) $ \conn -> do
     Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
     replThread' conn initState
@@ -54,7 +55,8 @@ replThread' dbConn state = do
   case (cmd, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
       replThread' dbConn $ state {replStateCurrentChannel = Just channel}
-    ("cd":_, _) -> replThread' dbConn $ state {replStateCurrentChannel = Nothing}
+    ("cd":_, _) ->
+      replThread' dbConn $ state {replStateCurrentChannel = Nothing}
     ("say":args, Just channel) -> do
       atomically $
         writeQueue (replStateCommandQueue state) $ Say channel $ T.unwords args

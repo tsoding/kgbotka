@@ -37,13 +37,13 @@ import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
+import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import Network.URI
 import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import KGBotka.Sqlite
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -271,7 +271,7 @@ botThread initState =
   withConnectionAndPragmas (botStateSqliteFileName initState) $ \conn ->
     botThread' conn initState
 
-botThread' :: Sqlite.Connection ->BotState -> IO ()
+botThread' :: Sqlite.Connection -> BotState -> IO ()
 botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
                                     , botStateOutgoingQueue = outgoingQueue
                                     , botStateReplQueue = replQueue

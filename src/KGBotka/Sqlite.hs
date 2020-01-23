@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module KGBotka.Sqlite (withConnectionAndPragmas) where
+module KGBotka.Sqlite
+  ( withConnectionAndPragmas
+  ) where
 
 import qualified Database.SQLite.Simple as Sqlite
 

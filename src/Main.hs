@@ -22,12 +22,12 @@ import KGBotka.Config
 import KGBotka.Migration
 import KGBotka.Queue
 import KGBotka.Repl
+import KGBotka.Sqlite
 import qualified Network.HTTP.Client.TLS as TLS
 import Network.Socket (Family(AF_INET))
 import System.Environment
 import System.Exit
 import System.IO
-import KGBotka.Sqlite
 
 migrations :: [Migration]
 migrations =
