@@ -40,7 +40,7 @@ data ReplCommand
 
 replThread :: ReplState -> IO ()
 replThread initState
-  -- TODO: redesign Bot and Repl threads with database lock situations in mind
+  -- TODO(#58): redesign Bot and Repl threads with database lock situations in mind
  =
   withConnectionAndPragmas (replStateSqliteFileName initState) $ \conn -> do
     Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
