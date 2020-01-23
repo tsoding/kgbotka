@@ -22,6 +22,7 @@ import KGBotka.Config
 import KGBotka.Migration
 import KGBotka.Queue
 import KGBotka.Repl
+import KGBotka.Sqlite
 import qualified Network.HTTP.Client.TLS as TLS
 import Network.Socket (Family(AF_INET))
 import System.Environment
@@ -101,12 +102,6 @@ twitchConnectionParams =
 withConnection :: ConnectionParams -> (Connection -> IO a) -> IO a
 withConnection params = bracket (connect params) close
 
-withSqliteConnection :: FilePath -> (Sqlite.Connection -> IO a) -> IO a
-withSqliteConnection filePath f =
-  bracket (Sqlite.open filePath) Sqlite.close $ \dbConn -> do
-    Sqlite.execute_ dbConn "PRAGMA foreign_keys=ON"
-    f dbConn
-
 sendMsg :: Connection -> RawIrcMsg -> IO ()
 sendMsg conn msg = send conn (renderRawIrcMsg msg)
 
@@ -156,7 +151,7 @@ mainWithArgs (configPath:databasePath:_) = do
       replQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
-      withSqliteConnection databasePath $ \dbConn -> do
+      withConnectionAndPragmas databasePath $ \dbConn -> do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
@@ -170,14 +165,14 @@ mainWithArgs (configPath:databasePath:_) = do
                   , botStateOutgoingQueue = WriteQueue outgoingIrcQueue
                   , botStateReplQueue = ReadQueue replQueue
                   , botStateChannels = joinedChannels
-                  , botStateSqliteConnection = dbConn
+                  , botStateSqliteFileName = databasePath
                   , botStateLogHandle = logHandler
                   }
               ] $ \_ ->
               replThread $
               ReplState
                 { replStateChannels = joinedChannels
-                , replStateSqliteConnection = dbConn
+                , replStateSqliteFileName = databasePath
                 , replStateCurrentChannel = Nothing
                 , replStateCommandQueue = WriteQueue replQueue
                 , replStateConfigTwitch = config

@@ -37,6 +37,7 @@ import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
+import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import Network.URI
 import System.IO
@@ -241,7 +242,7 @@ data BotState = BotState
   , botStateOutgoingQueue :: !(WriteQueue RawIrcMsg)
   , botStateReplQueue :: !(ReadQueue ReplCommand)
   , botStateChannels :: !(TVar (S.Set Identifier))
-  , botStateSqliteConnection :: !Sqlite.Connection
+  , botStateSqliteFileName :: !FilePath
   , botStateLogHandle :: !Handle
   }
 
@@ -266,13 +267,17 @@ evalCommandPipe =
   foldlM (\args -> evalCommandCall . ccArgsModify (`T.append` args)) ""
 
 botThread :: BotState -> IO ()
-botThread botState@BotState { botStateIncomingQueue = incomingQueue
-                            , botStateOutgoingQueue = outgoingQueue
-                            , botStateReplQueue = replQueue
-                            , botStateChannels = channels
-                            , botStateSqliteConnection = dbConn
-                            , botStateLogHandle = logHandle
-                            } = do
+botThread initState =
+  withConnectionAndPragmas (botStateSqliteFileName initState) $ \conn ->
+    botThread' conn initState
+
+botThread' :: Sqlite.Connection -> BotState -> IO ()
+botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
+                                    , botStateOutgoingQueue = outgoingQueue
+                                    , botStateReplQueue = replQueue
+                                    , botStateChannels = channels
+                                    , botStateLogHandle = logHandle
+                                    } = do
   threadDelay 10000 -- to prevent busy looping
   maybeRawMsg <- atomically $ flushQueue incomingQueue
   Sqlite.withTransaction dbConn $
@@ -348,7 +353,7 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
       Just (PartChannel channelId) ->
         writeQueue outgoingQueue $ ircPart channelId ""
       Nothing -> return ()
-  botThread botState
+  botThread' dbConn botState
   where
     twitchCmdEscape :: T.Text -> T.Text
     twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip
