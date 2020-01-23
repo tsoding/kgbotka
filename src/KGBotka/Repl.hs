@@ -2,10 +2,12 @@
 
 module KGBotka.Repl
   ( replThread
+  , backdoorThread
   , ReplState(..)
   , ReplCommand(..)
   ) where
 
+import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
 import Data.Foldable
@@ -22,6 +24,8 @@ import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import System.IO
+import Network.Socket
+import Control.Exception
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set Identifier))
@@ -114,3 +118,29 @@ replThread' dbConn state = do
       putStrLn $ T.unpack $ "Unknown command: " <> unknown
       replThread' dbConn state
     _ -> replThread' dbConn state
+
+backdoorThread :: String -> WriteQueue ReplCommand -> IO ()
+backdoorThread port' _{-replCommands-} = do
+  addr <- resolve port'
+  bracket (open addr) close loop
+  where
+    resolve port = do
+      let hints =
+            defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}
+      addr:_ <- getAddrInfo (Just hints) (Just "127.0.0.1") (Just port)
+      return addr
+    open addr = do
+      sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
+      setSocketOption sock ReuseAddr 1
+      bind sock (addrAddress addr)
+      setCloseOnExecIfNeeded $ fdSocket sock
+      listen sock 10
+      return sock
+    loop sock = do
+      (conn, peer) <- accept sock
+      putStrLn $ "Connection from " ++ show peer
+      void $ forkFinally (talk conn) (const $ close conn)
+      loop sock
+    talk _{-conn-} = undefined --do
+      --connHandle <- socketToHandle conn ReadWriteMode
+      --evalStateT (consoleEnv console) $ HandleChannel connHandle connHandle
