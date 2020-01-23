@@ -241,7 +241,7 @@ data BotState = BotState
   , botStateOutgoingQueue :: !(WriteQueue RawIrcMsg)
   , botStateReplQueue :: !(ReadQueue ReplCommand)
   , botStateChannels :: !(TVar (S.Set Identifier))
-  , botStateSqliteConnection :: !Sqlite.Connection
+  , botStateSqliteFileName :: !FilePath
   , botStateLogHandle :: !Handle
   }
 
@@ -266,13 +266,18 @@ evalCommandPipe =
   foldlM (\args -> evalCommandCall . ccArgsModify (`T.append` args)) ""
 
 botThread :: BotState -> IO ()
-botThread botState@BotState { botStateIncomingQueue = incomingQueue
-                            , botStateOutgoingQueue = outgoingQueue
-                            , botStateReplQueue = replQueue
-                            , botStateChannels = channels
-                            , botStateSqliteConnection = dbConn
-                            , botStateLogHandle = logHandle
-                            } = do
+botThread initState =
+  Sqlite.withConnection (botStateSqliteFileName initState) $ \conn -> do
+    Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
+    botThread' conn initState
+
+botThread' :: Sqlite.Connection ->BotState -> IO ()
+botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
+                                    , botStateOutgoingQueue = outgoingQueue
+                                    , botStateReplQueue = replQueue
+                                    , botStateChannels = channels
+                                    , botStateLogHandle = logHandle
+                                    } = do
   threadDelay 10000 -- to prevent busy looping
   maybeRawMsg <- atomically $ flushQueue incomingQueue
   Sqlite.withTransaction dbConn $
@@ -348,7 +353,7 @@ botThread botState@BotState { botStateIncomingQueue = incomingQueue
       Just (PartChannel channelId) ->
         writeQueue outgoingQueue $ ircPart channelId ""
       Nothing -> return ()
-  botThread botState
+  botThread' dbConn botState
   where
     twitchCmdEscape :: T.Text -> T.Text
     twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip

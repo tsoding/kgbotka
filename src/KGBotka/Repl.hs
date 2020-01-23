@@ -24,7 +24,7 @@ import System.IO
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set Identifier))
-  , replStateSqliteConnection :: !Sqlite.Connection
+  , replStateSqliteFileName :: !FilePath
   , replStateCurrentChannel :: !(Maybe T.Text)
   , replStateCommandQueue :: !(WriteQueue ReplCommand)
   , replStateConfigTwitch :: !ConfigTwitch
@@ -38,57 +38,58 @@ data ReplCommand
   | PartChannel Identifier
 
 replThread :: ReplState -> IO ()
-replThread state = do
+replThread initState =
+  Sqlite.withConnection (replStateSqliteFileName initState) $ \conn -> do
+    Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
+    replThread' conn initState
+
+replThread' :: Sqlite.Connection -> ReplState -> IO ()
+replThread' dbConn state = do
   putStr $
     "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
   hFlush stdout
   cmd <- T.words . T.pack <$> getLine
   case (cmd, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
-      replThread $ state {replStateCurrentChannel = Just channel}
-    ("cd":_, _) -> replThread $ state {replStateCurrentChannel = Nothing}
+      replThread' dbConn $ state {replStateCurrentChannel = Just channel}
+    ("cd":_, _) -> replThread' dbConn $ state {replStateCurrentChannel = Nothing}
     ("say":args, Just channel) -> do
       atomically $
         writeQueue (replStateCommandQueue state) $ Say channel $ T.unwords args
-      replThread state
+      replThread' dbConn state
     ("say":_, Nothing) -> do
       putStrLn "No current channel to say anything to is selected"
-      replThread state
+      replThread' dbConn state
     ("quit":_, _) -> return ()
     ("q":_, _) -> return ()
     ("join":channel:_, _) -> do
       atomically $
         writeQueue (replStateCommandQueue state) $ JoinChannel channel
-      replThread $ state {replStateCurrentChannel = Just channel}
+      replThread' dbConn $ state {replStateCurrentChannel = Just channel}
     ("part":_, Just channel) -> do
       atomically $ do
         let channelId = mkId channel
         isMember <- S.member channelId <$> readTVar (replStateChannels state)
         when isMember $
           writeQueue (replStateCommandQueue state) $ PartChannel channelId
-      replThread $ state {replStateCurrentChannel = Nothing}
+      replThread' dbConn $ state {replStateCurrentChannel = Nothing}
     ("ls":_, _) -> do
       traverse_ (putStrLn . T.unpack . idText) =<<
         S.toList <$> readTVarIO (replStateChannels state)
-      replThread state
+      replThread' dbConn state
     ("addcmd":name:args, _) -> do
-      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ addCommand dbConn name (T.unwords args)
-      replThread state
+      replThread' dbConn state
     ("addalias":alias:name:_, _) -> do
-      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ addCommandName dbConn alias name
-      replThread state
+      replThread' dbConn state
     ("delcmd":name:_, _) -> do
-      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ deleteCommandByName dbConn name
-      replThread state
+      replThread' dbConn state
     ("delalias":name:_, _) -> do
-      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ deleteCommandName dbConn name
-      replThread state
+      replThread' dbConn state
     ("assrole":roleName:users, _) -> do
-      let dbConn = replStateSqliteConnection state
       Sqlite.withTransaction dbConn $ do
         maybeRole <- getTwitchRoleByName dbConn roleName
         response <-
@@ -104,8 +105,8 @@ replThread state = do
               twitchUsers
           (Left message, _) -> putStrLn $ "[ERROR] " <> message
           (_, Nothing) -> putStrLn "[ERROR] Such role does not exist"
-      replThread state
+      replThread' dbConn state
     (unknown:_, _) -> do
       putStrLn $ T.unpack $ "Unknown command: " <> unknown
-      replThread state
-    _ -> replThread state
+      replThread' dbConn state
+    _ -> replThread' dbConn state
