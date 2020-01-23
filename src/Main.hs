@@ -169,7 +169,7 @@ mainWithArgs (configPath:databasePath:_) = do
                   , botStateLogHandle = logHandler
                   }
               ] $ \_
-              -- TODO: backdoor port is hardcoded
+              -- TODO(#63): backdoor port is hardcoded
              ->
               backdoorThread "6969" $
               ReplState
