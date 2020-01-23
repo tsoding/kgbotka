@@ -177,6 +177,7 @@ mainWithArgs (configPath:databasePath:_) = do
                 , replStateCommandQueue = WriteQueue replQueue
                 , replStateConfigTwitch = config
                 , replStateManager = manager
+                , replStateHandle = stdout
                 }
       putStrLn "Done"
     Left errorMessage -> error errorMessage

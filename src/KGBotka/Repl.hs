@@ -34,6 +34,7 @@ data ReplState = ReplState
   , replStateCommandQueue :: !(WriteQueue ReplCommand)
   , replStateConfigTwitch :: !ConfigTwitch
   , replStateManager :: !HTTP.Manager
+  , replStateHandle :: !Handle
   }
 
 data ReplCommand
@@ -52,9 +53,10 @@ replThread initState
 
 replThread' :: Sqlite.Connection -> ReplState -> IO ()
 replThread' dbConn state = do
-  putStr $
+  let replHandle = replStateHandle state
+  hPutStr replHandle $
     "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
-  hFlush stdout
+  hFlush (replStateHandle state)
   cmd <- T.words . T.pack <$> getLine
   case (cmd, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
@@ -66,7 +68,7 @@ replThread' dbConn state = do
         writeQueue (replStateCommandQueue state) $ Say channel $ T.unwords args
       replThread' dbConn state
     ("say":_, Nothing) -> do
-      putStrLn "No current channel to say anything to is selected"
+      hPutStrLn replHandle "No current channel to say anything to is selected"
       replThread' dbConn state
     ("quit":_, _) -> return ()
     ("q":_, _) -> return ()
@@ -82,7 +84,7 @@ replThread' dbConn state = do
           writeQueue (replStateCommandQueue state) $ PartChannel channelId
       replThread' dbConn $ state {replStateCurrentChannel = Nothing}
     ("ls":_, _) -> do
-      traverse_ (putStrLn . T.unpack . idText) =<<
+      traverse_ (hPutStrLn replHandle . T.unpack . idText) =<<
         S.toList <$> readTVarIO (replStateChannels state)
       replThread' dbConn state
     ("addcmd":name:args, _) -> do
@@ -111,14 +113,15 @@ replThread' dbConn state = do
             traverse_
               (assTwitchRoleToUser dbConn (twitchRoleId role') . twitchUserId)
               twitchUsers
-          (Left message, _) -> putStrLn $ "[ERROR] " <> message
-          (_, Nothing) -> putStrLn "[ERROR] Such role does not exist"
+          (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
+          (_, Nothing) -> hPutStrLn replHandle "[ERROR] Such role does not exist"
       replThread' dbConn state
     (unknown:_, _) -> do
-      putStrLn $ T.unpack $ "Unknown command: " <> unknown
+      hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
       replThread' dbConn state
     _ -> replThread' dbConn state
 
+-- TODO: backdoor does not log incoming connections
 backdoorThread :: String -> WriteQueue ReplCommand -> IO ()
 backdoorThread port' _{-replCommands-} = do
   addr <- resolve port'
@@ -137,8 +140,7 @@ backdoorThread port' _{-replCommands-} = do
       listen sock 10
       return sock
     loop sock = do
-      (conn, peer) <- accept sock
-      putStrLn $ "Connection from " ++ show peer
+      (conn, _) <- accept sock
       void $ forkFinally (talk conn) (const $ close conn)
       loop sock
     talk _{-conn-} = undefined --do
