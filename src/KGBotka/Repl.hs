@@ -126,7 +126,7 @@ replThread' dbConn state = do
       replThread' dbConn state
     _ -> replThread' dbConn state
 
--- TODO: backdoor does not log incoming connections
+-- TODO(#61): backdoor does not log incoming connections
 backdoorThread :: String -> ReplState -> IO ()
 backdoorThread port' initState = do
   addr <- resolve port'
