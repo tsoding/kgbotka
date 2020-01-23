@@ -168,8 +168,10 @@ mainWithArgs (configPath:databasePath:_) = do
                   , botStateSqliteFileName = databasePath
                   , botStateLogHandle = logHandler
                   }
-              ] $ \_ ->
-              replThread $
+              ] $ \_
+              -- TODO(#63): backdoor port is hardcoded
+             ->
+              backdoorThread "6969" $
               ReplState
                 { replStateChannels = joinedChannels
                 , replStateSqliteFileName = databasePath
@@ -177,6 +179,7 @@ mainWithArgs (configPath:databasePath:_) = do
                 , replStateCommandQueue = WriteQueue replQueue
                 , replStateConfigTwitch = config
                 , replStateManager = manager
+                , replStateHandle = stdout
                 }
       putStrLn "Done"
     Left errorMessage -> error errorMessage

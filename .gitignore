@@ -5,3 +5,5 @@ dist/
 *.log
 *.db
 *.swp
+*.db-shm
+*.db-wal

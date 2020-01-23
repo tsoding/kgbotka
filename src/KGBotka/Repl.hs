@@ -2,11 +2,14 @@
 
 module KGBotka.Repl
   ( replThread
+  , backdoorThread
   , ReplState(..)
   , ReplCommand(..)
   ) where
 
+import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Exception
 import Control.Monad
 import Data.Foldable
 import Data.Maybe
@@ -21,6 +24,7 @@ import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
+import Network.Socket
 import System.IO
 
 data ReplState = ReplState
@@ -30,6 +34,7 @@ data ReplState = ReplState
   , replStateCommandQueue :: !(WriteQueue ReplCommand)
   , replStateConfigTwitch :: !ConfigTwitch
   , replStateManager :: !HTTP.Manager
+  , replStateHandle :: !Handle
   }
 
 data ReplCommand
@@ -46,12 +51,17 @@ replThread initState
     Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
     replThread' conn initState
 
+-- TODO(#60): there is no shutdown command that shuts down the whole bot
+-- Since we introduce backdoor connections the quit command does
+-- not serve such purpose anymore, 'cause it only closes the current
+-- REPL connection
 replThread' :: Sqlite.Connection -> ReplState -> IO ()
 replThread' dbConn state = do
-  putStr $
+  let replHandle = replStateHandle state
+  hPutStr replHandle $
     "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
-  hFlush stdout
-  cmd <- T.words . T.pack <$> getLine
+  hFlush (replStateHandle state)
+  cmd <- T.words . T.pack <$> hGetLine replHandle
   case (cmd, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
       replThread' dbConn $ state {replStateCurrentChannel = Just channel}
@@ -62,7 +72,7 @@ replThread' dbConn state = do
         writeQueue (replStateCommandQueue state) $ Say channel $ T.unwords args
       replThread' dbConn state
     ("say":_, Nothing) -> do
-      putStrLn "No current channel to say anything to is selected"
+      hPutStrLn replHandle "No current channel to say anything to is selected"
       replThread' dbConn state
     ("quit":_, _) -> return ()
     ("q":_, _) -> return ()
@@ -78,7 +88,7 @@ replThread' dbConn state = do
           writeQueue (replStateCommandQueue state) $ PartChannel channelId
       replThread' dbConn $ state {replStateCurrentChannel = Nothing}
     ("ls":_, _) -> do
-      traverse_ (putStrLn . T.unpack . idText) =<<
+      traverse_ (hPutStrLn replHandle . T.unpack . idText) =<<
         S.toList <$> readTVarIO (replStateChannels state)
       replThread' dbConn state
     ("addcmd":name:args, _) -> do
@@ -107,10 +117,38 @@ replThread' dbConn state = do
             traverse_
               (assTwitchRoleToUser dbConn (twitchRoleId role') . twitchUserId)
               twitchUsers
-          (Left message, _) -> putStrLn $ "[ERROR] " <> message
-          (_, Nothing) -> putStrLn "[ERROR] Such role does not exist"
+          (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
+          (_, Nothing) ->
+            hPutStrLn replHandle "[ERROR] Such role does not exist"
       replThread' dbConn state
     (unknown:_, _) -> do
-      putStrLn $ T.unpack $ "Unknown command: " <> unknown
+      hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
       replThread' dbConn state
     _ -> replThread' dbConn state
+
+-- TODO(#61): backdoor does not log incoming connections
+backdoorThread :: String -> ReplState -> IO ()
+backdoorThread port' initState = do
+  addr <- resolve port'
+  bracket (open addr) close loop
+  where
+    resolve port = do
+      let hints =
+            defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}
+      addr:_ <- getAddrInfo (Just hints) (Just "127.0.0.1") (Just port)
+      return addr
+    open addr = do
+      sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
+      setSocketOption sock ReuseAddr 1
+      bind sock (addrAddress addr)
+      setCloseOnExecIfNeeded $ fdSocket sock
+      listen sock 10
+      return sock
+    loop sock = do
+      (conn, _) <- accept sock
+      -- TODO(#62): backdoor repl connection is not always closed upon the quit command
+      void $ forkFinally (talk conn) (const $ close conn)
+      loop sock
+    talk conn = do
+      connHandle <- socketToHandle conn ReadWriteMode
+      replThread $ initState {replStateHandle = connHandle}

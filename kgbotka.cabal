@@ -92,7 +92,7 @@ executable kgbotka
                      , aeson >=1.4.6 && <1.5
                      , irc-core >=2.7 && <2.8
                      , hookup >=0.3 && <0.4
-                     , network >=2.6 && <2.7
+                     , network >=2.7 && <2.8
                      , sqlite-simple >=0.4.16 && <0.5
                      , network-uri >=2.6.1 && <2.7
                      , http-client >=0.6.4 && <0.7
