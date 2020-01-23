@@ -51,7 +51,7 @@ replThread initState
     Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
     replThread' conn initState
 
--- TODO: there is no shutdown command that shuts down the whole bot
+-- TODO(#60): there is no shutdown command that shuts down the whole bot
 -- Since we introduce backdoor connections the quit command does
 -- not serve such purpose anymore, 'cause it only closes the current
 -- REPL connection
