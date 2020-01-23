@@ -43,6 +43,7 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import KGBotka.Sqlite
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -267,8 +268,7 @@ evalCommandPipe =
 
 botThread :: BotState -> IO ()
 botThread initState =
-  Sqlite.withConnection (botStateSqliteFileName initState) $ \conn -> do
-    Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
+  withConnectionAndPragmas (botStateSqliteFileName initState) $ \conn ->
     botThread' conn initState
 
 botThread' :: Sqlite.Connection ->BotState -> IO ()

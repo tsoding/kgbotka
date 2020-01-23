@@ -72,6 +72,7 @@ executable kgbotka
                      , KGBotka.Friday
                      , KGBotka.Log
                      , KGBotka.Markov
+                     , KGBotka.Sqlite
                      , Control.Monad.Trans.Maybe.Extra
 
   -- LANGUAGE extensions used by modules in this package.

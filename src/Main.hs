@@ -27,6 +27,7 @@ import Network.Socket (Family(AF_INET))
 import System.Environment
 import System.Exit
 import System.IO
+import KGBotka.Sqlite
 
 migrations :: [Migration]
 migrations =
@@ -101,12 +102,6 @@ twitchConnectionParams =
 withConnection :: ConnectionParams -> (Connection -> IO a) -> IO a
 withConnection params = bracket (connect params) close
 
-withSqliteConnection :: FilePath -> (Sqlite.Connection -> IO a) -> IO a
-withSqliteConnection filePath f =
-  bracket (Sqlite.open filePath) Sqlite.close $ \dbConn -> do
-    Sqlite.execute_ dbConn "PRAGMA foreign_keys=ON"
-    f dbConn
-
 sendMsg :: Connection -> RawIrcMsg -> IO ()
 sendMsg conn msg = send conn (renderRawIrcMsg msg)
 
@@ -156,33 +151,33 @@ mainWithArgs (configPath:databasePath:_) = do
       replQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
-      withSqliteConnection databasePath $ \dbConn -> do
+      withConnectionAndPragmas databasePath $ \dbConn -> do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
-      withConnection twitchConnectionParams $ \conn -> do
-        authorize config conn
-        withFile "twitch.log" AppendMode $ \logHandler ->
-          withForkIOs
-            [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
-            , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
-            , botThread $
-              BotState
-                { botStateIncomingQueue = ReadQueue incomingIrcQueue
-                , botStateOutgoingQueue = WriteQueue outgoingIrcQueue
-                , botStateReplQueue = ReadQueue replQueue
-                , botStateChannels = joinedChannels
-                , botStateSqliteFileName = databasePath
-                , botStateLogHandle = logHandler
+        withConnection twitchConnectionParams $ \conn -> do
+          authorize config conn
+          withFile "twitch.log" AppendMode $ \logHandler ->
+            withForkIOs
+              [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
+              , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
+              , botThread $
+                BotState
+                  { botStateIncomingQueue = ReadQueue incomingIrcQueue
+                  , botStateOutgoingQueue = WriteQueue outgoingIrcQueue
+                  , botStateReplQueue = ReadQueue replQueue
+                  , botStateChannels = joinedChannels
+                  , botStateSqliteFileName = databasePath
+                  , botStateLogHandle = logHandler
+                  }
+              ] $ \_ ->
+              replThread $
+              ReplState
+                { replStateChannels = joinedChannels
+                , replStateSqliteFileName = databasePath
+                , replStateCurrentChannel = Nothing
+                , replStateCommandQueue = WriteQueue replQueue
+                , replStateConfigTwitch = config
+                , replStateManager = manager
                 }
-            ] $ \_ ->
-            replThread $
-            ReplState
-              { replStateChannels = joinedChannels
-              , replStateSqliteFileName = databasePath
-              , replStateCurrentChannel = Nothing
-              , replStateCommandQueue = WriteQueue replQueue
-              , replStateConfigTwitch = config
-              , replStateManager = manager
-              }
       putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
