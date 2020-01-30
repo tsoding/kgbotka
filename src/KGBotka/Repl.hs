@@ -26,6 +26,7 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
+import Data.Time
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set Identifier))
@@ -126,17 +127,13 @@ replThread' dbConn state = do
       replThread' dbConn state
     _ -> replThread' dbConn state
 
--- TODO(#61): backdoor does not log incoming connections
-backdoorThread :: String -> ReplState -> IO ()
-backdoorThread port' initState = do
-  addr <- resolve port'
-  bracket (open addr) close loop
+backdoorThread :: String -> FilePath -> ReplState -> IO ()
+backdoorThread port logFilePath initState =
+  withFile logFilePath AppendMode $ \logHandle -> do
+    addr:_ <- getAddrInfo (Just hints) (Just "127.0.0.1") (Just port)
+    bracket (open addr) close (loop logHandle)
   where
-    resolve port = do
-      let hints =
-            defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}
-      addr:_ <- getAddrInfo (Just hints) (Just "127.0.0.1") (Just port)
-      return addr
+    hints = defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}
     open addr = do
       sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
       setSocketOption sock ReuseAddr 1
@@ -144,11 +141,18 @@ backdoorThread port' initState = do
       setCloseOnExecIfNeeded $ fdSocket sock
       listen sock 10
       return sock
-    loop sock = do
-      (conn, _) <- accept sock
+    loop logHandle sock = do
+      (conn, addr) <- accept sock
       -- TODO(#62): backdoor repl connection is not always closed upon the quit command
+      timestamp <-
+        formatTime defaultTimeLocale (iso8601DateFormat $ Just "%H:%M:%S") <$>
+        getCurrentTime
+      hPutStrLn logHandle $
+        "[" <> timestamp <> "] " <> show addr <>
+        " has connected to the Backdoor monkaS"
+      hFlush logHandle
       void $ forkFinally (talk conn) (const $ close conn)
-      loop sock
+      loop logHandle sock
     talk conn = do
       connHandle <- socketToHandle conn ReadWriteMode
       replThread $ initState {replStateHandle = connHandle}
