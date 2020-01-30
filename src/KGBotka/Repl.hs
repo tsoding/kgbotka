@@ -59,7 +59,7 @@ replThread initState
 -- Since we introduce backdoor connections the quit command does
 -- not serve such purpose anymore, 'cause it only closes the current
 -- REPL connection
--- TODO: there is no `who` command that would show all of the Backdoor connections
+-- TODO(#65): there is no `who` command that would show all of the Backdoor connections
 replThread' :: Sqlite.Connection -> ReplState -> IO ()
 replThread' dbConn state = do
   let replHandle = replStateHandle state
