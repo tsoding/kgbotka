@@ -3,6 +3,7 @@
 module KGBotka.Repl
   ( replThread
   , backdoorThread
+  , backdoorLoggingThread
   , ReplState(..)
   , ReplCommand(..)
   ) where
@@ -15,6 +16,7 @@ import Data.Foldable
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
 import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Command
@@ -35,6 +37,8 @@ data ReplState = ReplState
   , replStateConfigTwitch :: !ConfigTwitch
   , replStateManager :: !HTTP.Manager
   , replStateHandle :: !Handle
+  , replStateLogQueue :: WriteQueue T.Text
+  , replStateConnAddr :: Maybe SockAddr
   }
 
 data ReplCommand
@@ -55,14 +59,18 @@ replThread initState
 -- Since we introduce backdoor connections the quit command does
 -- not serve such purpose anymore, 'cause it only closes the current
 -- REPL connection
+-- TODO(#65): there is no `who` command that would show all of the Backdoor connections
 replThread' :: Sqlite.Connection -> ReplState -> IO ()
 replThread' dbConn state = do
   let replHandle = replStateHandle state
   hPutStr replHandle $
     "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
   hFlush (replStateHandle state)
-  cmd <- T.words . T.pack <$> hGetLine replHandle
-  case (cmd, replStateCurrentChannel state) of
+  inputLine <- T.pack <$> hGetLine replHandle
+  atomically $
+    writeQueue (replStateLogQueue state) $
+    T.pack (show $ replStateConnAddr state) <> ": " <> inputLine
+  case (T.words inputLine, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
       replThread' dbConn $ state {replStateCurrentChannel = Just channel}
     ("cd":_, _) ->
@@ -126,17 +134,12 @@ replThread' dbConn state = do
       replThread' dbConn state
     _ -> replThread' dbConn state
 
--- TODO(#61): backdoor does not log incoming connections
 backdoorThread :: String -> ReplState -> IO ()
-backdoorThread port' initState = do
-  addr <- resolve port'
+backdoorThread port initState = do
+  addr:_ <- getAddrInfo (Just hints) (Just "127.0.0.1") (Just port)
   bracket (open addr) close loop
   where
-    resolve port = do
-      let hints =
-            defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}
-      addr:_ <- getAddrInfo (Just hints) (Just "127.0.0.1") (Just port)
-      return addr
+    hints = defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}
     open addr = do
       sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
       setSocketOption sock ReuseAddr 1
@@ -145,10 +148,31 @@ backdoorThread port' initState = do
       listen sock 10
       return sock
     loop sock = do
-      (conn, _) <- accept sock
+      (conn, addr) <- accept sock
       -- TODO(#62): backdoor repl connection is not always closed upon the quit command
-      void $ forkFinally (talk conn) (const $ close conn)
+      void $ forkFinally (talk conn addr) (const $ close conn)
       loop sock
-    talk conn = do
+    talk conn addr = do
+      atomically $
+        writeQueue
+          (replStateLogQueue initState)
+          (T.pack (show addr) <> " has connected to the Backdoor gachiBASS")
       connHandle <- socketToHandle conn ReadWriteMode
-      replThread $ initState {replStateHandle = connHandle}
+      replThread $
+        initState {replStateHandle = connHandle, replStateConnAddr = Just addr}
+
+backdoorLoggingThread :: FilePath -> ReadQueue T.Text -> IO ()
+backdoorLoggingThread logFilePath messageQueue =
+  withFile logFilePath AppendMode loop
+  where
+    loop logHandle = do
+      messages <- atomically $ flushQueue messageQueue
+      timestamp <-
+        formatTime defaultTimeLocale (iso8601DateFormat $ Just "%H:%M:%S") <$>
+        getCurrentTime
+      mapM_
+        (\message ->
+           hPutStrLn logHandle $ "[" <> timestamp <> "] " <> T.unpack message)
+        messages
+      hFlush logHandle
+      loop logHandle
