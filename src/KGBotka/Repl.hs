@@ -69,7 +69,7 @@ replThread' dbConn state = do
   inputLine <- T.pack <$> hGetLine replHandle
   atomically $
     writeQueue (replStateLogQueue state) $
-    (T.pack $ show $ replStateConnAddr state) <> ": " <> inputLine
+    T.pack (show $ replStateConnAddr state) <> ": " <> inputLine
   case (T.words inputLine, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
       replThread' dbConn $ state {replStateCurrentChannel = Just channel}
