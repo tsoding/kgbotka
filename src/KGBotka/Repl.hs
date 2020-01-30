@@ -3,6 +3,7 @@
 module KGBotka.Repl
   ( replThread
   , backdoorThread
+  , backdoorLoggingThread
   , ReplState(..)
   , ReplCommand(..)
   ) where
@@ -36,6 +37,8 @@ data ReplState = ReplState
   , replStateConfigTwitch :: !ConfigTwitch
   , replStateManager :: !HTTP.Manager
   , replStateHandle :: !Handle
+  , replStateLogQueue :: WriteQueue T.Text
+  , replStateConnAddr :: Maybe SockAddr
   }
 
 data ReplCommand
@@ -62,8 +65,11 @@ replThread' dbConn state = do
   hPutStr replHandle $
     "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
   hFlush (replStateHandle state)
-  cmd <- T.words . T.pack <$> hGetLine replHandle
-  case (cmd, replStateCurrentChannel state) of
+  inputLine <- T.pack <$> hGetLine replHandle
+  atomically $
+    writeQueue (replStateLogQueue state) $
+    (T.pack $ show $ replStateConnAddr state) <> ": " <> inputLine
+  case (T.words inputLine, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
       replThread' dbConn $ state {replStateCurrentChannel = Just channel}
     ("cd":_, _) ->
@@ -127,11 +133,10 @@ replThread' dbConn state = do
       replThread' dbConn state
     _ -> replThread' dbConn state
 
-backdoorThread :: String -> FilePath -> ReplState -> IO ()
-backdoorThread port logFilePath initState =
-  withFile logFilePath AppendMode $ \logHandle -> do
-    addr:_ <- getAddrInfo (Just hints) (Just "127.0.0.1") (Just port)
-    bracket (open addr) close (loop logHandle)
+backdoorThread :: String -> ReplState -> IO ()
+backdoorThread port initState = do
+  addr:_ <- getAddrInfo (Just hints) (Just "127.0.0.1") (Just port)
+  bracket (open addr) close loop
   where
     hints = defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}
     open addr = do
@@ -141,18 +146,31 @@ backdoorThread port logFilePath initState =
       setCloseOnExecIfNeeded $ fdSocket sock
       listen sock 10
       return sock
-    loop logHandle sock = do
+    loop sock = do
       (conn, addr) <- accept sock
       -- TODO(#62): backdoor repl connection is not always closed upon the quit command
+      void $ forkFinally (talk conn addr) (const $ close conn)
+      loop sock
+    talk conn addr = do
+      atomically $
+        writeQueue
+          (replStateLogQueue initState)
+          (T.pack (show addr) <> " has connected to the Backdoor gachiBASS")
+      connHandle <- socketToHandle conn ReadWriteMode
+      replThread $
+        initState {replStateHandle = connHandle, replStateConnAddr = Just addr}
+
+backdoorLoggingThread :: FilePath -> ReadQueue T.Text -> IO ()
+backdoorLoggingThread logFilePath messageQueue =
+  withFile logFilePath AppendMode loop
+  where
+    loop logHandle = do
+      messages <- atomically $ flushQueue messageQueue
       timestamp <-
         formatTime defaultTimeLocale (iso8601DateFormat $ Just "%H:%M:%S") <$>
         getCurrentTime
-      hPutStrLn logHandle $
-        "[" <> timestamp <> "] " <> show addr <>
-        " has connected to the Backdoor monkaS"
+      mapM_
+        (\message -> hPutStrLn logHandle $ "[" <> timestamp <> "] " <> T.unpack message)
+        messages
       hFlush logHandle
-      void $ forkFinally (talk conn) (const $ close conn)
-      loop logHandle sock
-    talk conn = do
-      connHandle <- socketToHandle conn ReadWriteMode
-      replThread $ initState {replStateHandle = connHandle}
+      loop logHandle

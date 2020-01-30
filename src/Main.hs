@@ -149,6 +149,7 @@ mainWithArgs (configPath:databasePath:_) = do
       incomingIrcQueue <- atomically newTQueue
       outgoingIrcQueue <- atomically newTQueue
       replQueue <- atomically newTQueue
+      logQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
       withConnectionAndPragmas databasePath $ \dbConn -> do
@@ -168,10 +169,11 @@ mainWithArgs (configPath:databasePath:_) = do
                   , botStateSqliteFileName = databasePath
                   , botStateLogHandle = logHandler
                   }
+              , backdoorLoggingThread "backdoor.log" $ ReadQueue logQueue
               ] $ \_
               -- TODO(#63): backdoor port is hardcoded
              ->
-              backdoorThread "6969" "backdoor.log" $
+              backdoorThread "6969" $
               ReplState
                 { replStateChannels = joinedChannels
                 , replStateSqliteFileName = databasePath
@@ -180,6 +182,8 @@ mainWithArgs (configPath:databasePath:_) = do
                 , replStateConfigTwitch = config
                 , replStateManager = manager
                 , replStateHandle = stdout
+                , replStateLogQueue = WriteQueue logQueue
+                , replStateConnAddr = Nothing
                 }
       putStrLn "Done"
     Left errorMessage -> error errorMessage
