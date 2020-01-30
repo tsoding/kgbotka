@@ -16,6 +16,7 @@ import Data.Foldable
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
 import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Command
@@ -27,7 +28,6 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-import Data.Time
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set Identifier))
@@ -171,7 +171,8 @@ backdoorLoggingThread logFilePath messageQueue =
         formatTime defaultTimeLocale (iso8601DateFormat $ Just "%H:%M:%S") <$>
         getCurrentTime
       mapM_
-        (\message -> hPutStrLn logHandle $ "[" <> timestamp <> "] " <> T.unpack message)
+        (\message ->
+           hPutStrLn logHandle $ "[" <> timestamp <> "] " <> T.unpack message)
         messages
       hFlush logHandle
       loop logHandle
