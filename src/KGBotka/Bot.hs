@@ -192,7 +192,7 @@ evalExpr (FunCallExpr "friday" args) = do
           "Something went wrong while parsing your subsmission. \
           \We are already looking into it. Kapp"
 -- TODO(#69): %asciify does not support FFZ emotes
--- TODO: %asciify does not support BTTV emotes
+-- TODO(#70): %asciify does not support BTTV emotes
 -- TODO: %asciify does not have a cooldown
 -- TODO: %asciify does not have trusted filter
 evalExpr (FunCallExpr "asciify" _) = do
