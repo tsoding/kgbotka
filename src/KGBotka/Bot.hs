@@ -194,7 +194,7 @@ evalExpr (FunCallExpr "friday" args) = do
 -- TODO(#69): %asciify does not support FFZ emotes
 -- TODO(#70): %asciify does not support BTTV emotes
 -- TODO(#71): %asciify does not have a cooldown
--- TODO: %asciify does not have trusted filter
+-- TODO(#72): %asciify does not have trusted filter
 evalExpr (FunCallExpr "asciify" _) = do
   emotes <- evalContextTwitchEmotes <$> get
   manager <- evalContextManager <$> get
