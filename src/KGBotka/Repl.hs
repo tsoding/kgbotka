@@ -67,7 +67,7 @@ replThread' dbConn state = do
       withTransactionLogErrors f =
         catch
           (Sqlite.withTransaction dbConn f)
-          (\e -> hPutStrLn replHandle $ show (e :: Sqlite.SQLError))
+          (\e -> hPrint replHandle (e :: Sqlite.SQLError))
   hPutStr replHandle $
     "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
   hFlush (replStateHandle state)
