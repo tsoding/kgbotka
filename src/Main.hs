@@ -170,6 +170,7 @@ mainWithArgs (configPath:databasePath:_) = do
                   , botStateChannels = joinedChannels
                   , botStateSqliteFileName = databasePath
                   , botStateLogHandle = logHandler
+                  , botStateManager = manager
                   }
               , backdoorLoggingThread "backdoor.log" $ ReadQueue logQueue
               ] $ \_

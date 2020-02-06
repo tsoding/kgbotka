@@ -100,6 +100,7 @@ executable kgbotka
                      , regex-base >=0.94.0 && <0.95
                      , regex-tdfa >=1.3.1 && <1.4
                      , random >=1.1 && <1.2
+                     , louis==0.1.0.2
 
   -- Directories containing source files.
   hs-source-dirs:      src
