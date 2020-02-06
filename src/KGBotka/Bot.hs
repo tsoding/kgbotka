@@ -15,6 +15,7 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extra
 import Control.Monad.Trans.State
 import Data.Array
+import qualified Data.ByteString.Lazy as BS
 import Data.Either
 import Data.Foldable
 import qualified Data.Map as M
@@ -39,15 +40,14 @@ import KGBotka.Repl
 import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
+import Louis
+import Network.HTTP.Client
+import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Network.HTTP.Client
-import qualified Network.HTTP.Client as HTTP
-import Louis
-import qualified Data.ByteString.Lazy as BS
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -359,8 +359,8 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
                   , evalContextLogHandle = logHandle
                   , evalContextTwitchEmotes =
                       do emotesTag <-
-                            maybeToList $
-                            lookupEntryValue "emotes" $ _msgTags rawMsg
+                           maybeToList $
+                           lookupEntryValue "emotes" $ _msgTags rawMsg
                          emoteDesc <- T.splitOn "/" emotesTag
                          maybeToList $ listToMaybe $ T.splitOn ":" emoteDesc
                   , evalContextManager = manager
