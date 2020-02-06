@@ -156,7 +156,9 @@ mainWithArgs (configPath:databasePath:_) = do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
-          withFile "twitch.log" AppendMode $ \logHandler ->
+          withFile "twitch.log" AppendMode $ \logHandler
+          -- TODO(#67): there is no supavisah that restarts essential threads on crashing
+           ->
             withForkIOs
               [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
               , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue

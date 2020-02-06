@@ -63,6 +63,11 @@ replThread initState
 replThread' :: Sqlite.Connection -> ReplState -> IO ()
 replThread' dbConn state = do
   let replHandle = replStateHandle state
+  let withTransactionLogErrors :: IO () -> IO ()
+      withTransactionLogErrors f =
+        catch
+          (Sqlite.withTransaction dbConn f)
+          (\e -> hPrint replHandle (e :: Sqlite.SQLError))
   hPutStr replHandle $
     "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
   hFlush (replStateHandle state)
@@ -100,19 +105,19 @@ replThread' dbConn state = do
         S.toList <$> readTVarIO (replStateChannels state)
       replThread' dbConn state
     ("addcmd":name:args, _) -> do
-      Sqlite.withTransaction dbConn $ addCommand dbConn name (T.unwords args)
+      withTransactionLogErrors $ addCommand dbConn name (T.unwords args)
       replThread' dbConn state
     ("addalias":alias:name:_, _) -> do
-      Sqlite.withTransaction dbConn $ addCommandName dbConn alias name
+      withTransactionLogErrors $ addCommandName dbConn alias name
       replThread' dbConn state
     ("delcmd":name:_, _) -> do
-      Sqlite.withTransaction dbConn $ deleteCommandByName dbConn name
+      withTransactionLogErrors $ deleteCommandByName dbConn name
       replThread' dbConn state
     ("delalias":name:_, _) -> do
-      Sqlite.withTransaction dbConn $ deleteCommandName dbConn name
+      withTransactionLogErrors $ deleteCommandName dbConn name
       replThread' dbConn state
     ("assrole":roleName:users, _) -> do
-      Sqlite.withTransaction dbConn $ do
+      withTransactionLogErrors $ do
         maybeRole <- getTwitchRoleByName dbConn roleName
         response <-
           HTTP.responseBody . unwrapJsonResponse <$>
