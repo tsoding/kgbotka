@@ -15,6 +15,7 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extra
 import Control.Monad.Trans.State
 import Data.Array
+import qualified Data.ByteString.Lazy as BS
 import Data.Either
 import Data.Foldable
 import qualified Data.Map as M
@@ -39,6 +40,9 @@ import KGBotka.Repl
 import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
+import Louis
+import Network.HTTP.Client
+import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
@@ -50,10 +54,12 @@ data EvalContext = EvalContext
   , evalContextSqliteConnection :: Sqlite.Connection
   , evalContextSenderId :: Maybe TwitchUserId
   , evalContextSenderName :: T.Text
+  , evalContextTwitchEmotes :: [T.Text]
   , evalContextChannel :: TwitchIrcChannel
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
   , evalContextLogHandle :: Handle
+  , evalContextManager :: HTTP.Manager
   }
 
 evalContextVarsModify ::
@@ -185,6 +191,23 @@ evalExpr (FunCallExpr "friday" args) = do
         EvalError
           "Something went wrong while parsing your subsmission. \
           \We are already looking into it. Kapp"
+-- TODO(#69): %asciify does not support FFZ emotes
+-- TODO(#70): %asciify does not support BTTV emotes
+-- TODO(#71): %asciify does not have a cooldown
+-- TODO(#72): %asciify does not have trusted filter
+evalExpr (FunCallExpr "asciify" _) = do
+  emotes <- evalContextTwitchEmotes <$> get
+  manager <- evalContextManager <$> get
+  case emotes of
+    (emote:_) -> do
+      request <-
+        parseRequest $
+        "https://static-cdn.jtvnw.net/emoticons/v1/" <> T.unpack emote <> "/3.0"
+      response <- lift $ lift $ httpLbs request manager
+      case braillizeByteString $ BS.toStrict $ responseBody response of
+        Right xs -> return $ T.unwords xs
+        Left _ -> return ""
+    _ -> return ""
 evalExpr (FunCallExpr funame _) = do
   vars <- evalContextVars <$> get
   lift $
@@ -244,6 +267,7 @@ data BotState = BotState
   , botStateChannels :: !(TVar (S.Set Identifier))
   , botStateSqliteFileName :: !FilePath
   , botStateLogHandle :: !Handle
+  , botStateManager :: !HTTP.Manager
   }
 
 type EvalT = StateT EvalContext (ExceptT EvalError IO)
@@ -277,6 +301,7 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
                                     , botStateReplQueue = replQueue
                                     , botStateChannels = channels
                                     , botStateLogHandle = logHandle
+                                    , botStateManager = manager
                                     } = do
   threadDelay 10000 -- to prevent busy looping
   maybeRawMsg <- atomically $ flushQueue incomingQueue
@@ -332,6 +357,13 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
                   , evalContextBadgeRoles = badgeRoles
                   , evalContextRoles = roles
                   , evalContextLogHandle = logHandle
+                  , evalContextTwitchEmotes =
+                      do emotesTag <-
+                           maybeToList $
+                           lookupEntryValue "emotes" $ _msgTags rawMsg
+                         emoteDesc <- T.splitOn "/" emotesTag
+                         maybeToList $ listToMaybe $ T.splitOn ":" emoteDesc
+                  , evalContextManager = manager
                   }
               atomically $
                 case evalResult of
