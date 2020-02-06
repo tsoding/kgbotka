@@ -204,7 +204,7 @@ evalExpr (FunCallExpr "asciify" _) = do
         parseRequest $
         "https://static-cdn.jtvnw.net/emoticons/v1/" <> T.unpack emote <> "/3.0"
       response <- lift $ lift $ httpLbs request manager
-      case (braillizeByteString $ BS.toStrict $ responseBody response) of
+      case braillizeByteString $ BS.toStrict $ responseBody response of
         Right xs -> return $ T.unwords xs
         Left _ -> return ""
     _ -> return ""
@@ -358,13 +358,11 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
                   , evalContextRoles = roles
                   , evalContextLogHandle = logHandle
                   , evalContextTwitchEmotes =
-                      (do emotesTag <-
+                      do emotesTag <-
                             maybeToList $
                             lookupEntryValue "emotes" $ _msgTags rawMsg
-                          emoteDesc <- T.splitOn "/" emotesTag
-                          emoteId <-
-                            maybeToList $ listToMaybe $ T.splitOn ":" emoteDesc
-                          return emoteId)
+                         emoteDesc <- T.splitOn "/" emotesTag
+                         maybeToList $ listToMaybe $ T.splitOn ":" emoteDesc
                   , evalContextManager = manager
                   }
               atomically $
