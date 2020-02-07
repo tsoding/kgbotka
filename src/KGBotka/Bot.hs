@@ -16,7 +16,6 @@ import Control.Monad.Trans.Maybe.Extra
 import Control.Monad.Trans.State
 import Data.Array
 import qualified Data.ByteString.Lazy as BS
-import Data.Either
 import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
@@ -217,19 +216,6 @@ evalExpr (FunCallExpr funame _) = do
 evalExprs :: [Expr] -> EvalT T.Text
 evalExprs exprs' = T.concat <$> mapM evalExpr exprs'
 
-textContainsLink :: T.Text -> Bool
-textContainsLink t =
-  isRight $ do
-    regex <-
-      compile
-        defaultCompOpt
-        defaultExecOpt
-        "[-a-zA-Z0-9@:%._\\+~#=]{2,256}\\.[a-z]{2,6}\\b([-a-zA-Z0-9@:%_\\+.~#?&\\/\\/=]*)"
-    match <- execute regex $ T.unpack t
-    case match of
-      Just x -> Right x
-      Nothing -> Left "No match found"
-
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
   | "subscriber" `T.isPrefixOf` badge = Just TwitchSub
@@ -335,45 +321,34 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
             message
           addMarkovSentence dbConn message
           -- FIXME(#31): Link filtering is not disablable
-          case (roles, badgeRoles) of
-            ([], [])
-              | textContainsLink message ->
-                atomically $
+          evalResult <-
+            runExceptT $
+            evalStateT (evalCommandPipe $ parseCommandPipe "!" "|" message) $
+            EvalContext
+              { evalContextVars =
+                  M.fromList [("sender", idText (userNick userInfo))]
+              , evalContextSqliteConnection = dbConn
+              , evalContextSenderId = userIdFromRawIrcMsg rawMsg
+              , evalContextSenderName = idText (userNick userInfo)
+              , evalContextChannel = TwitchIrcChannel channelId
+              , evalContextBadgeRoles = badgeRoles
+              , evalContextRoles = roles
+              , evalContextLogHandle = logHandle
+              , evalContextTwitchEmotes =
+                  do emotesTag <-
+                       maybeToList $ lookupEntryValue "emotes" $ _msgTags rawMsg
+                     emoteDesc <- T.splitOn "/" emotesTag
+                     maybeToList $ listToMaybe $ T.splitOn ":" emoteDesc
+              , evalContextManager = manager
+              }
+          atomically $
+            case evalResult of
+              Right commandResponse ->
                 writeQueue outgoingQueue $
-                ircPrivmsg
-                  (idText channelId)
-                  ("/timeout " <> idText (userNick userInfo) <> " 1")
-            _ -> do
-              evalResult <-
-                runExceptT $
-                evalStateT (evalCommandPipe $ parseCommandPipe "!" "|" message) $
-                EvalContext
-                  { evalContextVars =
-                      M.fromList [("sender", idText (userNick userInfo))]
-                  , evalContextSqliteConnection = dbConn
-                  , evalContextSenderId = userIdFromRawIrcMsg rawMsg
-                  , evalContextSenderName = idText (userNick userInfo)
-                  , evalContextChannel = TwitchIrcChannel channelId
-                  , evalContextBadgeRoles = badgeRoles
-                  , evalContextRoles = roles
-                  , evalContextLogHandle = logHandle
-                  , evalContextTwitchEmotes =
-                      do emotesTag <-
-                           maybeToList $
-                           lookupEntryValue "emotes" $ _msgTags rawMsg
-                         emoteDesc <- T.splitOn "/" emotesTag
-                         maybeToList $ listToMaybe $ T.splitOn ":" emoteDesc
-                  , evalContextManager = manager
-                  }
-              atomically $
-                case evalResult of
-                  Right commandResponse ->
-                    writeQueue outgoingQueue $
-                    ircPrivmsg (idText channelId) $
-                    twitchCmdEscape commandResponse
-                  Left (EvalError userMsg) ->
-                    writeQueue outgoingQueue $
-                    ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
+                ircPrivmsg (idText channelId) $ twitchCmdEscape commandResponse
+              Left (EvalError userMsg) ->
+                writeQueue outgoingQueue $
+                ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
         _ -> return ()
   atomically $ do
     replCommand <- tryReadQueue replQueue
