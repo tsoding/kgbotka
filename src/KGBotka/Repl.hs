@@ -110,6 +110,21 @@ replThread' dbConn state = do
     ("addalias":alias:name:_, _) -> do
       withTransactionLogErrors $ addCommandName dbConn alias name
       replThread' dbConn state
+    ("addrole":name:_, _) -> do
+      withTransactionLogErrors $ do
+        role <- getTwitchRoleByName dbConn name
+        case role of
+          Just _ ->
+            hPutStrLn replHandle $ "Role " <> T.unpack name <> " already exists"
+          Nothing -> do
+            addTwitchRole dbConn name
+            hPutStrLn replHandle $ "Added a new role: " <> T.unpack name
+      replThread' dbConn state
+    ("lsroles":_, _) -> do
+      withTransactionLogErrors $ do
+        roles <- listTwitchRoles dbConn
+        mapM_ (hPutStrLn replHandle . T.unpack . twitchRoleName) roles
+      replThread' dbConn state
     ("delcmd":name:_, _) -> do
       withTransactionLogErrors $ deleteCommandByName dbConn name
       replThread' dbConn state
@@ -171,6 +186,7 @@ backdoorLoggingThread logFilePath messageQueue =
   withFile logFilePath AppendMode loop
   where
     loop logHandle = do
+      threadDelay 10000 -- to prevent busy looping
       messages <- atomically $ flushQueue messageQueue
       timestamp <-
         formatTime defaultTimeLocale (iso8601DateFormat $ Just "%H:%M:%S") <$>

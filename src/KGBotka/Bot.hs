@@ -195,10 +195,14 @@ evalExpr (FunCallExpr "friday" args) = do
 -- TODO(#71): %asciify does not have a cooldown
 -- TODO(#72): %asciify does not have trusted filter
 evalExpr (FunCallExpr "asciify" _) = do
+  roles <- evalContextRoles <$> get
+  badgeRoles <- evalContextBadgeRoles <$> get
+  when (null roles && null badgeRoles) $
+    throwEvalError $ EvalError "Only for trusted users"
   emotes <- evalContextTwitchEmotes <$> get
-  manager <- evalContextManager <$> get
   case emotes of
     (emote:_) -> do
+      manager <- evalContextManager <$> get
       request <-
         parseRequest $
         "https://static-cdn.jtvnw.net/emoticons/v1/" <> T.unpack emote <> "/3.0"
@@ -257,6 +261,9 @@ data BotState = BotState
   }
 
 type EvalT = StateT EvalContext (ExceptT EvalError IO)
+
+throwEvalError :: EvalError -> StateT EvalContext (ExceptT EvalError IO) ()
+throwEvalError = lift . throwE
 
 evalCommandCall :: CommandCall -> EvalT T.Text
 evalCommandCall (CommandCall name args) = do
