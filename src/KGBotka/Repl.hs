@@ -110,6 +110,15 @@ replThread' dbConn state = do
     ("addalias":alias:name:_, _) -> do
       withTransactionLogErrors $ addCommandName dbConn alias name
       replThread' dbConn state
+    ("addrole":name:_, _) -> do
+      withTransactionLogErrors $ addTwitchRole dbConn name
+      hPutStrLn replHandle $ "Added a new role: " <> T.unpack name
+      replThread' dbConn state
+    ("lsroles":_, _) -> do
+      withTransactionLogErrors $ do
+        roles <- listTwitchRoles dbConn
+        mapM_ (hPutStrLn replHandle . T.unpack . twitchRoleName) roles
+      replThread' dbConn state
     ("delcmd":name:_, _) -> do
       withTransactionLogErrors $ deleteCommandByName dbConn name
       replThread' dbConn state

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.Roles
   ( assTwitchRoleToUser
@@ -7,11 +8,14 @@ module KGBotka.Roles
   , getTwitchRoleByName
   , TwitchRole(..)
   , TwitchBadgeRole(..)
+  , addTwitchRole
+  , listTwitchRoles
   ) where
 
 import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
+import Database.SQLite.Simple.QQ
 import KGBotka.TwitchAPI
 
 data TwitchBadgeRole
@@ -58,3 +62,14 @@ getTwitchRoleByName conn name =
     "SELECT * FROM TwitchRoles \
     \WHERE name = :roleName;"
     [":roleName" := name]
+
+addTwitchRole :: Connection -> T.Text -> IO ()
+addTwitchRole dbConn name =
+  executeNamed
+    dbConn
+    [sql|INSERT INTO TwitchRoles (name) VALUES (:name)|]
+    [":name" := name]
+
+listTwitchRoles :: Connection -> IO [TwitchRole]
+listTwitchRoles dbConn =
+  queryNamed dbConn [sql|SELECT id, name FROM TwitchRoles |] []
