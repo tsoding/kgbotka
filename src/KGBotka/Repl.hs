@@ -113,12 +113,12 @@ replThread' dbConn state = do
     ("addrole":name:_, _) -> do
       withTransactionLogErrors $ do
         role <- getTwitchRoleByName dbConn name
-        if (isNothing role)
-          then do
+        case role of
+          Just _ ->
+            hPutStrLn replHandle $ "Role " <> T.unpack name <> " already exists"
+          Nothing -> do
             addTwitchRole dbConn name
             hPutStrLn replHandle $ "Added a new role: " <> T.unpack name
-          else hPutStrLn replHandle $
-               "Role " <> T.unpack name <> " already exists"
       replThread' dbConn state
     ("lsroles":_, _) -> do
       withTransactionLogErrors $ do
