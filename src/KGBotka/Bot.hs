@@ -197,12 +197,9 @@ evalExpr (FunCallExpr "friday" args) = do
 evalExpr (FunCallExpr "asciify" _) = do
   roles <- evalContextRoles <$> get
   badgeRoles <- evalContextBadgeRoles <$> get
-
   when (null roles && null badgeRoles) $
     throwEvalError $ EvalError "Only for trusted users"
-
   emotes <- evalContextTwitchEmotes <$> get
-
   case emotes of
     (emote:_) -> do
       manager <- evalContextManager <$> get
