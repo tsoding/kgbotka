@@ -180,6 +180,7 @@ backdoorLoggingThread logFilePath messageQueue =
   withFile logFilePath AppendMode loop
   where
     loop logHandle = do
+      threadDelay 10000 -- to prevent busy looping
       messages <- atomically $ flushQueue messageQueue
       timestamp <-
         formatTime defaultTimeLocale (iso8601DateFormat $ Just "%H:%M:%S") <$>
