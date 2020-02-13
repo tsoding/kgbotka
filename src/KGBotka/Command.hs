@@ -13,6 +13,7 @@ module KGBotka.Command
   , deleteCommandName
   , ccArgsModify
   , logCommand
+  , isCommandCooleddown
   ) where
 
 import Data.Char
@@ -22,6 +23,7 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.TwitchAPI
 import Data.Time
+import Data.Fixed
 
 data Command = Command
   { commandId :: Int
@@ -121,3 +123,25 @@ parseCommandCall prefix source =
 
 ccArgsModify :: (T.Text -> T.Text) -> CommandCall -> CommandCall
 ccArgsModify f cc = cc {ccArgs = f $ ccArgs cc}
+
+isCommandCooleddown :: Connection -> TwitchUserId -> Int -> IO Bool
+isCommandCooleddown dbConn userTwitchId commandIdent = do
+  x <-
+    listToMaybe <$>
+    queryNamed
+      dbConn
+      [sql|SELECT cl.timestamp, c.user_cooldown_ms
+           FROM CommandLog cl
+           JOIN Command c ON c.id = cl.commandId
+           WHERE cl.userTwitchId = :userTwitchId
+             AND cl.commandId = :commandIdent
+           ORDER BY cl.timestamp DESC
+           LIMIT 1; |]
+      [":userTwitchId" := userTwitchId, ":commandIdent" := commandIdent]
+  case x of
+    Just (timestamp, cooldown) -> do
+      now <- getCurrentTime
+      return
+        ((nominalDiffTimeToSeconds $ diffUTCTime now timestamp) >
+         MkFixed (cooldown * 1000 * 1000 * 1000 * 1000))
+    Nothing -> return True

@@ -272,17 +272,24 @@ evalCommandCall (CommandCall name args) = do
   dbConn <- evalContextSqliteConnection <$> get
   command <- lift $ lift $ commandByName dbConn name
   maybeTwitchUserId <- evalContextSenderId <$> get
+  senderName <- evalContextSenderName <$> get
   case command of
     Just (Command {commandId = ident, commandCode = code}) -> do
       case maybeTwitchUserId of
-        Just twitchUserId' ->
+        Just twitchUserId' -> do
+          cooledDown <-
+            lift $ lift $ isCommandCooleddown dbConn twitchUserId' ident
+          when (not cooledDown) $
+            throwEvalError $
+            EvalError $
+            "@" <> senderName <> " The command has not cooled down yet"
           lift $ lift $ logCommand dbConn twitchUserId' ident args
         Nothing ->
           throwEvalError $
           EvalError $
           T.pack $
           printf
-            "[WARNING] Command %s(%d) with args `%s` was \
+            "Command %s(%d) with args `%s` was \
             \called without twitch user id"
             name
             ident
