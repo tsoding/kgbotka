@@ -197,3 +197,5 @@ backdoorLoggingThread logFilePath messageQueue =
         messages
       hFlush logHandle
       loop logHandle
+
+-- TODO: there is no REPL mechanism to update command cooldown
