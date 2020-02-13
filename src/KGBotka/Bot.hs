@@ -47,6 +47,7 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import Text.Printf
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -270,8 +271,22 @@ evalCommandCall (CommandCall name args) = do
   modify $ evalContextVarsModify $ M.insert "1" args
   dbConn <- evalContextSqliteConnection <$> get
   command <- lift $ lift $ commandByName dbConn name
+  maybeTwitchUserId <- evalContextSenderId <$> get
   case command of
-    Just (Command {commandCode = code}) -> do
+    Just (Command {commandId = ident, commandCode = code}) -> do
+      case maybeTwitchUserId of
+        Just twitchUserId' ->
+          lift $ lift $ logCommand dbConn twitchUserId' ident args
+        Nothing ->
+          throwEvalError $
+          EvalError $
+          T.pack $
+          printf
+            "[WARNING] Command %s(%d) with args `%s` was \
+            \called without twitch user id"
+            name
+            ident
+            args
       codeAst <-
         lift $
         withExceptT (EvalError . T.pack . show) $

@@ -81,6 +81,13 @@ migrations =
   , Migration
       [sql|ALTER TABLE Command
            ADD COLUMN user_cooldown_ms INTEGER NOT NULL DEFAULT 0;|]
+  , Migration
+      [sql|CREATE TABLE CommandLog (
+             userTwitchId TEXT NOT NULL,
+             commandId INTEGER NOT NULL,
+             commandArgs TEXT NOT NULL,
+             timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+           );|]
   ]
 
 maxIrcMessage :: Int

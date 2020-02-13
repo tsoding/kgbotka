@@ -12,6 +12,7 @@ module KGBotka.Command
   , deleteCommandByName
   , deleteCommandName
   , ccArgsModify
+  , logCommand
   ) where
 
 import Data.Char
@@ -19,12 +20,32 @@ import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
+import KGBotka.TwitchAPI
+import Data.Time
 
 data Command = Command
   { commandId :: Int
   , commandCode :: T.Text
   , commandUserCooldown :: Int
   } deriving (Show)
+
+data CommandLog = CommandLog
+  { commandLogUserTwitchId :: TwitchUserId
+  , commandLogCommandId :: Int
+  , commandLogCommandArgs :: T.Text
+  , commnadLogTimestamp :: UTCTime
+  } deriving (Show)
+
+logCommand :: Connection -> TwitchUserId -> Int -> T.Text -> IO ()
+logCommand dbConn userTwitchId commandIdent commandArgs =
+  executeNamed
+    dbConn
+    [sql|INSERT INTO CommandLog (userTwitchId, commandId, commandArgs)
+         VALUES (:userTwitchId, :commandId, :commandArgs)|]
+    [ ":userTwitchId" := userTwitchId
+    , ":commandId" := commandIdent
+    , ":commandArgs" := commandArgs
+    ]
 
 instance FromRow Command where
   fromRow = Command <$> field <*> field <*> field
