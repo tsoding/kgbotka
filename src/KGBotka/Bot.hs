@@ -271,7 +271,7 @@ evalCommandCall (CommandCall name args) = do
   dbConn <- evalContextSqliteConnection <$> get
   command <- lift $ lift $ commandByName dbConn name
   case command of
-    Just (Command _ code) -> do
+    Just (Command {commandCode = code}) -> do
       codeAst <-
         lift $
         withExceptT (EvalError . T.pack . show) $

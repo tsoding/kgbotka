@@ -15,7 +15,7 @@ import Database.SQLite.Simple
 
 newtype Migration = Migration
   { migrationQuery :: Query
-  }
+  } deriving (Show)
 
 instance IsString Migration where
   fromString = Migration . fromString
@@ -23,6 +23,9 @@ instance IsString Migration where
 instance FromRow Migration where
   fromRow = fromString <$> field
 
+-- TODO: Migration comparison function is very error prone
+--   We need some kind of query normalization algorithm which is
+--   semantic-insensitive
 instance Eq Migration where
   (==) = (==) `on` (T.unwords . T.words . fromQuery . migrationQuery)
 

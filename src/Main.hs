@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Main
   ( main
@@ -14,6 +15,7 @@ import Data.Foldable
 import qualified Data.Set as S
 import Data.Traversable
 import qualified Database.SQLite.Simple as Sqlite
+import Database.SQLite.Simple.QQ
 import Hookup
 import Irc.Commands
 import Irc.RawIrcMsg
@@ -76,6 +78,9 @@ migrations =
     \  UNIQUE (event1, event2) ON CONFLICT REPLACE \
     \); \
     \CREATE INDEX markov_event1_index ON Markov (event1);"
+  , Migration
+      [sql|ALTER TABLE Command
+           ADD COLUMN user_cooldown_ms INTEGER NOT NULL DEFAULT 0;|]
   ]
 
 maxIrcMessage :: Int

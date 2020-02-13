@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.Command
   ( CommandCall(..)
@@ -17,27 +18,26 @@ import Data.Char
 import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
+import Database.SQLite.Simple.QQ
 
-data Command =
-  Command Int
-          T.Text
-  deriving (Show)
-
-commandId :: Command -> Int
-commandId (Command ident _) = ident
+data Command = Command
+  { commandId :: Int
+  , commandCode :: T.Text
+  , commandUserCooldown :: Int
+  } deriving (Show)
 
 instance FromRow Command where
-  fromRow = Command <$> field <*> field
+  fromRow = Command <$> field <*> field <*> field
 
 commandByName :: Connection -> T.Text -> IO (Maybe Command)
 commandByName conn name =
   listToMaybe <$> queryNamed conn queryText [":commandName" := name]
   where
     queryText =
-      "SELECT c.id, c.code \
-      \FROM Command c \
-      \INNER JOIN CommandName cn ON c.id = cn.commandId \
-      \WHERE cn.name = :commandName;"
+      [sql|SELECT c.id, c.code, c.user_cooldown_ms
+           FROM Command c
+           INNER JOIN CommandName cn ON c.id = cn.commandId
+           WHERE cn.name = :commandName;|]
 
 addCommand :: Connection -> T.Text -> T.Text -> IO ()
 addCommand dbConn name code = do
@@ -75,7 +75,7 @@ addCommandName :: Connection -> T.Text -> T.Text -> IO ()
 addCommandName dbConn alias name = do
   command <- commandByName dbConn name
   case command of
-    Just (Command ident _) ->
+    Just (Command {commandId = ident}) ->
       executeNamed
         dbConn
         "INSERT INTO CommandName (name, commandId)\
