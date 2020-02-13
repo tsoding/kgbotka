@@ -63,7 +63,7 @@ migrations =
   , "CREATE TABLE TwitchLog ( \
     \  id INTEGER PRIMARY KEY, \
     \  channel TEXT NOT NULL, \
-    \  senderTwitchId TEXT, \
+    \  senderTwitchId TEXT NOT NULL, \
     \  senderTwitchName TEXT NOT NULL, \
     \  senderTwitchDisplayName TEXT, \
     \  senderTwitchRoles TEXT NOT NULL, \

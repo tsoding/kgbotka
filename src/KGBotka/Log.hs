@@ -12,7 +12,7 @@ import KGBotka.TwitchAPI
 logMessage ::
      Connection
   -> TwitchIrcChannel
-  -> Maybe TwitchUserId
+  -> TwitchUserId
   -> T.Text
   -> Maybe T.Text
   -> [TwitchRole]
