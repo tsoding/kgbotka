@@ -44,6 +44,7 @@ import Network.HTTP.Client
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import System.IO
+import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
@@ -270,8 +271,29 @@ evalCommandCall (CommandCall name args) = do
   modify $ evalContextVarsModify $ M.insert "1" args
   dbConn <- evalContextSqliteConnection <$> get
   command <- lift $ lift $ commandByName dbConn name
+  maybeTwitchUserId <- evalContextSenderId <$> get
+  senderName <- evalContextSenderName <$> get
   case command of
-    Just (Command _ code) -> do
+    Just Command {commandId = ident, commandCode = code} -> do
+      case maybeTwitchUserId of
+        Just twitchUserId' -> do
+          cooledDown <-
+            lift $ lift $ isCommandCooleddown dbConn twitchUserId' ident
+          unless cooledDown $
+            throwEvalError $
+            EvalError $
+            "@" <> senderName <> " The command has not cooled down yet"
+          lift $ lift $ logCommand dbConn twitchUserId' ident args
+        Nothing ->
+          throwEvalError $
+          EvalError $
+          T.pack $
+          printf
+            "Command %s(%d) with args `%s` was \
+            \called without twitch user id"
+            name
+            ident
+            args
       codeAst <-
         lift $
         withExceptT (EvalError . T.pack . show) $
