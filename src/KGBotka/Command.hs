@@ -17,13 +17,13 @@ module KGBotka.Command
   ) where
 
 import Data.Char
+import Data.Fixed
 import Data.Maybe
 import qualified Data.Text as T
+import Data.Time
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.TwitchAPI
-import Data.Time
-import Data.Fixed
 
 data Command = Command
   { commandId :: Int

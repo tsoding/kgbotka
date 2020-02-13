@@ -44,10 +44,10 @@ import Network.HTTP.Client
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import System.IO
+import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Text.Printf
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
