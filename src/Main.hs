@@ -88,6 +88,12 @@ migrations =
              commandArgs TEXT NOT NULL,
              timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
            );|]
+  , Migration
+      [sql|CREATE TABLE AsciifyUrlCache(
+             url TEXT NOT NULL,
+             image TEXT NOT NULL,
+             UNIQUE (url) ON CONFLICT REPLACE
+           );|]
   ]
 
 maxIrcMessage :: Int

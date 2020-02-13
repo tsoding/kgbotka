@@ -9,7 +9,7 @@ module KGBotka.Friday
 import Control.Applicative
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Maybe.Extra
+import Control.Monad.Trans.Extra
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T

@@ -12,10 +12,9 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Maybe.Extra
+import Control.Monad.Trans.Extra
 import Control.Monad.Trans.State
 import Data.Array
-import qualified Data.ByteString.Lazy as BS
 import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
@@ -39,8 +38,6 @@ import KGBotka.Repl
 import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
-import Louis
-import Network.HTTP.Client
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import System.IO
@@ -48,13 +45,15 @@ import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import KGBotka.Asciify
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
   , evalContextSqliteConnection :: Sqlite.Connection
   , evalContextSenderId :: Maybe TwitchUserId
   , evalContextSenderName :: T.Text
-  , evalContextTwitchEmotes :: [T.Text]
+  -- TODO: evalContextTwitchEmotes should be a list of some kind of emote type
+  , evalContextTwitchEmotes :: Maybe T.Text
   , evalContextChannel :: TwitchIrcChannel
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
@@ -201,16 +200,28 @@ evalExpr (FunCallExpr "asciify" _) = do
   when (null roles && null badgeRoles) $
     throwEvalError $ EvalError "Only for trusted users"
   emotes <- evalContextTwitchEmotes <$> get
+  lift $ lift $ putStrLn "------------------------------"
+  lift $ lift $ print emotes
+  lift $ lift $ putStrLn "------------------------------"
   case emotes of
-    (emote:_) -> do
+    Just emote -> do
       manager <- evalContextManager <$> get
-      request <-
-        parseRequest $
-        "https://static-cdn.jtvnw.net/emoticons/v1/" <> T.unpack emote <> "/3.0"
-      response <- lift $ lift $ httpLbs request manager
-      case braillizeByteString $ BS.toStrict $ responseBody response of
-        Right xs -> return $ T.unwords xs
-        Left _ -> return ""
+      dbConn <- evalContextSqliteConnection <$> get
+      image <-
+        lift $
+        lift $
+        runExceptT $
+        asciifyUrl dbConn manager $
+        "https://static-cdn.jtvnw.net/emoticons/v1/" <> emote <> "/3.0"
+      case image of
+        Right image' -> return image'
+        Left errorMessage -> do
+          logHandle <- evalContextLogHandle <$> get
+          senderName <- evalContextSenderName <$> get
+          lift $ lift $ hPutStrLn logHandle errorMessage
+          throwEvalError $
+            EvalError
+              ("@" <> senderName <> " Could not load emote")
     _ -> return ""
 evalExpr (FunCallExpr funame _) = do
   vars <- evalContextVars <$> get
@@ -263,7 +274,7 @@ data BotState = BotState
 
 type EvalT = StateT EvalContext (ExceptT EvalError IO)
 
-throwEvalError :: EvalError -> StateT EvalContext (ExceptT EvalError IO) ()
+throwEvalError :: EvalError -> StateT EvalContext (ExceptT EvalError IO) a
 throwEvalError = lift . throwE
 
 evalCommandCall :: CommandCall -> EvalT T.Text
@@ -364,10 +375,12 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
               , evalContextRoles = roles
               , evalContextLogHandle = logHandle
               , evalContextTwitchEmotes =
-                  do emotesTag <-
-                       maybeToList $ lookupEntryValue "emotes" $ _msgTags rawMsg
-                     emoteDesc <- T.splitOn "/" emotesTag
-                     maybeToList $ listToMaybe $ T.splitOn ":" emoteDesc
+                  do emotesTag <- lookupEntryValue "emotes" $ _msgTags rawMsg
+                     if (not $ T.null emotesTag)
+                       then do
+                         emoteDesc <- listToMaybe $ T.splitOn "/" emotesTag
+                         listToMaybe $ T.splitOn ":" emoteDesc
+                       else Nothing
               , evalContextManager = manager
               }
           atomically $
