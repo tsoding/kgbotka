@@ -274,12 +274,12 @@ evalCommandCall (CommandCall name args) = do
   maybeTwitchUserId <- evalContextSenderId <$> get
   senderName <- evalContextSenderName <$> get
   case command of
-    Just (Command {commandId = ident, commandCode = code}) -> do
+    Just Command {commandId = ident, commandCode = code} -> do
       case maybeTwitchUserId of
         Just twitchUserId' -> do
           cooledDown <-
             lift $ lift $ isCommandCooleddown dbConn twitchUserId' ident
-          when (not cooledDown) $
+          unless cooledDown $
             throwEvalError $
             EvalError $
             "@" <> senderName <> " The command has not cooled down yet"

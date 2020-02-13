@@ -98,7 +98,7 @@ addCommandName :: Connection -> T.Text -> T.Text -> IO ()
 addCommandName dbConn alias name = do
   command <- commandByName dbConn name
   case command of
-    Just (Command {commandId = ident}) ->
+    Just Command {commandId = ident} ->
       executeNamed
         dbConn
         "INSERT INTO CommandName (name, commandId)\
@@ -142,6 +142,6 @@ isCommandCooleddown dbConn userTwitchId commandIdent = do
     Just (timestamp, cooldown) -> do
       now <- getCurrentTime
       return
-        ((nominalDiffTimeToSeconds $ diffUTCTime now timestamp) >
+        (nominalDiffTimeToSeconds (diffUTCTime now timestamp) >
          MkFixed (cooldown * 1000 * 1000 * 1000 * 1000))
     Nothing -> return True
