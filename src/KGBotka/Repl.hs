@@ -28,6 +28,8 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
+import KGBotka.Bttv
+import Control.Monad.Trans.Except
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set Identifier))
@@ -109,6 +111,18 @@ replThread' dbConn state = do
       replThread' dbConn state
     ("addalias":alias:name:_, _) -> do
       withTransactionLogErrors $ addCommandName dbConn alias name
+      replThread' dbConn state
+    ("updatebttv":_, channel) -> do
+      withTransactionLogErrors $ do
+        result <-
+          runExceptT $ updateBttvEmotes dbConn (replStateManager state) channel
+        case (result, channel) of
+          (Right (), Nothing) ->
+            hPutStrLn replHandle "Global bttv emotes are updated"
+          (Right (), Just channelName) ->
+            hPutStrLn replHandle $
+            "Bttv emotes are updated for channel " <> T.unpack channelName
+          (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
       replThread' dbConn state
     ("addrole":name:_, _) -> do
       withTransactionLogErrors $ do

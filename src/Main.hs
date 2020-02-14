@@ -94,6 +94,12 @@ migrations =
              image TEXT NOT NULL,
              UNIQUE (url) ON CONFLICT REPLACE
            );|]
+  , Migration
+      [sql|CREATE TABLE BttvEmotes (
+              name TEXT NOT NULL,
+              channel TEXT DEFAULT NULL,
+              imageUrl TEXT NOT NULL
+           );|]
   ]
 
 maxIrcMessage :: Int

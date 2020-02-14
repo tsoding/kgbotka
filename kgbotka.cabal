@@ -74,6 +74,8 @@ executable kgbotka
                      , KGBotka.Markov
                      , KGBotka.Sqlite
                      , KGBotka.Asciify
+                     , KGBotka.Bttv
+                     , KGBotka.Http
                      , Control.Monad.Trans.Extra
 
   -- LANGUAGE extensions used by modules in this package.

@@ -12,7 +12,6 @@ module KGBotka.TwitchAPI
 
 import Data.Aeson
 import Data.Aeson.Types
-import qualified Data.ByteString.Lazy as BS
 import Data.List
 import Data.String
 import qualified Data.Text as T
@@ -22,6 +21,7 @@ import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
 import Network.HTTP.Client
+import KGBotka.Http
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -70,16 +70,6 @@ instance FromJSON a => FromJSON (TwitchRes a) where
 instance FromJSON TwitchUser where
   parseJSON (Object v) = TwitchUser <$> v .: "id" <*> v .: "login"
   parseJSON invalid = typeMismatch "TwitchUser" invalid
-
-newtype JsonResponse a = JsonResponse
-  { unwrapJsonResponse :: Response (Either String a)
-  } deriving (Functor)
-
-httpJson :: FromJSON a => Manager -> Request -> IO (JsonResponse a)
-httpJson manager request = do
-  response <- httpLbs request manager
-  putStrLn $ T.unpack $ decodeUtf8 $ BS.toStrict $ responseBody response
-  return $ JsonResponse (eitherDecode <$> response)
 
 getUsersByLogins ::
      Manager -> T.Text -> [T.Text] -> IO (JsonResponse [TwitchUser])
