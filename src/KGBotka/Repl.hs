@@ -12,13 +12,14 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
+import Control.Monad.Trans.Except
 import Data.Foldable
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
-import Irc.Identifier (Identifier, idText, mkId)
+import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Queue
@@ -30,9 +31,9 @@ import Network.Socket
 import System.IO
 
 data ReplState = ReplState
-  { replStateChannels :: !(TVar (S.Set Identifier))
+  { replStateChannels :: !(TVar (S.Set TwitchIrcChannel))
   , replStateSqliteFileName :: !FilePath
-  , replStateCurrentChannel :: !(Maybe T.Text)
+  , replStateCurrentChannel :: !(Maybe TwitchIrcChannel)
   , replStateCommandQueue :: !(WriteQueue ReplCommand)
   , replStateConfigTwitch :: !ConfigTwitch
   , replStateManager :: !HTTP.Manager
@@ -42,10 +43,10 @@ data ReplState = ReplState
   }
 
 data ReplCommand
-  = Say T.Text
+  = Say TwitchIrcChannel
         T.Text
-  | JoinChannel T.Text
-  | PartChannel Identifier
+  | JoinChannel TwitchIrcChannel
+  | PartChannel TwitchIrcChannel
 
 replThread :: ReplState -> IO ()
 replThread initState
@@ -69,7 +70,10 @@ replThread' dbConn state = do
           (Sqlite.withTransaction dbConn f)
           (\e -> hPrint replHandle (e :: Sqlite.SQLError))
   hPutStr replHandle $
-    "[" <> T.unpack (fromMaybe "#" $ replStateCurrentChannel state) <> "]> "
+    "[" <>
+    T.unpack
+      (twitchIrcChannelText $ fromMaybe "#" $ replStateCurrentChannel state) <>
+    "]> "
   hFlush (replStateHandle state)
   inputLine <- T.pack <$> hGetLine replHandle
   atomically $
@@ -77,7 +81,8 @@ replThread' dbConn state = do
     T.pack (show $ replStateConnAddr state) <> ": " <> inputLine
   case (T.words inputLine, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
-      replThread' dbConn $ state {replStateCurrentChannel = Just channel}
+      replThread' dbConn $
+      state {replStateCurrentChannel = Just $ mkTwitchIrcChannel channel}
     ("cd":_, _) ->
       replThread' dbConn $ state {replStateCurrentChannel = Nothing}
     ("say":args, Just channel) -> do
@@ -91,17 +96,18 @@ replThread' dbConn state = do
     ("q":_, _) -> return ()
     ("join":channel:_, _) -> do
       atomically $
-        writeQueue (replStateCommandQueue state) $ JoinChannel channel
-      replThread' dbConn $ state {replStateCurrentChannel = Just channel}
+        writeQueue (replStateCommandQueue state) $
+        JoinChannel $ mkTwitchIrcChannel channel
+      replThread' dbConn $
+        state {replStateCurrentChannel = Just $ mkTwitchIrcChannel channel}
     ("part":_, Just channel) -> do
       atomically $ do
-        let channelId = mkId channel
-        isMember <- S.member channelId <$> readTVar (replStateChannels state)
+        isMember <- S.member channel <$> readTVar (replStateChannels state)
         when isMember $
-          writeQueue (replStateCommandQueue state) $ PartChannel channelId
+          writeQueue (replStateCommandQueue state) $ PartChannel channel
       replThread' dbConn $ state {replStateCurrentChannel = Nothing}
     ("ls":_, _) -> do
-      traverse_ (hPutStrLn replHandle . T.unpack . idText) =<<
+      traverse_ (hPutStrLn replHandle . T.unpack . twitchIrcChannelText) =<<
         S.toList <$> readTVarIO (replStateChannels state)
       replThread' dbConn state
     ("addcmd":name:args, _) -> do
@@ -109,6 +115,19 @@ replThread' dbConn state = do
       replThread' dbConn state
     ("addalias":alias:name:_, _) -> do
       withTransactionLogErrors $ addCommandName dbConn alias name
+      replThread' dbConn state
+    ("updatebttv":_, channel) -> do
+      withTransactionLogErrors $ do
+        result <-
+          runExceptT $ updateBttvEmotes dbConn (replStateManager state) channel
+        case (result, channel) of
+          (Right (), Nothing) ->
+            hPutStrLn replHandle "Global bttv emotes are updated"
+          (Right (), Just channelName) ->
+            hPutStrLn replHandle $
+            "Bttv emotes are updated for channel " <>
+            T.unpack (twitchIrcChannelText channelName)
+          (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
       replThread' dbConn state
     ("addrole":name:_, _) -> do
       withTransactionLogErrors $ do
@@ -197,5 +216,4 @@ backdoorLoggingThread logFilePath messageQueue =
         messages
       hFlush logHandle
       loop logHandle
-
--- TODO: there is no REPL mechanism to update command cooldown
+-- TODO(#82): there is no REPL mechanism to update command cooldown

@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveFunctor #-}
 
 module KGBotka.TwitchAPI
   ( TwitchUser(..)
@@ -8,11 +7,12 @@ module KGBotka.TwitchAPI
   , JsonResponse(..)
   , getUsersByLogins
   , TwitchIrcChannel(..)
+  , twitchIrcChannelText
+  , mkTwitchIrcChannel
   ) where
 
 import Data.Aeson
 import Data.Aeson.Types
-import qualified Data.ByteString.Lazy as BS
 import Data.List
 import Data.String
 import qualified Data.Text as T
@@ -21,6 +21,7 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
+import KGBotka.Http
 import Network.HTTP.Client
 
 newtype TwitchUserId =
@@ -44,6 +45,13 @@ instance FromJSON TwitchUserId where
 
 newtype TwitchIrcChannel =
   TwitchIrcChannel Identifier
+  deriving (Ord, Eq)
+
+twitchIrcChannelText :: TwitchIrcChannel -> T.Text
+twitchIrcChannelText (TwitchIrcChannel ident) = idText ident
+
+mkTwitchIrcChannel :: T.Text -> TwitchIrcChannel
+mkTwitchIrcChannel = TwitchIrcChannel . mkId
 
 instance IsString TwitchIrcChannel where
   fromString = TwitchIrcChannel . fromString
@@ -70,16 +78,6 @@ instance FromJSON a => FromJSON (TwitchRes a) where
 instance FromJSON TwitchUser where
   parseJSON (Object v) = TwitchUser <$> v .: "id" <*> v .: "login"
   parseJSON invalid = typeMismatch "TwitchUser" invalid
-
-newtype JsonResponse a = JsonResponse
-  { unwrapJsonResponse :: Response (Either String a)
-  } deriving (Functor)
-
-httpJson :: FromJSON a => Manager -> Request -> IO (JsonResponse a)
-httpJson manager request = do
-  response <- httpLbs request manager
-  putStrLn $ T.unpack $ decodeUtf8 $ BS.toStrict $ responseBody response
-  return $ JsonResponse (eitherDecode <$> response)
 
 getUsersByLogins ::
      Manager -> T.Text -> [T.Text] -> IO (JsonResponse [TwitchUser])

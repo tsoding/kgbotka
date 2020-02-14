@@ -6,16 +6,16 @@ module KGBotka.Bot
   , BotState(..)
   ) where
 
+import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Maybe.Extra
 import Control.Monad.Trans.State
 import Data.Array
-import qualified Data.ByteString.Lazy as BS
 import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
@@ -23,10 +23,12 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import Irc.Commands
-import Irc.Identifier (Identifier, idText)
+import Irc.Identifier (idText)
 import Irc.Message
 import Irc.RawIrcMsg
 import Irc.UserInfo (userNick)
+import KGBotka.Asciify
+import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Expr
 import KGBotka.Flip
@@ -39,12 +41,9 @@ import KGBotka.Repl
 import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
-import Louis
-import Network.HTTP.Client
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import System.IO
-import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
@@ -52,9 +51,10 @@ import Text.Regex.TDFA.String
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
   , evalContextSqliteConnection :: Sqlite.Connection
-  , evalContextSenderId :: Maybe TwitchUserId
+  , evalContextSenderId :: TwitchUserId
   , evalContextSenderName :: T.Text
-  , evalContextTwitchEmotes :: [T.Text]
+  -- TODO(#80): evalContextTwitchEmotes should be a list of some kind of emote type
+  , evalContextTwitchEmotes :: Maybe T.Text
   , evalContextChannel :: TwitchIrcChannel
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
@@ -110,6 +110,13 @@ newtype EvalError =
   EvalError T.Text
   deriving (Show)
 
+failIfNotTrusted :: EvalT ()
+failIfNotTrusted = do
+  roles <- evalContextRoles <$> get
+  badgeRoles <- evalContextBadgeRoles <$> get
+  when (null roles && null badgeRoles) $
+    throwEvalError $ EvalError "Only for trusted users"
+
 evalExpr :: Expr -> EvalT T.Text
 evalExpr (TextExpr t) = return t
 evalExpr (FunCallExpr "or" args) =
@@ -163,21 +170,13 @@ evalExpr (FunCallExpr "friday" args) = do
   submissionText <- T.concat <$> mapM evalExpr args
   case ytLinkId submissionText of
     Right _ -> do
-      sender <- evalContextSenderId <$> get
-      case sender of
-        Just senderId -> do
-          dbConn <- evalContextSqliteConnection <$> get
-          channel <- evalContextChannel <$> get
-          senderName <- evalContextSenderName <$> get
-          lift $
-            lift $ submitVideo dbConn submissionText channel senderId senderName
-          return "Added your video to suggestions"
-        Nothing ->
-          lift $
-          throwE $
-          EvalError
-            "Sender not found. \
-            \It's need for submitting Friday videos"
+      senderId <- evalContextSenderId <$> get
+      dbConn <- evalContextSqliteConnection <$> get
+      channel <- evalContextChannel <$> get
+      senderName <- evalContextSenderName <$> get
+      lift $
+        lift $ submitVideo dbConn submissionText channel senderId senderName
+      return "Added your video to suggestions"
     Left Nothing ->
       lift $ throwE $ EvalError "Your suggestion should contain YouTube link"
     Left (Just failReason) -> do
@@ -195,23 +194,37 @@ evalExpr (FunCallExpr "friday" args) = do
 -- TODO(#70): %asciify does not support BTTV emotes
 -- TODO(#71): %asciify does not have a cooldown
 -- TODO(#72): %asciify does not have trusted filter
-evalExpr (FunCallExpr "asciify" _) = do
-  roles <- evalContextRoles <$> get
-  badgeRoles <- evalContextBadgeRoles <$> get
-  when (null roles && null badgeRoles) $
-    throwEvalError $ EvalError "Only for trusted users"
+evalExpr (FunCallExpr "asciify" args) = do
+  failIfNotTrusted
   emotes <- evalContextTwitchEmotes <$> get
-  case emotes of
-    (emote:_) -> do
-      manager <- evalContextManager <$> get
-      request <-
-        parseRequest $
-        "https://static-cdn.jtvnw.net/emoticons/v1/" <> T.unpack emote <> "/3.0"
-      response <- lift $ lift $ httpLbs request manager
-      case braillizeByteString $ BS.toStrict $ responseBody response of
-        Right xs -> return $ T.unwords xs
-        Left _ -> return ""
-    _ -> return ""
+  let twitchEmoteUrl =
+        let makeTwitchEmoteUrl emoteName =
+              "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
+              "/3.0"
+         in makeTwitchEmoteUrl <$> hoistMaybe emotes
+  dbConn <- evalContextSqliteConnection <$> get
+  channel <- evalContextChannel <$> get
+  emoteNameArg <- T.concat <$> mapM evalExpr args
+  evalIO $ putStrLn "------------------------------"
+  evalIO $ print emoteNameArg
+  evalIO $ putStrLn "------------------------------"
+  let bttvEmoteUrl =
+        bttvEmoteImageUrl <$>
+        getBttvEmoteByName dbConn emoteNameArg (Just channel)
+  emoteUrl <-
+    lift $
+    maybeToExceptT
+      (EvalError "No emote found")
+      (twitchEmoteUrl <|> bttvEmoteUrl)
+  manager <- evalContextManager <$> get
+  image <- evalIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
+  case image of
+    Right image' -> return image'
+    Left errorMessage -> do
+      logHandle <- evalContextLogHandle <$> get
+      senderName <- evalContextSenderName <$> get
+      evalIO $ hPutStrLn logHandle errorMessage
+      throwEvalError $ EvalError ("@" <> senderName <> " Could not load emote")
 evalExpr (FunCallExpr funame _) = do
   vars <- evalContextVars <$> get
   lift $
@@ -255,7 +268,7 @@ data BotState = BotState
   { botStateIncomingQueue :: !(ReadQueue RawIrcMsg)
   , botStateOutgoingQueue :: !(WriteQueue RawIrcMsg)
   , botStateReplQueue :: !(ReadQueue ReplCommand)
-  , botStateChannels :: !(TVar (S.Set Identifier))
+  , botStateChannels :: !(TVar (S.Set TwitchIrcChannel))
   , botStateSqliteFileName :: !FilePath
   , botStateLogHandle :: !Handle
   , botStateManager :: !HTTP.Manager
@@ -263,7 +276,10 @@ data BotState = BotState
 
 type EvalT = StateT EvalContext (ExceptT EvalError IO)
 
-throwEvalError :: EvalError -> StateT EvalContext (ExceptT EvalError IO) ()
+evalIO :: IO a -> EvalT a
+evalIO = lift . lift
+
+throwEvalError :: EvalError -> StateT EvalContext (ExceptT EvalError IO) a
 throwEvalError = lift . throwE
 
 evalCommandCall :: CommandCall -> EvalT T.Text
@@ -271,29 +287,16 @@ evalCommandCall (CommandCall name args) = do
   modify $ evalContextVarsModify $ M.insert "1" args
   dbConn <- evalContextSqliteConnection <$> get
   command <- lift $ lift $ commandByName dbConn name
-  maybeTwitchUserId <- evalContextSenderId <$> get
   senderName <- evalContextSenderName <$> get
   case command of
-    Just Command {commandId = ident, commandCode = code} -> do
-      case maybeTwitchUserId of
-        Just twitchUserId' -> do
-          cooledDown <-
-            lift $ lift $ isCommandCooleddown dbConn twitchUserId' ident
-          unless cooledDown $
-            throwEvalError $
-            EvalError $
-            "@" <> senderName <> " The command has not cooled down yet"
-          lift $ lift $ logCommand dbConn twitchUserId' ident args
-        Nothing ->
-          throwEvalError $
-          EvalError $
-          T.pack $
-          printf
-            "Command %s(%d) with args `%s` was \
-            \called without twitch user id"
-            name
-            ident
-            args
+    Just Command {commandId = commandIdent, commandCode = code} -> do
+      senderId <- evalContextSenderId <$> get
+      cooledDown <-
+        lift $ lift $ isCommandCooleddown dbConn senderId commandIdent
+      unless cooledDown $
+        throwEvalError $
+        EvalError $ "@" <> senderName <> " The command has not cooled down yet"
+      lift $ lift $ logCommand dbConn senderId commandIdent args
       codeAst <-
         lift $
         withExceptT (EvalError . T.pack . show) $
@@ -328,65 +331,75 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
       case cookedMsg of
         Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
         Join _ channelId _ ->
-          atomically $ modifyTVar channels $ S.insert channelId
-        Part _ channelId _ ->
-          atomically $ modifyTVar channels $ S.delete channelId
-        Privmsg userInfo channelId message -> do
-          roles <-
-            maybe
-              (return [])
-              (getTwitchUserRoles dbConn)
-              (userIdFromRawIrcMsg rawMsg)
-          let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
-          let displayName = lookupEntryValue "display-name" $ _msgTags rawMsg
-          logMessage
-            dbConn
-            (TwitchIrcChannel channelId)
-            (userIdFromRawIrcMsg rawMsg)
-            (idText $ userNick userInfo)
-            displayName
-            roles
-            badgeRoles
-            message
-          addMarkovSentence dbConn message
-          -- FIXME(#31): Link filtering is not disablable
-          evalResult <-
-            runExceptT $
-            evalStateT (evalCommandPipe $ parseCommandPipe "!" "|" message) $
-            EvalContext
-              { evalContextVars =
-                  M.fromList [("sender", idText (userNick userInfo))]
-              , evalContextSqliteConnection = dbConn
-              , evalContextSenderId = userIdFromRawIrcMsg rawMsg
-              , evalContextSenderName = idText (userNick userInfo)
-              , evalContextChannel = TwitchIrcChannel channelId
-              , evalContextBadgeRoles = badgeRoles
-              , evalContextRoles = roles
-              , evalContextLogHandle = logHandle
-              , evalContextTwitchEmotes =
-                  do emotesTag <-
-                       maybeToList $ lookupEntryValue "emotes" $ _msgTags rawMsg
-                     emoteDesc <- T.splitOn "/" emotesTag
-                     maybeToList $ listToMaybe $ T.splitOn ":" emoteDesc
-              , evalContextManager = manager
-              }
           atomically $
-            case evalResult of
-              Right commandResponse ->
-                writeQueue outgoingQueue $
-                ircPrivmsg (idText channelId) $ twitchCmdEscape commandResponse
-              Left (EvalError userMsg) ->
-                writeQueue outgoingQueue $
-                ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
+          modifyTVar channels $ S.insert $ TwitchIrcChannel channelId
+        Part _ channelId _ ->
+          atomically $
+          modifyTVar channels $ S.delete $ TwitchIrcChannel channelId
+        Privmsg userInfo channelId message ->
+          case userIdFromRawIrcMsg rawMsg of
+            Just senderId -> do
+              roles <- getTwitchUserRoles dbConn senderId
+              let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
+              let displayName =
+                    lookupEntryValue "display-name" $ _msgTags rawMsg
+              logMessage
+                dbConn
+                (TwitchIrcChannel channelId)
+                senderId
+                (idText $ userNick userInfo)
+                displayName
+                roles
+                badgeRoles
+                message
+              addMarkovSentence dbConn message
+              -- FIXME(#31): Link filtering is not disablable
+              evalResult <-
+                runExceptT $
+                evalStateT (evalCommandPipe $ parseCommandPipe "!" "|" message) $
+                EvalContext
+                  { evalContextVars =
+                      M.fromList [("sender", idText (userNick userInfo))]
+                  , evalContextSqliteConnection = dbConn
+                  , evalContextSenderId = senderId
+                  , evalContextSenderName = idText (userNick userInfo)
+                  , evalContextChannel = TwitchIrcChannel channelId
+                  , evalContextBadgeRoles = badgeRoles
+                  , evalContextRoles = roles
+                  , evalContextLogHandle = logHandle
+                  , evalContextTwitchEmotes =
+                      do emotesTag <-
+                           lookupEntryValue "emotes" $ _msgTags rawMsg
+                         if not $ T.null emotesTag
+                           then do
+                             emoteDesc <- listToMaybe $ T.splitOn "/" emotesTag
+                             listToMaybe $ T.splitOn ":" emoteDesc
+                           else Nothing
+                  , evalContextManager = manager
+                  }
+              atomically $
+                case evalResult of
+                  Right commandResponse ->
+                    writeQueue outgoingQueue $
+                    ircPrivmsg (idText channelId) $
+                    twitchCmdEscape commandResponse
+                  Left (EvalError userMsg) ->
+                    writeQueue outgoingQueue $
+                    ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
+            Nothing ->
+              hPutStrLn logHandle $
+              "[WARNING] Could not extract twitch user id from PRIVMSG " <>
+              show rawMsg
         _ -> return ()
   atomically $ do
     replCommand <- tryReadQueue replQueue
     case replCommand of
       Just (Say channel msg) ->
-        writeQueue outgoingQueue $ ircPrivmsg channel msg
+        writeQueue outgoingQueue $ ircPrivmsg (twitchIrcChannelText channel) msg
       Just (JoinChannel channel) ->
-        writeQueue outgoingQueue $ ircJoin channel Nothing
-      Just (PartChannel channelId) ->
+        writeQueue outgoingQueue $
+        ircJoin (twitchIrcChannelText channel) Nothing
+      Just (PartChannel (TwitchIrcChannel channelId)) ->
         writeQueue outgoingQueue $ ircPart channelId ""
       Nothing -> return ()
   botThread' dbConn botState

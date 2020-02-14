@@ -63,7 +63,7 @@ migrations =
   , "CREATE TABLE TwitchLog ( \
     \  id INTEGER PRIMARY KEY, \
     \  channel TEXT NOT NULL, \
-    \  senderTwitchId TEXT, \
+    \  senderTwitchId TEXT NOT NULL, \
     \  senderTwitchName TEXT NOT NULL, \
     \  senderTwitchDisplayName TEXT, \
     \  senderTwitchRoles TEXT NOT NULL, \
@@ -87,6 +87,18 @@ migrations =
              commandId INTEGER NOT NULL,
              commandArgs TEXT NOT NULL,
              timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+           );|]
+  , Migration
+      [sql|CREATE TABLE AsciifyUrlCache(
+             url TEXT NOT NULL,
+             image TEXT NOT NULL,
+             UNIQUE (url) ON CONFLICT REPLACE
+           );|]
+  , Migration
+      [sql|CREATE TABLE BttvEmotes (
+              name TEXT NOT NULL,
+              channel TEXT DEFAULT NULL,
+              imageUrl TEXT NOT NULL
            );|]
   ]
 
