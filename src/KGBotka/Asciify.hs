@@ -18,11 +18,8 @@ import Database.SQLite.Simple.QQ
 import Louis
 import qualified Network.HTTP.Client as HTTP
 
-fromCache :: Connection -> T.Text -> ExceptT String IO T.Text
-fromCache dbConn url
-  -- TODO: weird error concatination behaviour
- =
-  maybeToExceptT "Asciify URL cache miss" $
+fromCache :: Connection -> T.Text -> MaybeT IO T.Text
+fromCache dbConn url =
   MaybeT
     (fmap fromOnly . listToMaybe <$>
      queryNamed
@@ -45,8 +42,14 @@ cacheImage dbConn url image =
     [":url" := url, ":image" := image]
 
 asciifyUrl :: Connection -> HTTP.Manager -> T.Text -> ExceptT String IO T.Text
-asciifyUrl dbConn manager url =
-  fromCache dbConn url <|> do
+asciifyUrl dbConn manager url
+  -- NOTE: `Nothing` from `fromCache` indicates the cache miss. We set
+  -- the error to empty string because `ExceptT` expects exceptions to
+  -- be `Monoid`s and simply `mappend`s them together. So by setting
+  -- error of `fromCache` to empty string we don't disturb the error
+  -- of `fromUrl` and `cacheImage`
+ =
+  maybeToExceptT "" (fromCache dbConn url) <|> do
     image <- fromUrl manager url
     lift $ cacheImage dbConn url image
     return image
