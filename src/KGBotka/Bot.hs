@@ -53,7 +53,7 @@ data EvalContext = EvalContext
   , evalContextSqliteConnection :: Sqlite.Connection
   , evalContextSenderId :: TwitchUserId
   , evalContextSenderName :: T.Text
-  -- TODO: evalContextTwitchEmotes should be a list of some kind of emote type
+  -- TODO(#80): evalContextTwitchEmotes should be a list of some kind of emote type
   , evalContextTwitchEmotes :: Maybe T.Text
   , evalContextChannel :: TwitchIrcChannel
   , evalContextBadgeRoles :: [TwitchBadgeRole]
