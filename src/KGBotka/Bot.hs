@@ -22,7 +22,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import Irc.Commands
-import Irc.Identifier (Identifier, idText)
+import Irc.Identifier (idText)
 import Irc.Message
 import Irc.RawIrcMsg
 import Irc.UserInfo (userNick)
@@ -38,6 +38,7 @@ import KGBotka.Repl
 import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
+import KGBotka.Bttv
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import System.IO
@@ -45,6 +46,7 @@ import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 import KGBotka.Asciify
+import Control.Applicative
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -107,6 +109,13 @@ ytLinkId text = do
 newtype EvalError =
   EvalError T.Text
   deriving (Show)
+
+failIfNotTrusted :: EvalT ()
+failIfNotTrusted = do
+  roles <- evalContextRoles <$> get
+  badgeRoles <- evalContextBadgeRoles <$> get
+  when (null roles && null badgeRoles) $
+    throwEvalError $ EvalError "Only for trusted users"
 
 evalExpr :: Expr -> EvalT T.Text
 evalExpr (TextExpr t) = return t
@@ -185,32 +194,38 @@ evalExpr (FunCallExpr "friday" args) = do
 -- TODO(#70): %asciify does not support BTTV emotes
 -- TODO(#71): %asciify does not have a cooldown
 -- TODO(#72): %asciify does not have trusted filter
-evalExpr (FunCallExpr "asciify" _) = do
-  roles <- evalContextRoles <$> get
-  badgeRoles <- evalContextBadgeRoles <$> get
-  when (null roles && null badgeRoles) $
-    throwEvalError $ EvalError "Only for trusted users"
+evalExpr (FunCallExpr "asciify" args) = do
+  failIfNotTrusted
   emotes <- evalContextTwitchEmotes <$> get
-  case emotes of
-    Just emote -> do
-      manager <- evalContextManager <$> get
-      dbConn <- evalContextSqliteConnection <$> get
-      image <-
-        lift $
-        lift $
-        runExceptT $
-        asciifyUrl dbConn manager $
-        "https://static-cdn.jtvnw.net/emoticons/v1/" <> emote <> "/3.0"
-      case image of
-        Right image' -> return image'
-        Left errorMessage -> do
-          logHandle <- evalContextLogHandle <$> get
-          senderName <- evalContextSenderName <$> get
-          lift $ lift $ hPutStrLn logHandle errorMessage
-          throwEvalError $
-            EvalError
-              ("@" <> senderName <> " Could not load emote")
-    _ -> return ""
+  let twitchEmoteUrl =
+        let makeTwitchEmoteUrl emoteName =
+              "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
+              "/3.0"
+         in fmap makeTwitchEmoteUrl $ hoistMaybe emotes
+  dbConn <- evalContextSqliteConnection <$> get
+  channel <- evalContextChannel <$> get
+  emoteNameArg <- T.concat <$> mapM evalExpr args
+  evalIO $ putStrLn "------------------------------"
+  evalIO $ print emoteNameArg
+  evalIO $ putStrLn "------------------------------"
+  let bttvEmoteUrl =
+        fmap bttvEmoteImageUrl $
+        getBttvEmoteByName dbConn emoteNameArg (Just channel)
+  emoteUrl <-
+    lift $
+    maybeToExceptT
+      (EvalError "No emote found")
+      (twitchEmoteUrl <|> bttvEmoteUrl)
+  manager <- evalContextManager <$> get
+  image <- evalIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
+  -- TODO: should be a special function that throws one error but logs another
+  case image of
+    Right image' -> return image'
+    Left errorMessage -> do
+      logHandle <- evalContextLogHandle <$> get
+      senderName <- evalContextSenderName <$> get
+      evalIO $ hPutStrLn logHandle errorMessage
+      throwEvalError $ EvalError ("@" <> senderName <> " Could not load emote")
 evalExpr (FunCallExpr funame _) = do
   vars <- evalContextVars <$> get
   lift $
@@ -254,13 +269,16 @@ data BotState = BotState
   { botStateIncomingQueue :: !(ReadQueue RawIrcMsg)
   , botStateOutgoingQueue :: !(WriteQueue RawIrcMsg)
   , botStateReplQueue :: !(ReadQueue ReplCommand)
-  , botStateChannels :: !(TVar (S.Set Identifier))
+  , botStateChannels :: !(TVar (S.Set TwitchIrcChannel))
   , botStateSqliteFileName :: !FilePath
   , botStateLogHandle :: !Handle
   , botStateManager :: !HTTP.Manager
   }
 
 type EvalT = StateT EvalContext (ExceptT EvalError IO)
+
+evalIO :: IO a -> EvalT a
+evalIO = lift . lift
 
 throwEvalError :: EvalError -> StateT EvalContext (ExceptT EvalError IO) a
 throwEvalError = lift . throwE
@@ -314,9 +332,11 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
       case cookedMsg of
         Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
         Join _ channelId _ ->
-          atomically $ modifyTVar channels $ S.insert channelId
+          atomically $
+          modifyTVar channels $ S.insert $ TwitchIrcChannel channelId
         Part _ channelId _ ->
-          atomically $ modifyTVar channels $ S.delete channelId
+          atomically $
+          modifyTVar channels $ S.delete $ TwitchIrcChannel channelId
         Privmsg userInfo channelId message -> do
           case userIdFromRawIrcMsg rawMsg of
             Just senderId -> do
@@ -376,10 +396,11 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
     replCommand <- tryReadQueue replQueue
     case replCommand of
       Just (Say channel msg) ->
-        writeQueue outgoingQueue $ ircPrivmsg channel msg
+        writeQueue outgoingQueue $ ircPrivmsg (twitchIrcChannelText channel) msg
       Just (JoinChannel channel) ->
-        writeQueue outgoingQueue $ ircJoin channel Nothing
-      Just (PartChannel channelId) ->
+        writeQueue outgoingQueue $
+        ircJoin (twitchIrcChannelText channel) Nothing
+      Just (PartChannel (TwitchIrcChannel channelId)) ->
         writeQueue outgoingQueue $ ircPart channelId ""
       Nothing -> return ()
   botThread' dbConn botState

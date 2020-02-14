@@ -2,7 +2,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module KGBotka.Bttv (updateBttvEmotes) where
+module KGBotka.Bttv
+  ( updateBttvEmotes
+  , getBttvEmoteByName
+  , BttvEmote(..)
+  ) where
 
 import Network.HTTP.Client
 import qualified Data.Text as T
@@ -13,14 +17,26 @@ import Data.Aeson
 import Data.Aeson.Types
 import KGBotka.Http
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Extra
 import Network.URI
+import Data.Maybe
+import KGBotka.TwitchAPI
+import Irc.Identifier (idText)
 
 data BttvEmote = BttvEmote
   { bttvEmoteName :: T.Text
   , bttvEmoteImageUrl :: T.Text
+  , bttvEmoteChannel :: Maybe TwitchIrcChannel
   }
+
+instance FromRow BttvEmote where
+    fromRow = BttvEmote <$> field <*> field <*> field
+
+updateBttvEmoteChannel :: Maybe TwitchIrcChannel -> BttvEmote -> BttvEmote
+updateBttvEmoteChannel channel bttvEmote =
+  bttvEmote {bttvEmoteChannel = channel}
 
 newtype BttvRes = BttvRes
   { bttvResEmotes :: [BttvEmote]
@@ -31,7 +47,7 @@ instance FromJSON BttvRes where
   parseJSON invalid = typeMismatch "BttvRes" invalid
 
 instance FromJSON BttvEmote where
-  parseJSON (Object v) = BttvEmote <$> code <*> url
+  parseJSON (Object v) = BttvEmote <$> code <*> url <*> return Nothing
     where
       code = v .: "code"
       url =
@@ -39,24 +55,31 @@ instance FromJSON BttvEmote where
         (v .: "id")
   parseJSON invalid = typeMismatch "BttvEmote" invalid
 
-queryBttvEmotes :: Manager -> Maybe T.Text -> ExceptT String IO [BttvEmote]
+queryBttvEmotes :: Manager -> Maybe TwitchIrcChannel -> ExceptT String IO [BttvEmote]
 queryBttvEmotes manager Nothing = do
   request <- parseRequest "https://api.betterttv.net/2/emotes"
   response <- lift $ httpJson manager request
   hoistEither $ fmap bttvResEmotes $ responseBody $ unwrapJsonResponse response
-queryBttvEmotes manager (Just (T.uncons -> Just ('#', channelName))) = do
-  let encodeURI = escapeURIString (const False)
-  request <-
-    parseRequest $
-    "https://api.betterttv.net/2/channels/" <> encodeURI (T.unpack channelName)
-  response <- lift $ httpJson manager request
-  hoistEither $ fmap bttvResEmotes $ responseBody $ unwrapJsonResponse response
-queryBttvEmotes _ (Just invalidChannelName) =
-  throwE $
-  "Channel name " <> T.unpack invalidChannelName <> " does not start with #"
+queryBttvEmotes manager channel'@(Just (TwitchIrcChannel (idText -> channel))) =
+  case T.uncons channel of
+    Just ('#', channelName) -> do
+      let encodeURI = escapeURIString (const False)
+      request <-
+        parseRequest $
+        "https://api.betterttv.net/2/channels/" <>
+        encodeURI (T.unpack channelName)
+      response <- lift $ httpJson manager request
+      hoistEither $
+        fmap (map (updateBttvEmoteChannel channel') . bttvResEmotes) $
+        responseBody $ unwrapJsonResponse response
+    _ ->
+      let invalidChannelName = channel
+       in throwE $
+          "Channel name " <> T.unpack invalidChannelName <>
+          " does not start with #"
 
 updateBttvEmotes ::
-     Connection -> Manager -> Maybe T.Text -> ExceptT String IO ()
+     Connection -> Manager -> Maybe TwitchIrcChannel -> ExceptT String IO ()
 updateBttvEmotes dbConn manager channel = do
   lift $
     executeNamed
@@ -72,5 +95,17 @@ updateBttvEmotes dbConn manager channel = do
            VALUES (:name, :imageUrl, :channel)|]
       [ ":name" := bttvEmoteName emote
       , ":imageUrl" := bttvEmoteImageUrl emote
-      , ":channel" := channel
+      , ":channel" := bttvEmoteChannel emote
       ]
+
+getBttvEmoteByName ::
+     Connection -> T.Text -> Maybe TwitchIrcChannel -> MaybeT IO BttvEmote
+getBttvEmoteByName dbConn name channel =
+  MaybeT $
+  fmap listToMaybe $
+  queryNamed
+    dbConn
+    [sql|SELECT name, imageUrl, channel FROM BttvEmotes
+         WHERE (channel is :channel OR channel is NULL)
+         AND name is :name|]
+    [":channel" := channel, ":name" := name]

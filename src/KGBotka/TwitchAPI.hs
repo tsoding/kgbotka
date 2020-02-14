@@ -8,6 +8,8 @@ module KGBotka.TwitchAPI
   , JsonResponse(..)
   , getUsersByLogins
   , TwitchIrcChannel(..)
+  , twitchIrcChannelText
+  , mkTwitchIrcChannel
   ) where
 
 import Data.Aeson
@@ -44,6 +46,13 @@ instance FromJSON TwitchUserId where
 
 newtype TwitchIrcChannel =
   TwitchIrcChannel Identifier
+  deriving (Ord, Eq)
+
+twitchIrcChannelText :: TwitchIrcChannel -> T.Text
+twitchIrcChannelText (TwitchIrcChannel ident) = idText ident
+
+mkTwitchIrcChannel :: T.Text -> TwitchIrcChannel
+mkTwitchIrcChannel = TwitchIrcChannel . mkId
 
 instance IsString TwitchIrcChannel where
   fromString = TwitchIrcChannel . fromString
