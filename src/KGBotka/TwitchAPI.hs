@@ -1,6 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveFunctor #-}
-
 module KGBotka.TwitchAPI
   ( TwitchUser(..)
   , TwitchRes(..)

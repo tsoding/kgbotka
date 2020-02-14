@@ -201,7 +201,7 @@ evalExpr (FunCallExpr "asciify" args) = do
         let makeTwitchEmoteUrl emoteName =
               "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
               "/3.0"
-         in fmap makeTwitchEmoteUrl $ hoistMaybe emotes
+         in makeTwitchEmoteUrl <$> hoistMaybe emotes
   dbConn <- evalContextSqliteConnection <$> get
   channel <- evalContextChannel <$> get
   emoteNameArg <- T.concat <$> mapM evalExpr args
@@ -209,7 +209,7 @@ evalExpr (FunCallExpr "asciify" args) = do
   evalIO $ print emoteNameArg
   evalIO $ putStrLn "------------------------------"
   let bttvEmoteUrl =
-        fmap bttvEmoteImageUrl $
+        bttvEmoteImageUrl <$>
         getBttvEmoteByName dbConn emoteNameArg (Just channel)
   emoteUrl <-
     lift $
@@ -337,7 +337,7 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
         Part _ channelId _ ->
           atomically $
           modifyTVar channels $ S.delete $ TwitchIrcChannel channelId
-        Privmsg userInfo channelId message -> do
+        Privmsg userInfo channelId message ->
           case userIdFromRawIrcMsg rawMsg of
             Just senderId -> do
               roles <- getTwitchUserRoles dbConn senderId
@@ -371,7 +371,7 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
                   , evalContextTwitchEmotes =
                       do emotesTag <-
                            lookupEntryValue "emotes" $ _msgTags rawMsg
-                         if (not $ T.null emotesTag)
+                         if not $ T.null emotesTag
                            then do
                              emoteDesc <- listToMaybe $ T.splitOn "/" emotesTag
                              listToMaybe $ T.splitOn ":" emoteDesc
