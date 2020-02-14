@@ -218,7 +218,6 @@ evalExpr (FunCallExpr "asciify" args) = do
       (twitchEmoteUrl <|> bttvEmoteUrl)
   manager <- evalContextManager <$> get
   image <- evalIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
-  -- TODO: should be a special function that throws one error but logs another
   case image of
     Right image' -> return image'
     Left errorMessage -> do
