@@ -23,7 +23,7 @@ instance IsString Migration where
 instance FromRow Migration where
   fromRow = fromString <$> field
 
--- TODO: Migration comparison function is very error prone
+-- TODO(#81): Migration comparison function is very error prone
 --   We need some kind of query normalization algorithm which is
 --   semantic-insensitive
 instance Eq Migration where
