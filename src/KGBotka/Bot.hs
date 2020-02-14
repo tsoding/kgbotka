@@ -6,13 +6,14 @@ module KGBotka.Bot
   , BotState(..)
   ) where
 
+import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Extra
+import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State
 import Data.Array
 import Data.Foldable
@@ -26,6 +27,8 @@ import Irc.Identifier (idText)
 import Irc.Message
 import Irc.RawIrcMsg
 import Irc.UserInfo (userNick)
+import KGBotka.Asciify
+import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Expr
 import KGBotka.Flip
@@ -38,15 +41,12 @@ import KGBotka.Repl
 import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
-import KGBotka.Bttv
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import KGBotka.Asciify
-import Control.Applicative
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text

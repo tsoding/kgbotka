@@ -1,24 +1,27 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module KGBotka.Asciify (asciifyUrl) where
+module KGBotka.Asciify
+  ( asciifyUrl
+  ) where
 
-import qualified Data.Text as T
-import Control.Monad.Trans.Except
-import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Extra
+import Control.Applicative
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
+import Control.Monad.Trans.Extra
+import Control.Monad.Trans.Maybe
+import qualified Data.ByteString.Lazy as BS
+import Data.Maybe
+import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
-import qualified Network.HTTP.Client as HTTP
-import Control.Applicative
-import Data.Maybe
-import qualified Data.ByteString.Lazy as BS
 import Louis
+import qualified Network.HTTP.Client as HTTP
 
 fromCache :: Connection -> T.Text -> ExceptT String IO T.Text
-fromCache dbConn url =
+fromCache dbConn url
   -- TODO: weird error concatination behaviour
+ =
   maybeToExceptT "Asciify URL cache miss" $
   MaybeT
     (fmap fromOnly . listToMaybe <$>

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module KGBotka.TwitchAPI
   ( TwitchUser(..)
   , TwitchRes(..)
@@ -20,8 +21,8 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
-import Network.HTTP.Client
 import KGBotka.Http
+import Network.HTTP.Client
 
 newtype TwitchUserId =
   TwitchUserId T.Text

@@ -1,9 +1,12 @@
 {-# LANGUAGE DeriveFunctor #-}
 
-module KGBotka.Http (JsonResponse(..), httpJson) where
+module KGBotka.Http
+  ( JsonResponse(..)
+  , httpJson
+  ) where
 
-import Network.HTTP.Client
 import Data.Aeson
+import Network.HTTP.Client
 
 newtype JsonResponse a = JsonResponse
   { unwrapJsonResponse :: Response (Either String a)

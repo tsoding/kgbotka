@@ -8,22 +8,22 @@ module KGBotka.Bttv
   , BttvEmote(..)
   ) where
 
-import Network.HTTP.Client
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
+import Control.Monad.Trans.Extra
+import Control.Monad.Trans.Maybe
+import Data.Aeson
+import Data.Aeson.Types
+import Data.Foldable
+import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
-import Data.Foldable
-import Data.Aeson
-import Data.Aeson.Types
-import KGBotka.Http
-import Control.Monad.Trans.Except
-import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Extra
-import Network.URI
-import Data.Maybe
-import KGBotka.TwitchAPI
 import Irc.Identifier (idText)
+import KGBotka.Http
+import KGBotka.TwitchAPI
+import Network.HTTP.Client
+import Network.URI
 
 data BttvEmote = BttvEmote
   { bttvEmoteName :: T.Text
@@ -32,7 +32,7 @@ data BttvEmote = BttvEmote
   }
 
 instance FromRow BttvEmote where
-    fromRow = BttvEmote <$> field <*> field <*> field
+  fromRow = BttvEmote <$> field <*> field <*> field
 
 updateBttvEmoteChannel :: Maybe TwitchIrcChannel -> BttvEmote -> BttvEmote
 updateBttvEmoteChannel channel bttvEmote =
@@ -55,7 +55,8 @@ instance FromJSON BttvEmote where
         (v .: "id")
   parseJSON invalid = typeMismatch "BttvEmote" invalid
 
-queryBttvEmotes :: Manager -> Maybe TwitchIrcChannel -> ExceptT String IO [BttvEmote]
+queryBttvEmotes ::
+     Manager -> Maybe TwitchIrcChannel -> ExceptT String IO [BttvEmote]
 queryBttvEmotes manager Nothing = do
   request <- parseRequest "https://api.betterttv.net/2/emotes"
   response <- lift $ httpJson manager request

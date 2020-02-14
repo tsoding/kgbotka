@@ -12,12 +12,14 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
+import Control.Monad.Trans.Except
 import Data.Foldable
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
+import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Queue
@@ -27,8 +29,6 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-import KGBotka.Bttv
-import Control.Monad.Trans.Except
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set TwitchIrcChannel))
@@ -216,5 +216,4 @@ backdoorLoggingThread logFilePath messageQueue =
         messages
       hFlush logHandle
       loop logHandle
-
 -- TODO: there is no REPL mechanism to update command cooldown
