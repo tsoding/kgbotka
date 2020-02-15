@@ -29,7 +29,7 @@ import KGBotka.Http
 
 data FfzEmote = FfzEmote
   { ffzEmoteName :: T.Text
-  , ffzEmoteImageUrl :: Maybe T.Text
+  , ffzEmoteImageUrl :: T.Text
   , ffzEmoteChannel :: Maybe TwitchIrcChannel
   }
 
@@ -64,11 +64,11 @@ instance FromJSON FfzEmote where
   parseJSON (Object v) =
     FfzEmote <$> v .: "name" <*> (v .: "urls" >>= maxUrl) <*> return Nothing
     where
-      maxUrl :: Value -> Parser (Maybe T.Text)
+      maxUrl :: Value -> Parser T.Text
       maxUrl (Object v') =
         (\case
-           Nothing -> pure Nothing
-           (Just x) -> Just . ("https:" <>) <$> parseJSON x) =<<
+           Nothing -> fail "Could not find any images for FfzEmote"
+           (Just x) -> ("https:" <>) <$> parseJSON x) =<<
         pure ((`HM.lookup` v') =<< idx)
         where
           idx = listToMaybe $ sortOn Down $ HM.keys v'

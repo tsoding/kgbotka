@@ -139,7 +139,7 @@ replThread' dbConn state = do
             hPutStrLn replHandle "Global FFZ emotes are updated"
           (Right (), Just channelName) ->
             hPutStrLn replHandle $
-            "BTTV emotes are updated for channel " <>
+            "FFZ emotes are updated for channel " <>
             T.unpack (twitchIrcChannelText channelName)
           (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
       replThread' dbConn state

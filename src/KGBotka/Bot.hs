@@ -29,6 +29,7 @@ import Irc.RawIrcMsg
 import Irc.UserInfo (userNick)
 import KGBotka.Asciify
 import KGBotka.Bttv
+import KGBotka.Ffz
 import KGBotka.Command
 import KGBotka.Expr
 import KGBotka.Flip
@@ -205,17 +206,17 @@ evalExpr (FunCallExpr "asciify" args) = do
   dbConn <- evalContextSqliteConnection <$> get
   channel <- evalContextChannel <$> get
   emoteNameArg <- T.concat <$> mapM evalExpr args
-  evalIO $ putStrLn "------------------------------"
-  evalIO $ print emoteNameArg
-  evalIO $ putStrLn "------------------------------"
   let bttvEmoteUrl =
         bttvEmoteImageUrl <$>
         getBttvEmoteByName dbConn emoteNameArg (Just channel)
+  let ffzEmoteUrl =
+        ffzEmoteImageUrl <$>
+        getFfzEmoteByName dbConn emoteNameArg (Just channel)
   emoteUrl <-
     lift $
     maybeToExceptT
       (EvalError "No emote found")
-      (twitchEmoteUrl <|> bttvEmoteUrl)
+      (twitchEmoteUrl <|> bttvEmoteUrl <|> ffzEmoteUrl)
   manager <- evalContextManager <$> get
   image <- evalIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
   case image of
