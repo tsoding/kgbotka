@@ -192,7 +192,6 @@ evalExpr (FunCallExpr "friday" args) = do
           "Something went wrong while parsing your subsmission. \
           \We are already looking into it. Kapp"
 -- TODO(#69): %asciify does not support FFZ emotes
--- TODO(#70): %asciify does not support BTTV emotes
 evalExpr (FunCallExpr "asciify" args) = do
   failIfNotTrusted
   emotes <- evalContextTwitchEmotes <$> get
