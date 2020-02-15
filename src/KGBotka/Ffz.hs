@@ -102,10 +102,10 @@ queryFfzEmotes manager (Just channel) =
       response <- lift $ httpJson manager request
       hoistEither $
         fmap (map (updateFfzEmoteChannel $ Just channel) . ffzResEmotes) $
-        responseBody $ unwrapJsonResponse $ response
+        responseBody $ unwrapJsonResponse response
     _ ->
       throwE $
-      "Channel name " <> (T.unpack $ twitchIrcChannelText channel) <>
+      "Channel name " <> T.unpack (twitchIrcChannelText channel) <>
       " does not start with #"
 
 updateFfzEmotes ::
