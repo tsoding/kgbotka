@@ -191,7 +191,6 @@ evalExpr (FunCallExpr "friday" args) = do
         EvalError
           "Something went wrong while parsing your subsmission. \
           \We are already looking into it. Kapp"
--- TODO(#69): %asciify does not support FFZ emotes
 evalExpr (FunCallExpr "asciify" args) = do
   failIfNotTrusted
   emotes <- evalContextTwitchEmotes <$> get
