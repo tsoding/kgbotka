@@ -8,24 +8,24 @@ module KGBotka.Ffz
   , getFfzEmoteByName
   ) where
 
-import qualified Data.Text as T
-import KGBotka.TwitchAPI
-import Database.SQLite.Simple
-import Database.SQLite.Simple.QQ
-import Network.HTTP.Client
-import Control.Monad.Trans.Except
-import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
 import Control.Monad.Trans.Extra
-import Data.Foldable
-import Data.Maybe
+import Control.Monad.Trans.Maybe
 import Data.Aeson
 import Data.Aeson.Types
-import qualified Data.Map as M
+import Data.Foldable
 import qualified Data.HashMap.Strict as HM
 import Data.List
+import qualified Data.Map as M
+import Data.Maybe
 import Data.Ord
+import qualified Data.Text as T
+import Database.SQLite.Simple
+import Database.SQLite.Simple.QQ
 import KGBotka.Http
+import KGBotka.TwitchAPI
+import Network.HTTP.Client
 
 data FfzEmote = FfzEmote
   { ffzEmoteName :: T.Text

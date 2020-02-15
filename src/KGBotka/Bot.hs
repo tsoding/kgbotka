@@ -29,9 +29,9 @@ import Irc.RawIrcMsg
 import Irc.UserInfo (userNick)
 import KGBotka.Asciify
 import KGBotka.Bttv
-import KGBotka.Ffz
 import KGBotka.Command
 import KGBotka.Expr
+import KGBotka.Ffz
 import KGBotka.Flip
 import KGBotka.Friday
 import KGBotka.Log

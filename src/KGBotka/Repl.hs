@@ -20,9 +20,9 @@ import qualified Data.Text as T
 import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Bttv
-import KGBotka.Ffz
 import KGBotka.Command
 import KGBotka.Config
+import KGBotka.Ffz
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.Sqlite
