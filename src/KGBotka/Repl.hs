@@ -22,6 +22,7 @@ import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Config
+import KGBotka.Ffz
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.Sqlite
@@ -122,10 +123,23 @@ replThread' dbConn state = do
           runExceptT $ updateBttvEmotes dbConn (replStateManager state) channel
         case (result, channel) of
           (Right (), Nothing) ->
-            hPutStrLn replHandle "Global bttv emotes are updated"
+            hPutStrLn replHandle "Global BTTV emotes are updated"
           (Right (), Just channelName) ->
             hPutStrLn replHandle $
-            "Bttv emotes are updated for channel " <>
+            "BTTV emotes are updated for channel " <>
+            T.unpack (twitchIrcChannelText channelName)
+          (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
+      replThread' dbConn state
+    ("updateffz":_, channel) -> do
+      withTransactionLogErrors $ do
+        result <-
+          runExceptT $ updateFfzEmotes dbConn (replStateManager state) channel
+        case (result, channel) of
+          (Right (), Nothing) ->
+            hPutStrLn replHandle "Global FFZ emotes are updated"
+          (Right (), Just channelName) ->
+            hPutStrLn replHandle $
+            "FFZ emotes are updated for channel " <>
             T.unpack (twitchIrcChannelText channelName)
           (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
       replThread' dbConn state

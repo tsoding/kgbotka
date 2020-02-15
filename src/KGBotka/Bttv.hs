@@ -107,6 +107,6 @@ getBttvEmoteByName dbConn name channel =
      queryNamed
        dbConn
        [sql|SELECT name, imageUrl, channel FROM BttvEmotes
-         WHERE (channel is :channel OR channel is NULL)
-         AND name is :name|]
+            WHERE (channel is :channel OR channel is NULL)
+            AND name is :name|]
        [":channel" := channel, ":name" := name])
