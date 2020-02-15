@@ -33,51 +33,58 @@ import System.IO
 
 migrations :: [Migration]
 migrations =
-  [ "CREATE TABLE Command (\
-    \  id INTEGER PRIMARY KEY,\
-    \  code TEXT NOT NULL\
-    \);"
-  , "CREATE TABLE CommandName (\
-    \  name TEXT NOT NULL,\
-    \  commandId INTEGER NOT NULL REFERENCES Command(id) ON DELETE CASCADE,\
-    \  UNIQUE(name) ON CONFLICT REPLACE\
-    \);"
-  , "CREATE TABLE TwitchRoles ( \
-    \  id INTEGER PRIMARY KEY, \
-    \  name TEXT NOT NULL UNIQUE \
-    \);"
-  , "CREATE TABLE TwitchUserRoles ( \
-    \  userId TEXT NOT NULL, \
-    \  roleId INTEGER NOT NULL REFERENCES TwitchRoles(id) ON DELETE CASCADE, \
-    \  UNIQUE(userId, roleId) ON CONFLICT IGNORE \
-    \);"
-  , "CREATE TABLE FridayVideo ( \
-    \  id INTEGER PRIMARY KEY, \
-    \  submissionText TEXT NOT NULL, \
-    \  submissionTime DATETIME NOT NULL, \
-    \  authorTwitchId TEXT NOT NULL, \
-    \  authorTwitchName TEXT NOT NULL, \
-    \  watchedAt DATETIME, \
-    \  channel TEXT NOT NULL \
-    \)"
-  , "CREATE TABLE TwitchLog ( \
-    \  id INTEGER PRIMARY KEY, \
-    \  channel TEXT NOT NULL, \
-    \  senderTwitchId TEXT NOT NULL, \
-    \  senderTwitchName TEXT NOT NULL, \
-    \  senderTwitchDisplayName TEXT, \
-    \  senderTwitchRoles TEXT NOT NULL, \
-    \  senderTwitchBadgeRoles TEXT NOT NULL, \
-    \  message TEXT NOT NULL, \
-    \  messageTime DATETIME DEFAULT (datetime('now')) NOT NULL \
-    \)"
-  , "CREATE TABLE Markov ( \
-    \  event1 TEXT NOT NULL, \
-    \  event2 TEXT NOT NULL, \
-    \  n INTEGER NOT NULL, \
-    \  UNIQUE (event1, event2) ON CONFLICT REPLACE \
-    \); \
-    \CREATE INDEX markov_event1_index ON Markov (event1);"
+  [ Migration
+      [sql|CREATE TABLE Command (
+             id INTEGER PRIMARY KEY,
+             code TEXT NOT NULL
+           );|]
+  , Migration
+      [sql|CREATE TABLE CommandName (
+             name TEXT NOT NULL,
+             commandId INTEGER NOT NULL REFERENCES Command(id) ON DELETE CASCADE,
+             UNIQUE(name) ON CONFLICT REPLACE
+           );|]
+  , Migration
+      [sql|CREATE TABLE TwitchRoles (
+             id INTEGER PRIMARY KEY,
+             name TEXT NOT NULL UNIQUE
+           );|]
+  , Migration
+      [sql|CREATE TABLE TwitchUserRoles (
+             userId TEXT NOT NULL,
+             roleId INTEGER NOT NULL REFERENCES TwitchRoles(id) ON DELETE CASCADE,
+             UNIQUE(userId, roleId) ON CONFLICT IGNORE
+           );|]
+  , Migration
+      [sql|CREATE TABLE FridayVideo (
+             id INTEGER PRIMARY KEY,
+             submissionText TEXT NOT NULL,
+             submissionTime DATETIME NOT NULL,
+             authorTwitchId TEXT NOT NULL,
+             authorTwitchName TEXT NOT NULL,
+             watchedAt DATETIME,
+             channel TEXT NOT NULL
+           );|]
+  , Migration
+      [sql|CREATE TABLE TwitchLog (
+             id INTEGER PRIMARY KEY,
+             channel TEXT NOT NULL,
+             senderTwitchId TEXT NOT NULL,
+             senderTwitchName TEXT NOT NULL,
+             senderTwitchDisplayName TEXT,
+             senderTwitchRoles TEXT NOT NULL,
+             senderTwitchBadgeRoles TEXT NOT NULL,
+             message TEXT NOT NULL,
+             messageTime DATETIME DEFAULT (datetime('now')) NOT NULL
+           )|]
+  , Migration
+      [sql|CREATE TABLE Markov (
+             event1 TEXT NOT NULL,
+             event2 TEXT NOT NULL,
+             n INTEGER NOT NULL,
+             UNIQUE (event1, event2) ON CONFLICT REPLACE
+           );
+           CREATE INDEX markov_event1_index ON Markov (event1);|]
   , Migration
       [sql|ALTER TABLE Command
            ADD COLUMN user_cooldown_ms INTEGER NOT NULL DEFAULT 0;|]
