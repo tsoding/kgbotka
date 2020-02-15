@@ -193,7 +193,6 @@ evalExpr (FunCallExpr "friday" args) = do
           \We are already looking into it. Kapp"
 -- TODO(#69): %asciify does not support FFZ emotes
 -- TODO(#70): %asciify does not support BTTV emotes
--- TODO(#71): %asciify does not have a cooldown
 evalExpr (FunCallExpr "asciify" args) = do
   failIfNotTrusted
   emotes <- evalContextTwitchEmotes <$> get
