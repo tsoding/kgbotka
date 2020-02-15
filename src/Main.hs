@@ -100,6 +100,12 @@ migrations =
               channel TEXT DEFAULT NULL,
               imageUrl TEXT NOT NULL
            );|]
+  , Migration
+      [sql|CREATE TABLE FfzEmotes (
+              name TEXT NOT NULL,
+              channel TEXT DEFAULT NULL,
+              imageUrl TEXT NOT NULL
+           );|]
   ]
 
 maxIrcMessage :: Int
