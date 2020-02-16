@@ -78,6 +78,7 @@ executable kgbotka
                      , KGBotka.Http
                      , KGBotka.Ffz
                      , Control.Monad.Trans.Extra
+                     , Control.Monad.Trans.Eval
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:

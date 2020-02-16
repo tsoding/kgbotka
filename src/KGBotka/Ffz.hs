@@ -10,7 +10,6 @@ module KGBotka.Ffz
 
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
 import Data.Aeson
 import Data.Aeson.Types
@@ -100,7 +99,7 @@ queryFfzEmotes manager (Just channel) =
         parseRequest $
         "https://api.frankerfacez.com/v1/room/" <> T.unpack channelName
       response <- lift $ httpJson manager request
-      hoistEither $
+      except $
         fmap (map (updateFfzEmoteChannel $ Just channel) . ffzResEmotes) $
         responseBody $ unwrapJsonResponse response
     _ ->

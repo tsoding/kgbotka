@@ -10,11 +10,10 @@ import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.State
+import Control.Monad.Trans.State.Strict
 import Data.Array
 import Data.Foldable
 import qualified Data.Map as M
@@ -48,6 +47,8 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import Control.Monad.Trans.Eval
+import Control.Monad.IO.Class
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -111,14 +112,14 @@ newtype EvalError =
   EvalError T.Text
   deriving (Show)
 
-failIfNotTrusted :: EvalT ()
+failIfNotTrusted :: Eval ()
 failIfNotTrusted = do
-  roles <- evalContextRoles <$> get
-  badgeRoles <- evalContextBadgeRoles <$> get
+  roles <- evalContextRoles <$> getEval
+  badgeRoles <- evalContextBadgeRoles <$> getEval
   when (null roles && null badgeRoles) $
-    throwEvalError $ EvalError "Only for trusted users"
+    fail "Only for trusted users"
 
-evalExpr :: Expr -> EvalT T.Text
+evalExpr :: Expr -> Eval T.Text
 evalExpr (TextExpr t) = return t
 evalExpr (FunCallExpr "or" args) =
   fromMaybe "" . listToMaybe . dropWhile T.null <$> mapM evalExpr args
@@ -127,10 +128,10 @@ evalExpr (FunCallExpr "urlencode" args) =
   where
     encodeURI = escapeURIString (const False)
 evalExpr (FunCallExpr "markov" _) = do
-  dbConn <- evalContextSqliteConnection <$> get
-  logHandle <- evalContextLogHandle <$> get
-  events <- lift $ lift $ seqMarkovEvents Begin End dbConn
-  lift $ lift $ hPutStrLn logHandle $ "[MARKOV] " <> show events
+  dbConn <- evalContextSqliteConnection <$> getEval
+  logHandle <- evalContextLogHandle <$> getEval
+  events <- liftIO $ seqMarkovEvents Begin End dbConn
+  liftIO $ hPutStrLn logHandle $ "[MARKOV] " <> show events
   return $
     T.unwords $
     mapMaybe
@@ -144,17 +145,17 @@ evalExpr (FunCallExpr "flip" args) =
 -- FIXME(#18): Friday video list is not published on gist
 -- FIXME(#38): %nextvideo does not inform how many times a video was suggested
 evalExpr (FunCallExpr "nextvideo" _) = do
-  badgeRoles <- evalContextBadgeRoles <$> get
+  badgeRoles <- evalContextBadgeRoles <$> getEval
   if TwitchBroadcaster `elem` badgeRoles
     then do
-      dbConn <- evalContextSqliteConnection <$> get
-      channel <- evalContextChannel <$> get
+      dbConn <- evalContextSqliteConnection <$> getEval
+      channel <- evalContextChannel <$> getEval
       fridayVideo <-
-        lift $
+        liftExceptT $
         maybeToExceptT (EvalError "Video queue is empty") $
         nextVideo dbConn channel
       return $ fridayVideoAsMessage fridayVideo
-    else lift $ throwE $ EvalError "Only for mr strimmer :)"
+    else fail "Only for mr strimmer :)"
   where
     fridayVideoAsMessage :: FridayVideo -> T.Text
     fridayVideoAsMessage FridayVideo { fridayVideoSubText = subText
@@ -164,43 +165,40 @@ evalExpr (FunCallExpr "nextvideo" _) = do
       T.pack (show subTime) <> " <" <> authorTwitchName <> "> " <> subText
 -- FIXME(#39): %friday does not inform how many times a video was suggested
 evalExpr (FunCallExpr "friday" args) = do
-  roles <- evalContextRoles <$> get
-  badgeRoles <- evalContextBadgeRoles <$> get
+  roles <- evalContextRoles <$> getEval
+  badgeRoles <- evalContextBadgeRoles <$> getEval
   when (null roles && null badgeRoles) $
-    lift $ throwE $ EvalError "You have to be trusted to submit Friday videos"
+    throwExceptEval $ EvalError "You have to be trusted to submit Friday videos"
   submissionText <- T.concat <$> mapM evalExpr args
   case ytLinkId submissionText of
     Right _ -> do
-      senderId <- evalContextSenderId <$> get
-      dbConn <- evalContextSqliteConnection <$> get
-      channel <- evalContextChannel <$> get
-      senderName <- evalContextSenderName <$> get
-      lift $
-        lift $ submitVideo dbConn submissionText channel senderId senderName
+      senderId <- evalContextSenderId <$> getEval
+      dbConn <- evalContextSqliteConnection <$> getEval
+      channel <- evalContextChannel <$> getEval
+      senderName <- evalContextSenderName <$> getEval
+      liftIO $ submitVideo dbConn submissionText channel senderId senderName
       return "Added your video to suggestions"
     Left Nothing ->
-      lift $ throwE $ EvalError "Your suggestion should contain YouTube link"
+      throwExceptEval $ EvalError "Your suggestion should contain YouTube link"
     Left (Just failReason) -> do
-      logHandle <- evalContextLogHandle <$> get
-      lift $
-        lift $
+      logHandle <- evalContextLogHandle <$> getEval
+      liftIO $
         hPutStrLn logHandle $
         "An error occured while parsing YouTube link: " <> failReason
-      lift $
-        throwE $
+      throwExceptEval $
         EvalError
           "Something went wrong while parsing your subsmission. \
           \We are already looking into it. Kapp"
 evalExpr (FunCallExpr "asciify" args) = do
   failIfNotTrusted
-  emotes <- evalContextTwitchEmotes <$> get
+  emotes <- evalContextTwitchEmotes <$> getEval
   let twitchEmoteUrl =
         let makeTwitchEmoteUrl emoteName =
               "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
               "/3.0"
          in makeTwitchEmoteUrl <$> hoistMaybe emotes
-  dbConn <- evalContextSqliteConnection <$> get
-  channel <- evalContextChannel <$> get
+  dbConn <- evalContextSqliteConnection <$> getEval
+  channel <- evalContextChannel <$> getEval
   emoteNameArg <- T.concat <$> mapM evalExpr args
   let bttvEmoteUrl =
         bttvEmoteImageUrl <$>
@@ -209,26 +207,26 @@ evalExpr (FunCallExpr "asciify" args) = do
         ffzEmoteImageUrl <$>
         getFfzEmoteByName dbConn emoteNameArg (Just channel)
   emoteUrl <-
-    lift $
+    liftExceptT $
     maybeToExceptT
       (EvalError "No emote found")
       (twitchEmoteUrl <|> bttvEmoteUrl <|> ffzEmoteUrl)
-  manager <- evalContextManager <$> get
-  image <- evalIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
+  manager <- evalContextManager <$> getEval
+  image <- liftIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
   case image of
     Right image' -> return image'
     Left errorMessage -> do
-      logHandle <- evalContextLogHandle <$> get
-      senderName <- evalContextSenderName <$> get
-      evalIO $ hPutStrLn logHandle errorMessage
-      throwEvalError $ EvalError ("@" <> senderName <> " Could not load emote")
+      logHandle <- evalContextLogHandle <$> getEval
+      senderName <- evalContextSenderName <$> getEval
+      liftIO $ hPutStrLn logHandle errorMessage
+      throwExceptEval $ EvalError ("@" <> senderName <> " Could not load emote")
 evalExpr (FunCallExpr funame _) = do
-  vars <- evalContextVars <$> get
-  lift $
+  vars <- evalContextVars <$> getEval
+  liftExceptT $
     maybeToExceptT (EvalError $ "Function `" <> funame <> "` does not exists") $
     hoistMaybe $ M.lookup funame vars
 
-evalExprs :: [Expr] -> EvalT T.Text
+evalExprs :: [Expr] -> Eval T.Text
 evalExprs exprs' = T.concat <$> mapM evalExpr exprs'
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
@@ -271,37 +269,30 @@ data BotState = BotState
   , botStateManager :: !HTTP.Manager
   }
 
-type EvalT = StateT EvalContext (ExceptT EvalError IO)
+type Eval = EvalT EvalContext EvalError IO
 
-evalIO :: IO a -> EvalT a
-evalIO = lift . lift
-
-throwEvalError :: EvalError -> StateT EvalContext (ExceptT EvalError IO) a
-throwEvalError = lift . throwE
-
-evalCommandCall :: CommandCall -> EvalT T.Text
+evalCommandCall :: CommandCall -> Eval T.Text
 evalCommandCall (CommandCall name args) = do
-  modify $ evalContextVarsModify $ M.insert "1" args
-  dbConn <- evalContextSqliteConnection <$> get
-  command <- lift $ lift $ commandByName dbConn name
-  senderName <- evalContextSenderName <$> get
+  modifyEval $ evalContextVarsModify $ M.insert "1" args
+  dbConn <- evalContextSqliteConnection <$> getEval
+  command <- liftIO $ commandByName dbConn name
+  senderName <- evalContextSenderName <$> getEval
   case command of
     Just Command {commandId = commandIdent, commandCode = code} -> do
-      senderId <- evalContextSenderId <$> get
-      cooledDown <-
-        lift $ lift $ isCommandCooleddown dbConn senderId commandIdent
+      senderId <- evalContextSenderId <$> getEval
+      cooledDown <- liftIO $ isCommandCooleddown dbConn senderId commandIdent
       unless cooledDown $
-        throwEvalError $
+        throwExceptEval $
         EvalError $ "@" <> senderName <> " The command has not cooled down yet"
-      lift $ lift $ logCommand dbConn senderId commandIdent args
+      liftIO $ logCommand dbConn senderId commandIdent args
       codeAst <-
-        lift $
+        liftExceptT $
         withExceptT (EvalError . T.pack . show) $
         except (snd <$> runParser exprs code)
       evalExprs codeAst
     Nothing -> return ""
 
-evalCommandPipe :: [CommandCall] -> EvalT T.Text
+evalCommandPipe :: [CommandCall] -> Eval T.Text
 evalCommandPipe =
   foldlM (\args -> evalCommandCall . ccArgsModify (`T.append` args)) ""
 
@@ -353,7 +344,8 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
               -- FIXME(#31): Link filtering is not disablable
               evalResult <-
                 runExceptT $
-                evalStateT (evalCommandPipe $ parseCommandPipe "!" "|" message) $
+                evalStateT
+                  (runEvalT $ evalCommandPipe $ parseCommandPipe "!" "|" message) $
                 EvalContext
                   { evalContextVars =
                       M.fromList [("sender", idText (userNick userInfo))]

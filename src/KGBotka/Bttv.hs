@@ -10,7 +10,6 @@ module KGBotka.Bttv
 
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
 import Data.Aeson
 import Data.Aeson.Types
@@ -60,7 +59,7 @@ queryBttvEmotes ::
 queryBttvEmotes manager Nothing = do
   request <- parseRequest "https://api.betterttv.net/2/emotes"
   response <- lift $ httpJson manager request
-  hoistEither $ fmap bttvResEmotes $ responseBody $ unwrapJsonResponse response
+  except $ fmap bttvResEmotes $ responseBody $ unwrapJsonResponse response
 queryBttvEmotes manager channel'@(Just (TwitchIrcChannel (idText -> channel))) =
   case T.uncons channel of
     Just ('#', channelName) -> do
@@ -70,7 +69,7 @@ queryBttvEmotes manager channel'@(Just (TwitchIrcChannel (idText -> channel))) =
         "https://api.betterttv.net/2/channels/" <>
         encodeURI (T.unpack channelName)
       response <- lift $ httpJson manager request
-      hoistEither $
+      except $
         fmap (map (updateBttvEmoteChannel channel') . bttvResEmotes) $
         responseBody $ unwrapJsonResponse response
     _ ->

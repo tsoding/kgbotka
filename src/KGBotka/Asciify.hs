@@ -8,7 +8,6 @@ module KGBotka.Asciify
 import Control.Applicative
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
 import qualified Data.ByteString.Lazy as BS
 import Data.Maybe
@@ -32,7 +31,7 @@ fromUrl manager url = do
   request <- HTTP.parseRequest $ T.unpack url
   response <- lift $ HTTP.httpLbs request manager
   fmap T.unwords $
-    hoistEither $ braillizeByteString $ BS.toStrict $ HTTP.responseBody response
+    except $ braillizeByteString $ BS.toStrict $ HTTP.responseBody response
 
 cacheImage :: Connection -> T.Text -> T.Text -> IO ()
 cacheImage dbConn url image =
