@@ -50,8 +50,7 @@ data ReplCommand
   | PartChannel TwitchIrcChannel
 
 replThread :: ReplState -> IO ()
-replThread initState
- =
+replThread initState =
   withConnectionAndPragmas (replStateSqliteFileName initState) $ \conn -> do
     Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
     replThread' conn initState

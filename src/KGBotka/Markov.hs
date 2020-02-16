@@ -28,10 +28,13 @@ instance FromField Event where
   fromField = fmap (read . T.unpack) . fromField
 
 addMarkovSentence :: Connection -> T.Text -> IO ()
-addMarkovSentence conn =
-  mapM_ (addMarkovPair conn) .
-  scanPairs .
-  (\xs -> [Begin] <> xs <> [End]) . map Word . T.words . T.unwords . T.words
+addMarkovSentence conn sentence
+  | T.length sentence >= 50 =
+    mapM_ (addMarkovPair conn) $
+    scanPairs $
+    (\xs -> [Begin] <> xs <> [End]) $
+    map Word $ T.words $ T.unwords $ T.words sentence
+  | otherwise = return ()
 
 addMarkovPair :: Connection -> (Event, Event) -> IO ()
 addMarkovPair conn (event1, event2) = do
