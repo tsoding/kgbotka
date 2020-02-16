@@ -1,12 +1,13 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE ViewPatterns #-}
+
 module Control.Monad.Trans.Eval where
 
-import Control.Monad.Trans.State.Strict
-import Control.Monad.Trans.Except
-import Control.Monad.Trans.Class
-import Control.Monad.IO.Class
 import Control.Applicative
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
+import Control.Monad.Trans.State.Strict
 
 newtype EvalT s e m a = EvalT
   { runEvalT :: StateT s (ExceptT e m) a

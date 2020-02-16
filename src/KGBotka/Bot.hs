@@ -10,6 +10,8 @@ import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
@@ -47,8 +49,6 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Control.Monad.Trans.Eval
-import Control.Monad.IO.Class
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -116,8 +116,7 @@ failIfNotTrusted :: Eval ()
 failIfNotTrusted = do
   roles <- evalContextRoles <$> getEval
   badgeRoles <- evalContextBadgeRoles <$> getEval
-  when (null roles && null badgeRoles) $
-    fail "Only for trusted users"
+  when (null roles && null badgeRoles) $ fail "Only for trusted users"
 
 evalExpr :: Expr -> Eval T.Text
 evalExpr (TextExpr t) = return t
