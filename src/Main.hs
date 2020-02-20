@@ -158,7 +158,7 @@ readIrcLine conn = do
            return Nothing
          e -> throwIO e)
   case (parseRawIrcMsg . asUtf8) =<< mb of
-    Just msg -> return $! Just msg
+    Just msg -> return (Just msg)
     Nothing -> do
       hPutStrLn stderr "Server sent invalid message!"
       return Nothing

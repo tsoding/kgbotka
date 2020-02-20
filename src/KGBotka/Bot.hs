@@ -306,13 +306,10 @@ botThread botState = do
 
 processControlMsgs :: [RawIrcMsg] -> BotState -> IO ()
 processControlMsgs messages botState = do
-  let logHandle = botStateLogHandle botState
   let outgoingQueue = botStateOutgoingQueue botState
   let channels = botStateChannels botState
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
-    hPutStrLn logHandle $ "[TWITCH] " <> show msg
-    hFlush logHandle
     case cookedMsg of
       Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
       Join _ channelId _ ->
