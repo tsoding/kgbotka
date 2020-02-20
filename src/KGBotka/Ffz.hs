@@ -66,7 +66,7 @@ instance FromJSON FfzEmote where
       maxUrl :: Value -> Parser T.Text
       maxUrl (Object v') =
         (\case
-           Nothing -> fail "Could not find any images for FfzEmote"
+           Nothing -> typeMismatch "List of FFZ emote urls" $ Object v'
            (Just x) -> ("https:" <>) <$> parseJSON x) =<<
         pure ((`HM.lookup` v') =<< idx)
         where

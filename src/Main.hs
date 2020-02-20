@@ -13,7 +13,6 @@ import Control.Exception
 import Data.Aeson
 import Data.Foldable
 import qualified Data.Set as S
-import Data.Traversable
 import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple.QQ
 import Hookup
@@ -158,10 +157,11 @@ readIrcLine conn = do
            hPutStrLn stderr "[WARN] Received LineTooLong. Ignoring it..."
            return Nothing
          e -> throwIO e)
-  for mb $ \xs ->
-    case parseRawIrcMsg (asUtf8 xs) of
-      Just msg -> return $! msg
-      Nothing -> fail "Server sent invalid message!"
+  case (parseRawIrcMsg . asUtf8) =<< mb of
+    Just msg -> return (Just msg)
+    Nothing -> do
+      hPutStrLn stderr "Server sent invalid message!"
+      return Nothing
 
 twitchIncomingThread :: Connection -> WriteQueue RawIrcMsg -> IO ()
 twitchIncomingThread conn queue = do
