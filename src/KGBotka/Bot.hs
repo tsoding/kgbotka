@@ -117,7 +117,8 @@ failIfNotTrusted :: Eval ()
 failIfNotTrusted = do
   roles <- evalContextRoles <$> getEval
   badgeRoles <- evalContextBadgeRoles <$> getEval
-  when (null roles && null badgeRoles) $ fail "Only for trusted users"
+  when (null roles && null badgeRoles) $
+    throwExceptEval $ EvalError "Only for trusted users"
 
 evalExpr :: Expr -> Eval T.Text
 evalExpr (TextExpr t) = return t
@@ -155,7 +156,7 @@ evalExpr (FunCallExpr "nextvideo" _) = do
         maybeToExceptT (EvalError "Video queue is empty") $
         nextVideo dbConn channel
       return $ fridayVideoAsMessage fridayVideo
-    else fail "Only for mr strimmer :)"
+    else throwExceptEval $ EvalError "Only for mr strimmer :)"
   where
     fridayVideoAsMessage :: FridayVideo -> T.Text
     fridayVideoAsMessage FridayVideo { fridayVideoSubText = subText
