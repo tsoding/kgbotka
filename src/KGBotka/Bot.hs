@@ -49,6 +49,7 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import Control.Exception
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -296,89 +297,93 @@ evalCommandPipe =
   foldlM (\args -> evalCommandCall . ccArgsModify (`T.append` args)) ""
 
 botThread :: BotState -> IO ()
-botThread initState =
-  withConnectionAndPragmas (botStateSqliteFileName initState) $ \conn ->
-    botThread' conn initState
+botThread botState = do
+  let databaseFileName = botStateSqliteFileName botState
+  withConnectionAndPragmas databaseFileName $ \conn ->
+    botThread' conn botState
+
+processUserMsgs :: Sqlite.Connection -> [RawIrcMsg] -> BotState -> IO ()
+processUserMsgs dbConn messages botState = do
+  let outgoingQueue = botStateOutgoingQueue botState
+  let logHandle = botStateLogHandle botState
+  let channels = botStateChannels botState
+  let manager = botStateManager botState
+  for_ messages $ \msg -> do
+    let cookedMsg = cookIrcMsg msg
+    hPutStrLn logHandle $ "[TWITCH] " <> show msg
+    hFlush logHandle
+    case cookedMsg of
+      Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
+      Join _ channelId _ ->
+        atomically $ modifyTVar channels $ S.insert $ TwitchIrcChannel channelId
+      Part _ channelId _ ->
+        atomically $ modifyTVar channels $ S.delete $ TwitchIrcChannel channelId
+      Privmsg userInfo channelId message ->
+        case userIdFromRawIrcMsg msg of
+          Just senderId -> do
+            roles <- getTwitchUserRoles dbConn senderId
+            let badgeRoles = badgeRolesFromRawIrcMsg msg
+            let displayName = lookupEntryValue "display-name" $ _msgTags msg
+            logMessage
+              dbConn
+              (TwitchIrcChannel channelId)
+              senderId
+              (idText $ userNick userInfo)
+              displayName
+              roles
+              badgeRoles
+              message
+            addMarkovSentence dbConn message
+              -- FIXME(#31): Link filtering is not disablable
+            evalResult <-
+              runExceptT $
+              evalStateT
+                (runEvalT $ evalCommandPipe $ parseCommandPipe "!" "|" message) $
+              EvalContext
+                { evalContextVars =
+                    M.fromList [("sender", idText (userNick userInfo))]
+                , evalContextSqliteConnection = dbConn
+                , evalContextSenderId = senderId
+                , evalContextSenderName = idText (userNick userInfo)
+                , evalContextChannel = TwitchIrcChannel channelId
+                , evalContextBadgeRoles = badgeRoles
+                , evalContextRoles = roles
+                , evalContextLogHandle = logHandle
+                , evalContextTwitchEmotes =
+                    do emotesTag <- lookupEntryValue "emotes" $ _msgTags msg
+                       if not $ T.null emotesTag
+                         then do
+                           emoteDesc <- listToMaybe $ T.splitOn "/" emotesTag
+                           listToMaybe $ T.splitOn ":" emoteDesc
+                         else Nothing
+                , evalContextManager = manager
+                }
+            atomically $
+              case evalResult of
+                Right commandResponse ->
+                  writeQueue outgoingQueue $
+                  ircPrivmsg (idText channelId) $
+                  twitchCmdEscape commandResponse
+                Left (EvalError userMsg) ->
+                  writeQueue outgoingQueue $
+                  ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
+          Nothing ->
+            hPutStrLn logHandle $
+            "[WARNING] Could not extract twitch user id from PRIVMSG " <>
+            show msg
+      _ -> return ()
 
 botThread' :: Sqlite.Connection -> BotState -> IO ()
-botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
-                                    , botStateOutgoingQueue = outgoingQueue
-                                    , botStateReplQueue = replQueue
-                                    , botStateChannels = channels
-                                    , botStateLogHandle = logHandle
-                                    , botStateManager = manager
-                                    } = do
+botThread' dbConn botState = do
   threadDelay 10000 -- to prevent busy looping
-  maybeRawMsg <- atomically $ flushQueue incomingQueue
-  Sqlite.withTransaction dbConn $
-    for_ maybeRawMsg $ \rawMsg -> do
-      let cookedMsg = cookIrcMsg rawMsg
-      hPutStrLn logHandle $ "[TWITCH] " <> show rawMsg
-      hFlush logHandle
-      case cookedMsg of
-        Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
-        Join _ channelId _ ->
-          atomically $
-          modifyTVar channels $ S.insert $ TwitchIrcChannel channelId
-        Part _ channelId _ ->
-          atomically $
-          modifyTVar channels $ S.delete $ TwitchIrcChannel channelId
-        Privmsg userInfo channelId message ->
-          case userIdFromRawIrcMsg rawMsg of
-            Just senderId -> do
-              roles <- getTwitchUserRoles dbConn senderId
-              let badgeRoles = badgeRolesFromRawIrcMsg rawMsg
-              let displayName =
-                    lookupEntryValue "display-name" $ _msgTags rawMsg
-              logMessage
-                dbConn
-                (TwitchIrcChannel channelId)
-                senderId
-                (idText $ userNick userInfo)
-                displayName
-                roles
-                badgeRoles
-                message
-              addMarkovSentence dbConn message
-              -- FIXME(#31): Link filtering is not disablable
-              evalResult <-
-                runExceptT $
-                evalStateT
-                  (runEvalT $ evalCommandPipe $ parseCommandPipe "!" "|" message) $
-                EvalContext
-                  { evalContextVars =
-                      M.fromList [("sender", idText (userNick userInfo))]
-                  , evalContextSqliteConnection = dbConn
-                  , evalContextSenderId = senderId
-                  , evalContextSenderName = idText (userNick userInfo)
-                  , evalContextChannel = TwitchIrcChannel channelId
-                  , evalContextBadgeRoles = badgeRoles
-                  , evalContextRoles = roles
-                  , evalContextLogHandle = logHandle
-                  , evalContextTwitchEmotes =
-                      do emotesTag <-
-                           lookupEntryValue "emotes" $ _msgTags rawMsg
-                         if not $ T.null emotesTag
-                           then do
-                             emoteDesc <- listToMaybe $ T.splitOn "/" emotesTag
-                             listToMaybe $ T.splitOn ":" emoteDesc
-                           else Nothing
-                  , evalContextManager = manager
-                  }
-              atomically $
-                case evalResult of
-                  Right commandResponse ->
-                    writeQueue outgoingQueue $
-                    ircPrivmsg (idText channelId) $
-                    twitchCmdEscape commandResponse
-                  Left (EvalError userMsg) ->
-                    writeQueue outgoingQueue $
-                    ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
-            Nothing ->
-              hPutStrLn logHandle $
-              "[WARNING] Could not extract twitch user id from PRIVMSG " <>
-              show rawMsg
-        _ -> return ()
+  let replQueue = botStateReplQueue botState
+  let logHandle = botStateLogHandle botState
+  let incomingQueue = botStateIncomingQueue botState
+  let outgoingQueue = botStateOutgoingQueue botState
+  messages <- atomically $ flushQueue incomingQueue
+  catch
+    (Sqlite.withTransaction dbConn $ processUserMsgs dbConn messages botState)
+    (\e -> hPrint logHandle (e :: Sqlite.SQLError))
   atomically $ do
     replCommand <- tryReadQueue replQueue
     case replCommand of
@@ -391,6 +396,6 @@ botThread' dbConn botState@BotState { botStateIncomingQueue = incomingQueue
         writeQueue outgoingQueue $ ircPart channelId ""
       Nothing -> return ()
   botThread' dbConn botState
-  where
-    twitchCmdEscape :: T.Text -> T.Text
-    twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip
+
+twitchCmdEscape :: T.Text -> T.Text
+twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip
