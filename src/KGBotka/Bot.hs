@@ -50,6 +50,7 @@ import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 import Control.Exception
+import Data.List
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -303,12 +304,11 @@ botThread botState = do
   withConnectionAndPragmas databaseFileName $ \conn ->
     botThread' conn botState
 
-processUserMsgs :: Sqlite.Connection -> [RawIrcMsg] -> BotState -> IO ()
-processUserMsgs dbConn messages botState = do
-  let outgoingQueue = botStateOutgoingQueue botState
+processControlMsgs :: [RawIrcMsg] -> BotState -> IO ()
+processControlMsgs messages botState = do
   let logHandle = botStateLogHandle botState
+  let outgoingQueue = botStateOutgoingQueue botState
   let channels = botStateChannels botState
-  let manager = botStateManager botState
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
     hPutStrLn logHandle $ "[TWITCH] " <> show msg
@@ -319,6 +319,18 @@ processUserMsgs dbConn messages botState = do
         atomically $ modifyTVar channels $ S.insert $ TwitchIrcChannel channelId
       Part _ channelId _ ->
         atomically $ modifyTVar channels $ S.delete $ TwitchIrcChannel channelId
+      _ -> return ()
+
+processUserMsgs :: Sqlite.Connection -> [RawIrcMsg] -> BotState -> IO ()
+processUserMsgs dbConn messages botState = do
+  let outgoingQueue = botStateOutgoingQueue botState
+  let logHandle = botStateLogHandle botState
+  let manager = botStateManager botState
+  for_ messages $ \msg -> do
+    let cookedMsg = cookIrcMsg msg
+    hPutStrLn logHandle $ "[TWITCH] " <> show msg
+    hFlush logHandle
+    case cookedMsg of
       Privmsg userInfo channelId message ->
         case userIdFromRawIrcMsg msg of
           Just senderId -> do
@@ -377,15 +389,18 @@ processUserMsgs dbConn messages botState = do
 botThread' :: Sqlite.Connection -> BotState -> IO ()
 botThread' dbConn botState = do
   threadDelay 10000 -- to prevent busy looping
-  let replQueue = botStateReplQueue botState
-  let logHandle = botStateLogHandle botState
   let incomingQueue = botStateIncomingQueue botState
-  let outgoingQueue = botStateOutgoingQueue botState
   messages <- atomically $ flushQueue incomingQueue
+  let (userMessages, controlMessages) =
+        partition (\x -> _msgCommand x == "PRIVMSG") messages
+  processControlMsgs controlMessages botState
   catch
-    (Sqlite.withTransaction dbConn $ processUserMsgs dbConn messages botState)
-    (\e -> hPrint logHandle (e :: Sqlite.SQLError))
+    (Sqlite.withTransaction dbConn $
+     processUserMsgs dbConn userMessages botState)
+    (\e -> hPrint (botStateLogHandle botState) (e :: Sqlite.SQLError))
   atomically $ do
+    let outgoingQueue = botStateOutgoingQueue botState
+    let replQueue = botStateReplQueue botState
     replCommand <- tryReadQueue replQueue
     case replCommand of
       Just (Say channel msg) ->
