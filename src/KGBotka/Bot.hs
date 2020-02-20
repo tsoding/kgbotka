@@ -222,6 +222,14 @@ evalExpr (FunCallExpr "asciify" args) = do
       senderName <- evalContextSenderName <$> getEval
       liftIO $ hPutStrLn logHandle errorMessage
       throwExceptEval $ EvalError ("@" <> senderName <> " Could not load emote")
+evalExpr (FunCallExpr "help" args) = do
+  name <- T.concat <$> mapM evalExpr args
+  dbConn <- evalContextSqliteConnection <$> getEval
+  maybeCommand <- liftIO $ commandByName dbConn name
+  case maybeCommand of
+    Just Command {commandCode = code} ->
+      return $ "Command `" <> name <> "` defined as `" <> code <> "`"
+    Nothing -> return $ "Command `" <> name <> " does not exist"
 evalExpr (FunCallExpr funame _) = do
   vars <- evalContextVars <$> getEval
   liftExceptT $
