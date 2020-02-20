@@ -9,6 +9,7 @@ module KGBotka.Bot
 import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Eval
@@ -18,6 +19,7 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict
 import Data.Array
 import Data.Foldable
+import Data.List
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Set as S
@@ -49,8 +51,6 @@ import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Control.Exception
-import Data.List
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -301,8 +301,7 @@ evalCommandPipe =
 botThread :: BotState -> IO ()
 botThread botState = do
   let databaseFileName = botStateSqliteFileName botState
-  withConnectionAndPragmas databaseFileName $ \conn ->
-    botThread' conn botState
+  withConnectionAndPragmas databaseFileName $ \conn -> botThread' conn botState
 
 processControlMsgs :: [RawIrcMsg] -> BotState -> IO ()
 processControlMsgs messages botState = do
