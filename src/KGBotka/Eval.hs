@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module KGBotka.Eval
   ( EvalContext(..)
   , evalCommandCall
