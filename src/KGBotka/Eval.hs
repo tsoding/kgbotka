@@ -38,6 +38,7 @@ import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 import KGBotka.Queue
+import KGBotka.Log
 import Control.Concurrent.STM
 
 data EvalContext = EvalContext
@@ -51,7 +52,7 @@ data EvalContext = EvalContext
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
   , evalContextManager :: HTTP.Manager
-  , evalContextLogQueue :: !(WriteQueue T.Text)
+  , evalContextLogQueue :: !(WriteQueue LogEntry)
   }
 
 newtype EvalError =
@@ -146,10 +147,7 @@ evalExpr (FunCallExpr "urlencode" args) =
     encodeURI = escapeURIString (const False)
 evalExpr (FunCallExpr "markov" _) = do
   dbConn <- evalContextSqliteConnection <$> getEval
-  logQueue <- evalContextLogQueue <$> getEval
   events <- liftIO $ seqMarkovEvents Begin End dbConn
-  liftIO $
-    atomically $ writeQueue logQueue $ "[MARKOV] " <> T.pack (show events)
   return $
     T.unwords $
     mapMaybe
@@ -203,6 +201,7 @@ evalExpr (FunCallExpr "friday" args) = do
       liftIO $
         atomically $
         writeQueue logQueue $
+        LogEntry "YOUTUBE" $
         "An error occured while parsing YouTube link: " <> T.pack failReason
       throwExceptEval $
         EvalError
@@ -237,7 +236,9 @@ evalExpr (FunCallExpr "asciify" args) = do
     Left errorMessage -> do
       logQueue <- evalContextLogQueue <$> getEval
       senderName <- evalContextSenderName <$> getEval
-      liftIO $ atomically $ writeQueue logQueue $ T.pack errorMessage
+      liftIO $
+        atomically $
+        writeQueue logQueue $ LogEntry "ASCIIFY" $ T.pack errorMessage
       throwExceptEval $ EvalError ("@" <> senderName <> " Could not load emote")
 evalExpr (FunCallExpr "help" args) = do
   name <- T.concat <$> mapM evalExpr args

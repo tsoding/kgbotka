@@ -32,6 +32,7 @@ import KGBotka.Repl
 import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
+import KGBotka.Log
 import qualified Network.HTTP.Client as HTTP
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
@@ -67,7 +68,7 @@ userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
 data BotState = BotState
   { botStateIncomingQueue :: !(ReadQueue RawIrcMsg)
   , botStateOutgoingQueue :: !(WriteQueue RawIrcMsg)
-  , botStateLogQueue :: !(WriteQueue T.Text)
+  , botStateLogQueue :: !(WriteQueue LogEntry)
   , botStateReplQueue :: !(ReadQueue ReplCommand)
   , botStateChannels :: !(TVar (S.Set TwitchIrcChannel))
   , botStateSqliteFileName :: !FilePath
@@ -100,7 +101,7 @@ processUserMsgs dbConn messages botState = do
   let manager = botStateManager botState
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
-    atomically $ writeQueue logQueue $ "[TWITCH] " <> T.pack (show msg)
+    atomically $ writeQueue logQueue $ LogEntry "TWITCH" $ T.pack $ show msg
     case cookedMsg of
       Privmsg userInfo channelId message ->
         case userIdFromRawIrcMsg msg of
@@ -154,7 +155,8 @@ processUserMsgs dbConn messages botState = do
           Nothing ->
             atomically $
             writeQueue logQueue $
-            "[WARNING] Could not extract twitch user id from PRIVMSG " <>
+            LogEntry "TWITCH" $
+            "ERROR: Could not extract twitch user id from PRIVMSG " <>
             T.pack (show msg)
       _ -> return ()
 
@@ -171,9 +173,8 @@ botThread' dbConn botState = do
      processUserMsgs dbConn userMessages botState)
     (\e ->
        atomically $
-       writeQueue
-         (botStateLogQueue botState)
-         (T.pack (show (e :: Sqlite.SQLError))))
+       writeQueue (botStateLogQueue botState) $
+       LogEntry "SQLITE" $ T.pack $ show (e :: Sqlite.SQLError))
   atomically $ do
     let outgoingQueue = botStateOutgoingQueue botState
     let replQueue = botStateReplQueue botState

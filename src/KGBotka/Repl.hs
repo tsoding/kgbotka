@@ -28,6 +28,7 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
+import KGBotka.Log
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set TwitchIrcChannel))
@@ -37,8 +38,8 @@ data ReplState = ReplState
   , replStateConfigTwitch :: !ConfigTwitch
   , replStateManager :: !HTTP.Manager
   , replStateHandle :: !Handle
-  , replStateLogQueue :: WriteQueue T.Text
-  , replStateConnAddr :: Maybe SockAddr
+  , replStateLogQueue :: !(WriteQueue LogEntry)
+  , replStateConnAddr :: !(Maybe SockAddr)
   }
 
 data ReplCommand
@@ -75,6 +76,7 @@ replThread' dbConn state = do
   inputLine <- T.pack <$> hGetLine replHandle
   atomically $
     writeQueue (replStateLogQueue state) $
+    LogEntry "BACKDOOR" $
     T.pack (show $ replStateConnAddr state) <> ": " <> inputLine
   case (T.words inputLine, replStateCurrentChannel state) of
     ("cd":channel:_, _) ->
@@ -203,9 +205,9 @@ backdoorThread port initState = do
       loop sock
     talk conn addr = do
       atomically $
-        writeQueue
-          (replStateLogQueue initState)
-          (T.pack (show addr) <> " has connected to the Backdoor gachiBASS")
+        writeQueue (replStateLogQueue initState) $
+        LogEntry "BACKDOOR" $
+        T.pack (show addr) <> " has connected to the Backdoor gachiBASS"
       connHandle <- socketToHandle conn ReadWriteMode
       replThread $
         initState {replStateHandle = connHandle, replStateConnAddr = Just addr}
