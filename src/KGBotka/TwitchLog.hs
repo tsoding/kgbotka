@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module KGBotka.Log
+module KGBotka.TwitchLog
   ( logMessage
   ) where
 

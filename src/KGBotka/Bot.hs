@@ -25,7 +25,7 @@ import Irc.RawIrcMsg
 import Irc.UserInfo (userNick)
 import KGBotka.Command
 import KGBotka.Eval
-import KGBotka.Log
+import KGBotka.TwitchLog
 import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Repl
