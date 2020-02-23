@@ -21,6 +21,7 @@ import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Ffz
+import KGBotka.Log
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.Sqlite
@@ -28,7 +29,6 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-import KGBotka.Log
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set TwitchIrcChannel))
@@ -211,5 +211,4 @@ backdoorThread port initState = do
       connHandle <- socketToHandle conn ReadWriteMode
       replThread $
         initState {replStateHandle = connHandle, replStateConnAddr = Just addr}
-
 -- TODO(#82): there is no REPL mechanism to update command cooldown

@@ -9,6 +9,7 @@ module KGBotka.Eval
   ) where
 
 import Control.Applicative
+import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Eval
@@ -28,8 +29,10 @@ import KGBotka.Expr
 import KGBotka.Ffz
 import KGBotka.Flip
 import KGBotka.Friday
+import KGBotka.Log
 import KGBotka.Markov
 import KGBotka.Parser
+import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
@@ -37,9 +40,6 @@ import Network.URI
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import KGBotka.Queue
-import KGBotka.Log
-import Control.Concurrent.STM
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text

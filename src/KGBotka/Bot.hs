@@ -25,14 +25,14 @@ import Irc.RawIrcMsg
 import Irc.UserInfo (userNick)
 import KGBotka.Command
 import KGBotka.Eval
-import KGBotka.TwitchLog
+import KGBotka.Log
 import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
-import KGBotka.Log
+import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole

@@ -20,6 +20,7 @@ import Irc.Commands
 import Irc.RawIrcMsg
 import KGBotka.Bot
 import KGBotka.Config
+import KGBotka.Log
 import KGBotka.Migration
 import KGBotka.Queue
 import KGBotka.Repl
@@ -29,7 +30,6 @@ import Network.Socket (Family(AF_INET))
 import System.Environment
 import System.Exit
 import System.IO
-import KGBotka.Log
 
 migrations :: [Migration]
 migrations =

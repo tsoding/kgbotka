@@ -3,13 +3,12 @@ module KGBotka.Log
   , LogEntry(..)
   ) where
 
-import KGBotka.Queue
-import qualified Data.Text as T
-import System.IO
 import Control.Concurrent
 import Control.Concurrent.STM
+import qualified Data.Text as T
 import Data.Time
-
+import KGBotka.Queue
+import System.IO
 
 -- NOTE: the Tag is use to indicate the "subsystem" where the event
 -- has happened. Examples are "TWITCH", "SQLITE", "ASCIIFY", etc. It
