@@ -3,7 +3,6 @@
 module KGBotka.Repl
   ( replThread
   , backdoorThread
-  , backdoorLoggingThread
   , ReplState(..)
   , ReplCommand(..)
   ) where
@@ -29,7 +28,6 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-import KGBotka.Log
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set TwitchIrcChannel))

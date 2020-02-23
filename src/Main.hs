@@ -29,6 +29,7 @@ import Network.Socket (Family(AF_INET))
 import System.Environment
 import System.Exit
 import System.IO
+import KGBotka.Log
 
 migrations :: [Migration]
 migrations =
@@ -207,7 +208,7 @@ mainWithArgs (configPath:databasePath:_) = do
                 , botStateLogQueue = WriteQueue logQueue
                 , botStateManager = manager
                 }
-            , backdoorLoggingThread "kgbotka.log" $ ReadQueue logQueue
+            , loggingThread "kgbotka.log" $ ReadQueue logQueue
             ] $ \_
             -- TODO(#63): backdoor port is hardcoded
            ->

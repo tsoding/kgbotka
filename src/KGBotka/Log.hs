@@ -1,4 +1,4 @@
-module KGBotka.Log (backdoorLoggingThread) where
+module KGBotka.Log (loggingThread) where
 
 import KGBotka.Queue
 import qualified Data.Text as T
@@ -7,8 +7,8 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Data.Time
 
-backdoorLoggingThread :: FilePath -> ReadQueue T.Text -> IO ()
-backdoorLoggingThread logFilePath messageQueue =
+loggingThread :: FilePath -> ReadQueue T.Text -> IO ()
+loggingThread logFilePath messageQueue =
   withFile logFilePath AppendMode loop
   where
     loop logHandle = do
