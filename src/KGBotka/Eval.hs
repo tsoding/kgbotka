@@ -9,6 +9,7 @@ module KGBotka.Eval
   ) where
 
 import Control.Applicative
+import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Eval
@@ -28,13 +29,14 @@ import KGBotka.Expr
 import KGBotka.Ffz
 import KGBotka.Flip
 import KGBotka.Friday
+import KGBotka.Log
 import KGBotka.Markov
 import KGBotka.Parser
+import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
-import System.IO
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
@@ -49,8 +51,8 @@ data EvalContext = EvalContext
   , evalContextChannel :: TwitchIrcChannel
   , evalContextBadgeRoles :: [TwitchBadgeRole]
   , evalContextRoles :: [TwitchRole]
-  , evalContextLogHandle :: Handle
   , evalContextManager :: HTTP.Manager
+  , evalContextLogQueue :: !(WriteQueue LogEntry)
   }
 
 newtype EvalError =
@@ -145,9 +147,7 @@ evalExpr (FunCallExpr "urlencode" args) =
     encodeURI = escapeURIString (const False)
 evalExpr (FunCallExpr "markov" _) = do
   dbConn <- evalContextSqliteConnection <$> getEval
-  logHandle <- evalContextLogHandle <$> getEval
   events <- liftIO $ seqMarkovEvents Begin End dbConn
-  liftIO $ hPutStrLn logHandle $ "[MARKOV] " <> show events
   return $
     T.unwords $
     mapMaybe
@@ -197,10 +197,12 @@ evalExpr (FunCallExpr "friday" args) = do
     Left Nothing ->
       throwExceptEval $ EvalError "Your suggestion should contain YouTube link"
     Left (Just failReason) -> do
-      logHandle <- evalContextLogHandle <$> getEval
+      logQueue <- evalContextLogQueue <$> getEval
       liftIO $
-        hPutStrLn logHandle $
-        "An error occured while parsing YouTube link: " <> failReason
+        atomically $
+        writeQueue logQueue $
+        LogEntry "YOUTUBE" $
+        "An error occured while parsing YouTube link: " <> T.pack failReason
       throwExceptEval $
         EvalError
           "Something went wrong while parsing your subsmission. \
@@ -232,9 +234,11 @@ evalExpr (FunCallExpr "asciify" args) = do
   case image of
     Right image' -> return image'
     Left errorMessage -> do
-      logHandle <- evalContextLogHandle <$> getEval
+      logQueue <- evalContextLogQueue <$> getEval
       senderName <- evalContextSenderName <$> getEval
-      liftIO $ hPutStrLn logHandle errorMessage
+      liftIO $
+        atomically $
+        writeQueue logQueue $ LogEntry "ASCIIFY" $ T.pack errorMessage
       throwExceptEval $ EvalError ("@" <> senderName <> " Could not load emote")
 evalExpr (FunCallExpr "help" args) = do
   name <- T.concat <$> mapM evalExpr args

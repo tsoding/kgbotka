@@ -20,6 +20,7 @@ import Irc.Commands
 import Irc.RawIrcMsg
 import KGBotka.Bot
 import KGBotka.Config
+import KGBotka.Log
 import KGBotka.Migration
 import KGBotka.Queue
 import KGBotka.Repl
@@ -193,38 +194,36 @@ mainWithArgs (configPath:databasePath:_) = do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
         withConnection twitchConnectionParams $ \conn -> do
           authorize config conn
-          withFile "twitch.log" AppendMode $ \logHandler
           -- TODO(#67): there is no supavisah that restarts essential threads on crashing
-           ->
-            withForkIOs
-              [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
-              , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
-              , botThread $
-                BotState
-                  { botStateIncomingQueue = ReadQueue incomingIrcQueue
-                  , botStateOutgoingQueue = WriteQueue outgoingIrcQueue
-                  , botStateReplQueue = ReadQueue replQueue
-                  , botStateChannels = joinedChannels
-                  , botStateSqliteFileName = databasePath
-                  , botStateLogHandle = logHandler
-                  , botStateManager = manager
-                  }
-              , backdoorLoggingThread "backdoor.log" $ ReadQueue logQueue
-              ] $ \_
-              -- TODO(#63): backdoor port is hardcoded
-             ->
-              backdoorThread "6969" $
-              ReplState
-                { replStateChannels = joinedChannels
-                , replStateSqliteFileName = databasePath
-                , replStateCurrentChannel = Nothing
-                , replStateCommandQueue = WriteQueue replQueue
-                , replStateConfigTwitch = config
-                , replStateManager = manager
-                , replStateHandle = stdout
-                , replStateLogQueue = WriteQueue logQueue
-                , replStateConnAddr = Nothing
+          withForkIOs
+            [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
+            , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
+            , botThread $
+              BotState
+                { botStateIncomingQueue = ReadQueue incomingIrcQueue
+                , botStateOutgoingQueue = WriteQueue outgoingIrcQueue
+                , botStateReplQueue = ReadQueue replQueue
+                , botStateChannels = joinedChannels
+                , botStateSqliteFileName = databasePath
+                , botStateLogQueue = WriteQueue logQueue
+                , botStateManager = manager
                 }
+            , loggingThread "kgbotka.log" $ ReadQueue logQueue
+            ] $ \_
+            -- TODO(#63): backdoor port is hardcoded
+           ->
+            backdoorThread "6969" $
+            ReplState
+              { replStateChannels = joinedChannels
+              , replStateSqliteFileName = databasePath
+              , replStateCurrentChannel = Nothing
+              , replStateCommandQueue = WriteQueue replQueue
+              , replStateConfigTwitch = config
+              , replStateManager = manager
+              , replStateHandle = stdout
+              , replStateLogQueue = WriteQueue logQueue
+              , replStateConnAddr = Nothing
+              }
       putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do

@@ -1,53 +1,36 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module KGBotka.Log
-  ( logMessage
+  ( loggingThread
+  , LogEntry(..)
   ) where
 
+import Control.Concurrent
+import Control.Concurrent.STM
 import qualified Data.Text as T
-import Database.SQLite.Simple
-import KGBotka.Roles
-import KGBotka.TwitchAPI
+import Data.Time
+import KGBotka.Queue
+import System.IO
 
-logMessage ::
-     Connection
-  -> TwitchIrcChannel
-  -> TwitchUserId
-  -> T.Text
-  -> Maybe T.Text
-  -> [TwitchRole]
-  -> [TwitchBadgeRole]
-  -> T.Text
-  -> IO ()
-logMessage conn channel senderTwitchId senderTwitchName senderTwitchDisplayName senderTwitchRoles senderTwitchBadgeRoles message =
-  executeNamed
-    conn
-    "INSERT INTO TwitchLog ( \
-    \  channel, \
-    \  senderTwitchId, \
-    \  senderTwitchName, \
-    \  senderTwitchDisplayName, \
-    \  senderTwitchRoles, \
-    \  senderTwitchBadgeRoles, \
-    \  message \
-    \) VALUES ( \
-    \  :channel, \
-    \  :senderTwitchId, \
-    \  :senderTwitchName, \
-    \  :senderTwitchDisplayName, \
-    \  :senderTwitchRoles, \
-    \  :senderTwitchBadgeRoles, \
-    \  :message \
-    \)"
-    [ ":channel" := channel
-    , ":senderTwitchId" := senderTwitchId
-    , ":senderTwitchName" := senderTwitchName
-    , ":senderTwitchDisplayName" := senderTwitchDisplayName
-    -- NOTE: Roles and BadgeRoles in this table are supposed to be
-    -- informative. Basically they are just a reflection of what they
-    -- were at the time. Should not be generally used for any
-    -- authentication or decision making.
-    , ":senderTwitchRoles" := show senderTwitchRoles
-    , ":senderTwitchBadgeRoles" := show senderTwitchBadgeRoles
-    , ":message" := message
-    ]
+-- NOTE: the Tag is use to indicate the "subsystem" where the event
+-- has happened. Examples are "TWITCH", "SQLITE", "ASCIIFY", etc. It
+-- is prefered to capitalize them.
+data LogEntry = LogEntry
+  { logEntryTag :: T.Text
+  , logEntryText :: T.Text
+  } deriving (Eq, Show)
+
+loggingThread :: FilePath -> ReadQueue LogEntry -> IO ()
+loggingThread logFilePath messageQueue = withFile logFilePath AppendMode loop
+  where
+    loop logHandle = do
+      threadDelay 10000 -- to prevent busy looping
+      messages <- atomically $ flushQueue messageQueue
+      timestamp <-
+        formatTime defaultTimeLocale (iso8601DateFormat $ Just "%H:%M:%S") <$>
+        getCurrentTime
+      mapM_
+        (\(LogEntry tag text) ->
+           hPutStrLn logHandle $
+           "[" <> timestamp <> "] [" <> T.unpack tag <> "] " <> T.unpack text)
+        messages
+      hFlush logHandle
+      loop logHandle

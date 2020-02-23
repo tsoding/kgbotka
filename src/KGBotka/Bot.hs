@@ -32,8 +32,8 @@ import KGBotka.Repl
 import KGBotka.Roles
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
+import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
-import System.IO
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
@@ -68,10 +68,10 @@ userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
 data BotState = BotState
   { botStateIncomingQueue :: !(ReadQueue RawIrcMsg)
   , botStateOutgoingQueue :: !(WriteQueue RawIrcMsg)
+  , botStateLogQueue :: !(WriteQueue LogEntry)
   , botStateReplQueue :: !(ReadQueue ReplCommand)
   , botStateChannels :: !(TVar (S.Set TwitchIrcChannel))
   , botStateSqliteFileName :: !FilePath
-  , botStateLogHandle :: !Handle
   , botStateManager :: !HTTP.Manager
   }
 
@@ -97,12 +97,11 @@ processControlMsgs messages botState = do
 processUserMsgs :: Sqlite.Connection -> [RawIrcMsg] -> BotState -> IO ()
 processUserMsgs dbConn messages botState = do
   let outgoingQueue = botStateOutgoingQueue botState
-  let logHandle = botStateLogHandle botState
+  let logQueue = botStateLogQueue botState
   let manager = botStateManager botState
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
-    hPutStrLn logHandle $ "[TWITCH] " <> show msg
-    hFlush logHandle
+    atomically $ writeQueue logQueue $ LogEntry "TWITCH" $ T.pack $ show msg
     case cookedMsg of
       Privmsg userInfo channelId message ->
         case userIdFromRawIrcMsg msg of
@@ -134,7 +133,7 @@ processUserMsgs dbConn messages botState = do
                 , evalContextChannel = TwitchIrcChannel channelId
                 , evalContextBadgeRoles = badgeRoles
                 , evalContextRoles = roles
-                , evalContextLogHandle = logHandle
+                , evalContextLogQueue = logQueue
                 , evalContextTwitchEmotes =
                     do emotesTag <- lookupEntryValue "emotes" $ _msgTags msg
                        if not $ T.null emotesTag
@@ -154,9 +153,11 @@ processUserMsgs dbConn messages botState = do
                   writeQueue outgoingQueue $
                   ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
           Nothing ->
-            hPutStrLn logHandle $
-            "[WARNING] Could not extract twitch user id from PRIVMSG " <>
-            show msg
+            atomically $
+            writeQueue logQueue $
+            LogEntry "TWITCH" $
+            "ERROR: Could not extract twitch user id from PRIVMSG " <>
+            T.pack (show msg)
       _ -> return ()
 
 botThread' :: Sqlite.Connection -> BotState -> IO ()
@@ -170,7 +171,10 @@ botThread' dbConn botState = do
   catch
     (Sqlite.withTransaction dbConn $
      processUserMsgs dbConn userMessages botState)
-    (\e -> hPrint (botStateLogHandle botState) (e :: Sqlite.SQLError))
+    (\e ->
+       atomically $
+       writeQueue (botStateLogQueue botState) $
+       LogEntry "SQLITE" $ T.pack $ show (e :: Sqlite.SQLError))
   atomically $ do
     let outgoingQueue = botStateOutgoingQueue botState
     let replQueue = botStateReplQueue botState

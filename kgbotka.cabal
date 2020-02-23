@@ -70,7 +70,7 @@ executable kgbotka
                      , KGBotka.Repl
                      , KGBotka.Config
                      , KGBotka.Friday
-                     , KGBotka.Log
+                     , KGBotka.TwitchLog
                      , KGBotka.Markov
                      , KGBotka.Sqlite
                      , KGBotka.Asciify
@@ -78,6 +78,7 @@ executable kgbotka
                      , KGBotka.Http
                      , KGBotka.Ffz
                      , KGBotka.Eval
+                     , KGBotka.Log
                      , Control.Monad.Trans.Extra
                      , Control.Monad.Trans.Eval
 
