@@ -17,7 +17,6 @@ import Data.Foldable
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
-import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Bttv
 import KGBotka.Command
@@ -30,6 +29,7 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
+import KGBotka.Log
 
 data ReplState = ReplState
   { replStateChannels :: !(TVar (S.Set TwitchIrcChannel))
@@ -212,20 +212,4 @@ backdoorThread port initState = do
       replThread $
         initState {replStateHandle = connHandle, replStateConnAddr = Just addr}
 
-backdoorLoggingThread :: FilePath -> ReadQueue T.Text -> IO ()
-backdoorLoggingThread logFilePath messageQueue =
-  withFile logFilePath AppendMode loop
-  where
-    loop logHandle = do
-      threadDelay 10000 -- to prevent busy looping
-      messages <- atomically $ flushQueue messageQueue
-      timestamp <-
-        formatTime defaultTimeLocale (iso8601DateFormat $ Just "%H:%M:%S") <$>
-        getCurrentTime
-      mapM_
-        (\message ->
-           hPutStrLn logHandle $ "[" <> timestamp <> "] " <> T.unpack message)
-        messages
-      hFlush logHandle
-      loop logHandle
 -- TODO(#82): there is no REPL mechanism to update command cooldown

@@ -78,6 +78,7 @@ executable kgbotka
                      , KGBotka.Http
                      , KGBotka.Ffz
                      , KGBotka.Eval
+                     , KGBotka.Log
                      , Control.Monad.Trans.Extra
                      , Control.Monad.Trans.Eval
 
