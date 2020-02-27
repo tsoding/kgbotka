@@ -24,6 +24,7 @@ import Irc.Message
 import Irc.RawIrcMsg
 import Irc.UserInfo (userNick)
 import KGBotka.Command
+import KGBotka.Config
 import KGBotka.Eval
 import KGBotka.Log
 import KGBotka.Markov
@@ -73,6 +74,7 @@ data BotState = BotState
   , botStateChannels :: !(TVar (S.Set TwitchIrcChannel))
   , botStateSqliteFileName :: !FilePath
   , botStateManager :: !HTTP.Manager
+  , botStateConfigTwitch :: ConfigTwitch
   }
 
 botThread :: BotState -> IO ()
@@ -99,6 +101,7 @@ processUserMsgs dbConn messages botState = do
   let outgoingQueue = botStateOutgoingQueue botState
   let logQueue = botStateLogQueue botState
   let manager = botStateManager botState
+  let botLogin = configTwitchAccount $ botStateConfigTwitch botState
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
     atomically $ writeQueue logQueue $ LogEntry "TWITCH" $ T.pack $ show msg
@@ -109,49 +112,57 @@ processUserMsgs dbConn messages botState = do
             roles <- getTwitchUserRoles dbConn senderId
             let badgeRoles = badgeRolesFromRawIrcMsg msg
             let displayName = lookupEntryValue "display-name" $ _msgTags msg
-            logMessage
-              dbConn
-              (TwitchIrcChannel channelId)
-              senderId
-              (idText $ userNick userInfo)
-              displayName
-              roles
-              badgeRoles
-              message
-            addMarkovSentence dbConn message
-              -- FIXME(#31): Link filtering is not disablable
-            evalResult <-
-              runExceptT $
-              evalStateT
-                (runEvalT $ evalCommandPipe $ parseCommandPipe "!" "|" message) $
-              EvalContext
-                { evalContextVars =
-                    M.fromList [("sender", idText (userNick userInfo))]
-                , evalContextSqliteConnection = dbConn
-                , evalContextSenderId = senderId
-                , evalContextSenderName = idText (userNick userInfo)
-                , evalContextChannel = TwitchIrcChannel channelId
-                , evalContextBadgeRoles = badgeRoles
-                , evalContextRoles = roles
-                , evalContextLogQueue = logQueue
-                , evalContextTwitchEmotes =
-                    do emotesTag <- lookupEntryValue "emotes" $ _msgTags msg
-                       if not $ T.null emotesTag
-                         then do
-                           emoteDesc <- listToMaybe $ T.splitOn "/" emotesTag
-                           listToMaybe $ T.splitOn ":" emoteDesc
-                         else Nothing
-                , evalContextManager = manager
-                }
-            atomically $
-              case evalResult of
-                Right commandResponse ->
-                  writeQueue outgoingQueue $
-                  ircPrivmsg (idText channelId) $
-                  twitchCmdEscape commandResponse
-                Left (EvalError userMsg) ->
-                  writeQueue outgoingQueue $
-                  ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
+            let senderName = idText $ userNick userInfo
+            if T.toLower senderName /= T.toLower botLogin
+              then do
+                logMessage
+                  dbConn
+                  (TwitchIrcChannel channelId)
+                  senderId
+                  senderName
+                  displayName
+                  roles
+                  badgeRoles
+                  message
+                addMarkovSentence dbConn message
+                -- FIXME(#31): Link filtering is not disablable
+                evalResult <-
+                  runExceptT $
+                  evalStateT
+                    (runEvalT $
+                     evalCommandPipe $
+                     parseCommandPipe (CallPrefix "$") (PipeSuffix "|") message) $
+                  EvalContext
+                    { evalContextVars = M.fromList [("sender", senderName)]
+                    , evalContextSqliteConnection = dbConn
+                    , evalContextSenderId = senderId
+                    , evalContextSenderName = senderName
+                    , evalContextChannel = TwitchIrcChannel channelId
+                    , evalContextBadgeRoles = badgeRoles
+                    , evalContextRoles = roles
+                    , evalContextLogQueue = logQueue
+                    , evalContextTwitchEmotes =
+                        do emotesTag <- lookupEntryValue "emotes" $ _msgTags msg
+                           if not $ T.null emotesTag
+                             then do
+                               emoteDesc <-
+                                 listToMaybe $ T.splitOn "/" emotesTag
+                               listToMaybe $ T.splitOn ":" emoteDesc
+                             else Nothing
+                    , evalContextManager = manager
+                    }
+                atomically $
+                  case evalResult of
+                    Right commandResponse ->
+                      writeQueue outgoingQueue $
+                      ircPrivmsg (idText channelId) $
+                      twitchCmdEscape commandResponse
+                    Left (EvalError userMsg) ->
+                      writeQueue outgoingQueue $
+                      ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
+              else atomically $
+                   writeQueue logQueue $
+                   LogEntry "TWITCH" "WARNING: Bot received its own message"
           Nothing ->
             atomically $
             writeQueue logQueue $

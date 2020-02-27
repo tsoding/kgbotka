@@ -14,6 +14,8 @@ module KGBotka.Command
   , ccArgsModify
   , logCommand
   , isCommandCooleddown
+  , CallPrefix(..)
+  , PipeSuffix(..)
   ) where
 
 import Data.Char
@@ -111,13 +113,19 @@ data CommandCall = CommandCall
   , ccArgs :: T.Text
   } deriving (Eq, Show)
 
-parseCommandPipe :: T.Text -> T.Text -> T.Text -> [CommandCall]
-parseCommandPipe callPrefix pipeSuffix source =
+newtype CallPrefix =
+  CallPrefix T.Text
+
+newtype PipeSuffix =
+  PipeSuffix T.Text
+
+parseCommandPipe :: CallPrefix -> PipeSuffix -> T.Text -> [CommandCall]
+parseCommandPipe callPrefix (PipeSuffix pipeSuffix) source =
   fromMaybe [] $
   mapM (parseCommandCall callPrefix) $ T.splitOn pipeSuffix source
 
-parseCommandCall :: T.Text -> T.Text -> Maybe CommandCall
-parseCommandCall prefix source =
+parseCommandCall :: CallPrefix -> T.Text -> Maybe CommandCall
+parseCommandCall (CallPrefix prefix) source =
   uncurry CommandCall . fmap T.strip . T.span isAlphaNum <$>
   T.stripPrefix prefix (T.dropWhile isSpace source)
 
