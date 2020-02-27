@@ -207,6 +207,7 @@ mainWithArgs (configPath:databasePath:_) = do
                 , botStateSqliteFileName = databasePath
                 , botStateLogQueue = WriteQueue logQueue
                 , botStateManager = manager
+                , botStateConfigTwitch = config
                 }
             , loggingThread "kgbotka.log" $ ReadQueue logQueue
             ] $ \_
