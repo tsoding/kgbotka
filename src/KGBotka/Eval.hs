@@ -40,6 +40,8 @@ import Network.URI
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import KGBotka.Config
+import Data.Time.Clock
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
@@ -53,6 +55,7 @@ data EvalContext = EvalContext
   , evalContextRoles :: [TwitchRole]
   , evalContextManager :: HTTP.Manager
   , evalContextLogQueue :: !(WriteQueue LogEntry)
+  , evalContextConfigTwitch :: !ConfigTwitch
   }
 
 newtype EvalError =
@@ -248,6 +251,33 @@ evalExpr (FunCallExpr "help" args) = do
     Just Command {commandCode = code} ->
       return $ "Command `" <> name <> "` defined as `" <> code <> "`"
     Nothing -> return $ "Command `" <> name <> " does not exist"
+evalExpr (FunCallExpr "uptime" _) = do
+  manager <- evalContextManager <$> getEval
+  configTwitch <- evalContextConfigTwitch <$> getEval
+  channel <- evalContextChannel <$> getEval
+  logQueue <- evalContextLogQueue <$> getEval
+  stream <-
+    liftIO $
+    getStreamByLogin
+      manager
+      (configTwitchClientId configTwitch)
+      (twitchIrcChannelName channel)
+  case stream of
+    Right (Just TwitchStream {tsStartedAt = startedAt}) -> do
+      now <- liftIO $ getCurrentTime
+      return $ humanReadableDiffTime $ diffUTCTime now startedAt
+    Right Nothing -> do
+      liftIO $
+        atomically $
+        writeQueue logQueue $
+        LogEntry "TWITCHAPI" $
+        "No streams for " <> twitchIrcChannelText channel <> " were found"
+      return ""
+    Left errorMessage -> do
+      liftIO $
+        atomically $
+        writeQueue logQueue $ LogEntry "TWITCHAPI" $ T.pack errorMessage
+      return ""
 evalExpr (FunCallExpr funame _) = do
   vars <- evalContextVars <$> getEval
   liftExceptT $
@@ -256,3 +286,26 @@ evalExpr (FunCallExpr funame _) = do
 
 evalExprs :: [Expr] -> Eval T.Text
 evalExprs exprs' = T.concat <$> mapM evalExpr exprs'
+
+humanReadableDiffTime :: NominalDiffTime -> T.Text
+humanReadableDiffTime t
+  | t < 1.0 = "< 1 second"
+  | otherwise =
+    T.unwords $
+    map (\(name, amount) -> T.pack (show amount) <> " " <> name) $
+    filter ((> 0) . snd) components
+  where
+    s :: Int
+    s = round t
+    components :: [(T.Text, Int)]
+    components =
+      [ ("days" :: T.Text, s `div` secondsInDay)
+      , ("hours", (s `mod` secondsInDay) `div` secondsInHour)
+      , ( "minutes"
+        , ((s `mod` secondsInDay) `mod` secondsInHour) `div` secondsInMinute)
+      , ( "seconds"
+        , ((s `mod` secondsInDay) `mod` secondsInHour) `mod` secondsInMinute)
+      ]
+    secondsInDay = 24 * secondsInHour
+    secondsInHour = 60 * secondsInMinute
+    secondsInMinute = 60

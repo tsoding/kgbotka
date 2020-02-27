@@ -8,6 +8,9 @@ module KGBotka.TwitchAPI
   , TwitchIrcChannel(..)
   , twitchIrcChannelText
   , mkTwitchIrcChannel
+  , getStreamByLogin
+  , twitchIrcChannelName
+  , TwitchStream(..)
   ) where
 
 import Data.Aeson
@@ -22,7 +25,9 @@ import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Http
 import Network.HTTP.Client
+import Data.Time
 import Data.Functor.Compose
+import Data.Maybe
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -53,6 +58,14 @@ twitchIrcChannelText (TwitchIrcChannel ident) = idText ident
 mkTwitchIrcChannel :: T.Text -> TwitchIrcChannel
 mkTwitchIrcChannel = TwitchIrcChannel . mkId
 
+twitchIrcChannelName :: TwitchIrcChannel -> T.Text
+twitchIrcChannelName channel =
+  case T.uncons channelText of
+    Just ('#', channelName) -> channelName
+    _ -> channelText
+  where
+    channelText = twitchIrcChannelText channel
+
 instance IsString TwitchIrcChannel where
   fromString = TwitchIrcChannel . fromString
 
@@ -75,12 +88,22 @@ instance FromJSON a => FromJSON (TwitchRes a) where
   parseJSON (Object v) = TwitchRes <$> v .: "data"
   parseJSON invalid = typeMismatch "TwitchRes" invalid
 
+data TwitchStream = TwitchStream
+  { tsStartedAt :: UTCTime
+  , tsTitle :: T.Text
+  } deriving (Eq, Show)
+
+instance FromJSON TwitchStream where
+  parseJSON (Object obj) =
+    TwitchStream <$> obj .: "started_at" <*> obj .: "title"
+  parseJSON invalid = typeMismatch "TwitchStream" invalid
+
 instance FromJSON TwitchUser where
   parseJSON (Object v) = TwitchUser <$> v .: "id" <*> v .: "login"
   parseJSON invalid = typeMismatch "TwitchUser" invalid
 
 getUsersByLogins ::
-     Manager -> T.Text -> [T.Text] -> IO (JsonResponse [TwitchUser])
+     Manager -> T.Text -> [T.Text] -> IO (Response (Either String [TwitchUser]))
 getUsersByLogins manager clientId users = do
   let url =
         "https://api.twitch.tv/helix/users?" <>
@@ -94,3 +117,15 @@ getUsersByLogins manager clientId users = do
       }
   return $ getCompose (twitchResData <$> Compose response)
 
+getStreamByLogin :: Manager -> T.Text -> T.Text -> IO (Either String (Maybe TwitchStream))
+getStreamByLogin manager clientId login = do
+  let url = "https://api.twitch.tv/helix/streams?user_login=" <> T.unpack login
+  request <- parseRequest url
+  response <-
+    httpJson
+      manager
+      request
+        { requestHeaders =
+            ("Client-ID", encodeUtf8 clientId) : requestHeaders request
+        }
+  return $ fmap (listToMaybe . twitchResData) $ responseBody response
