@@ -125,7 +125,7 @@ processUserMsgs dbConn messages botState = do
               evalStateT
                 (runEvalT $
                  evalCommandPipe $
-                 parseCommandPipe (CallPrefix "!") (PipeSuffix "|") message) $
+                 parseCommandPipe (CallPrefix "$") (PipeSuffix "|") message) $
               EvalContext
                 { evalContextVars =
                     M.fromList [("sender", idText (userNick userInfo))]
