@@ -86,7 +86,7 @@ queryFfzEmotes ::
 queryFfzEmotes manager Nothing = do
   request <- parseRequest "https://api.frankerfacez.com/v1/set/global"
   ffzRes <-
-    ExceptT (responseBody . unwrapJsonResponse <$> httpJson manager request)
+    ExceptT (responseBody <$> httpJson manager request)
   return $
     concatMap ffzSetEmotes $
     mapMaybe
@@ -101,7 +101,7 @@ queryFfzEmotes manager (Just channel) =
       response <- lift $ httpJson manager request
       except $
         fmap (map (updateFfzEmoteChannel $ Just channel) . ffzResEmotes) $
-        responseBody $ unwrapJsonResponse response
+        responseBody response
     _ ->
       throwE $
       "Channel name " <> T.unpack (twitchIrcChannelText channel) <>

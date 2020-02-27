@@ -4,7 +4,6 @@ module KGBotka.TwitchAPI
   ( TwitchUser(..)
   , TwitchRes(..)
   , TwitchUserId(..)
-  , JsonResponse(..)
   , getUsersByLogins
   , TwitchIrcChannel(..)
   , twitchIrcChannelText
@@ -23,6 +22,7 @@ import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Http
 import Network.HTTP.Client
+import Data.Functor.Compose
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -92,4 +92,5 @@ getUsersByLogins manager clientId users = do
       { requestHeaders =
           ("Client-ID", encodeUtf8 clientId) : requestHeaders request
       }
-  return (twitchResData <$> response)
+  return $ getCompose (twitchResData <$> Compose response)
+
