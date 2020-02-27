@@ -85,8 +85,7 @@ queryFfzEmotes ::
      Manager -> Maybe TwitchIrcChannel -> ExceptT String IO [FfzEmote]
 queryFfzEmotes manager Nothing = do
   request <- parseRequest "https://api.frankerfacez.com/v1/set/global"
-  ffzRes <-
-    ExceptT (responseBody <$> httpJson manager request)
+  ffzRes <- ExceptT (responseBody <$> httpJson manager request)
   return $
     concatMap ffzSetEmotes $
     mapMaybe

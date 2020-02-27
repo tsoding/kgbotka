@@ -15,19 +15,19 @@ module KGBotka.TwitchAPI
 
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Functor.Compose
 import Data.List
+import Data.Maybe
 import Data.String
 import qualified Data.Text as T
 import Data.Text.Encoding
+import Data.Time
 import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Http
 import Network.HTTP.Client
-import Data.Time
-import Data.Functor.Compose
-import Data.Maybe
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -117,7 +117,8 @@ getUsersByLogins manager clientId users = do
       }
   return $ getCompose (twitchResData <$> Compose response)
 
-getStreamByLogin :: Manager -> T.Text -> T.Text -> IO (Either String (Maybe TwitchStream))
+getStreamByLogin ::
+     Manager -> T.Text -> T.Text -> IO (Either String (Maybe TwitchStream))
 getStreamByLogin manager clientId login = do
   let url = "https://api.twitch.tv/helix/streams?user_login=" <> T.unpack login
   request <- parseRequest url

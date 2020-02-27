@@ -21,10 +21,12 @@ import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
+import Data.Time.Clock
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Asciify
 import KGBotka.Bttv
 import KGBotka.Command
+import KGBotka.Config
 import KGBotka.Expr
 import KGBotka.Ffz
 import KGBotka.Flip
@@ -40,8 +42,6 @@ import Network.URI
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import KGBotka.Config
-import Data.Time.Clock
 
 data EvalContext = EvalContext
   { evalContextVars :: M.Map T.Text T.Text
