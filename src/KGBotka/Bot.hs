@@ -123,7 +123,9 @@ processUserMsgs dbConn messages botState = do
             evalResult <-
               runExceptT $
               evalStateT
-                (runEvalT $ evalCommandPipe $ parseCommandPipe "!" "|" message) $
+                (runEvalT $
+                 evalCommandPipe $
+                 parseCommandPipe (CallPrefix "!") (PipeSuffix "|") message) $
               EvalContext
                 { evalContextVars =
                     M.fromList [("sender", idText (userNick userInfo))]
