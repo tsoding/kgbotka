@@ -113,8 +113,11 @@ data CommandCall = CommandCall
   , ccArgs :: T.Text
   } deriving (Eq, Show)
 
-newtype CallPrefix = CallPrefix T.Text
-newtype PipeSuffix = PipeSuffix T.Text
+newtype CallPrefix =
+  CallPrefix T.Text
+
+newtype PipeSuffix =
+  PipeSuffix T.Text
 
 parseCommandPipe :: CallPrefix -> PipeSuffix -> T.Text -> [CommandCall]
 parseCommandPipe callPrefix (PipeSuffix pipeSuffix) source =

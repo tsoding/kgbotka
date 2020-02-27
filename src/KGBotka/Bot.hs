@@ -24,6 +24,7 @@ import Irc.Message
 import Irc.RawIrcMsg
 import Irc.UserInfo (userNick)
 import KGBotka.Command
+import KGBotka.Config
 import KGBotka.Eval
 import KGBotka.Log
 import KGBotka.Markov
@@ -34,7 +35,6 @@ import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
-import KGBotka.Config
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
