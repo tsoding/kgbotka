@@ -85,8 +85,7 @@ queryFfzEmotes ::
      Manager -> Maybe TwitchIrcChannel -> ExceptT String IO [FfzEmote]
 queryFfzEmotes manager Nothing = do
   request <- parseRequest "https://api.frankerfacez.com/v1/set/global"
-  ffzRes <-
-    ExceptT (responseBody . unwrapJsonResponse <$> httpJson manager request)
+  ffzRes <- ExceptT (responseBody <$> httpJson manager request)
   return $
     concatMap ffzSetEmotes $
     mapMaybe
@@ -100,8 +99,8 @@ queryFfzEmotes manager (Just channel) =
         "https://api.frankerfacez.com/v1/room/" <> T.unpack channelName
       response <- lift $ httpJson manager request
       except $
-        fmap (map (updateFfzEmoteChannel $ Just channel) . ffzResEmotes) $
-        responseBody $ unwrapJsonResponse response
+        map (updateFfzEmoteChannel $ Just channel) . ffzResEmotes <$>
+        responseBody response
     _ ->
       throwE $
       "Channel name " <> T.unpack (twitchIrcChannelText channel) <>

@@ -150,6 +150,7 @@ processUserMsgs dbConn messages botState = do
                                listToMaybe $ T.splitOn ":" emoteDesc
                              else Nothing
                     , evalContextManager = manager
+                    , evalContextConfigTwitch = botStateConfigTwitch botState
                     }
                 atomically $
                   case evalResult of

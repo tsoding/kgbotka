@@ -166,7 +166,7 @@ replThread' dbConn state = do
       withTransactionLogErrors $ do
         maybeRole <- getTwitchRoleByName dbConn roleName
         response <-
-          HTTP.responseBody . unwrapJsonResponse <$>
+          HTTP.responseBody <$>
           getUsersByLogins
             (replStateManager state)
             (configTwitchClientId $ replStateConfigTwitch state)
