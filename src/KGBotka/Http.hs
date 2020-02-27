@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveFunctor #-}
-
 module KGBotka.Http
   ( httpJson
   ) where

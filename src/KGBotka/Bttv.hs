@@ -59,7 +59,7 @@ queryBttvEmotes ::
 queryBttvEmotes manager Nothing = do
   request <- parseRequest "https://api.betterttv.net/2/emotes"
   response <- lift $ httpJson manager request
-  except $ fmap bttvResEmotes $ responseBody response
+  except (bttvResEmotes <$> responseBody response)
 queryBttvEmotes manager channel'@(Just (TwitchIrcChannel (idText -> channel))) =
   case T.uncons channel of
     Just ('#', channelName) -> do
@@ -70,7 +70,7 @@ queryBttvEmotes manager channel'@(Just (TwitchIrcChannel (idText -> channel))) =
         encodeURI (T.unpack channelName)
       response <- lift $ httpJson manager request
       except $
-        fmap (map (updateBttvEmoteChannel channel') . bttvResEmotes) $
+        map (updateBttvEmoteChannel channel') . bttvResEmotes <$>
         responseBody response
     _ ->
       let invalidChannelName = channel

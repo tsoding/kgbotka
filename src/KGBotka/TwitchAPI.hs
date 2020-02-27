@@ -128,4 +128,4 @@ getStreamByLogin manager clientId login = do
         { requestHeaders =
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
-  return $ fmap (listToMaybe . twitchResData) $ responseBody response
+  return (listToMaybe . twitchResData <$> responseBody response)

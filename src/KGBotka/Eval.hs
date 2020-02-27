@@ -264,7 +264,7 @@ evalExpr (FunCallExpr "uptime" _) = do
       (twitchIrcChannelName channel)
   case stream of
     Right (Just TwitchStream {tsStartedAt = startedAt}) -> do
-      now <- liftIO $ getCurrentTime
+      now <- liftIO getCurrentTime
       return $ humanReadableDiffTime $ diffUTCTime now startedAt
     Right Nothing -> do
       liftIO $

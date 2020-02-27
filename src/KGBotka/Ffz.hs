@@ -100,7 +100,7 @@ queryFfzEmotes manager (Just channel) =
         "https://api.frankerfacez.com/v1/room/" <> T.unpack channelName
       response <- lift $ httpJson manager request
       except $
-        fmap (map (updateFfzEmoteChannel $ Just channel) . ffzResEmotes) $
+        map (updateFfzEmoteChannel $ Just channel) . ffzResEmotes <$>
         responseBody response
     _ ->
       throwE $
