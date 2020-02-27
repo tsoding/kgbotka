@@ -113,7 +113,7 @@ processUserMsgs dbConn messages botState = do
             let badgeRoles = badgeRolesFromRawIrcMsg msg
             let displayName = lookupEntryValue "display-name" $ _msgTags msg
             let senderName = idText $ userNick userInfo
-            if (T.toLower senderName /= T.toLower botLogin)
+            if T.toLower senderName /= T.toLower botLogin
               then do
                 logMessage
                   dbConn
