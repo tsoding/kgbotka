@@ -244,22 +244,27 @@ processUserMsgs tts messages = do
                   EvalContext
                     { ecVars = M.fromList [("sender", senderName)]
                     , ecSqliteConnection = dbConn
-                    , ecSenderId = senderId
-                    , ecSenderName = senderName
-                    , ecChannel = TwitchIrcChannel channelId
-                    , ecBadgeRoles = badgeRoles
-                    , ecRoles = roles
+                    , ecPlatformContext =
+                        Etc
+                          EvalTwitchContext
+                            { etcSenderId = senderId
+                            , etcSenderName = senderName
+                            , etcChannel = TwitchIrcChannel channelId
+                            , etcBadgeRoles = badgeRoles
+                            , etcRoles = roles
+                            , etcClientId = configTwitchClientId $ ttsConfig tts
+                            , etcTwitchEmotes =
+                                do emotesTag <-
+                                     lookupEntryValue "emotes" $ _msgTags msg
+                                   if not $ T.null emotesTag
+                                     then do
+                                       emoteDesc <-
+                                         listToMaybe $ T.splitOn "/" emotesTag
+                                       listToMaybe $ T.splitOn ":" emoteDesc
+                                     else Nothing
+                            }
                     , ecLogQueue = logQueue
-                    , ecTwitchEmotes =
-                        do emotesTag <- lookupEntryValue "emotes" $ _msgTags msg
-                           if not $ T.null emotesTag
-                             then do
-                               emoteDesc <-
-                                 listToMaybe $ T.splitOn "/" emotesTag
-                               listToMaybe $ T.splitOn ":" emoteDesc
-                             else Nothing
                     , ecManager = manager
-                    , ecConfigTwitch = ttsConfig tts
                     }
                 atomically $
                   case evalResult of
