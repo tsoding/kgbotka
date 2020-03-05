@@ -19,7 +19,6 @@ module KGBotka.Command
   ) where
 
 import Data.Char
-import Data.Fixed
 import Data.Maybe
 import qualified Data.Text as T
 import Data.Time
@@ -147,9 +146,9 @@ isCommandCooleddown dbConn userTwitchId commandIdent = do
            LIMIT 1; |]
       [":userTwitchId" := userTwitchId, ":commandIdent" := commandIdent]
   case x of
-    Just (timestamp, cooldown) -> do
+    Just (timestamp, cooldownMs) -> do
       now <- getCurrentTime
-      return
-        (nominalDiffTimeToSeconds (diffUTCTime now timestamp) >
-         MkFixed (cooldown * 1000 * 1000 * 1000 * 1000))
+      let diffSec = realToFrac (diffUTCTime now timestamp) :: Double
+      let cooldownSec = fromIntegral (cooldownMs :: Integer) / 1000.0
+      return $ diffSec > cooldownSec
     Nothing -> return True
