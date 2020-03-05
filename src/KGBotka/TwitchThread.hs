@@ -92,7 +92,7 @@ twitchThread :: TwitchThreadParams -> IO ()
 twitchThread params = do
   let databaseFileName = ttpSqliteFileName params
   withConnectionAndPragmas databaseFileName $ \sqliteConnection ->
-    twitchThread'
+    twitchThreadLoop
       TwitchThreadState
         { ttsLogQueue = ttpLogQueue params
         , ttsReplQueue = ttpReplQueue params
@@ -195,8 +195,8 @@ processUserMsgs tts messages = do
             T.pack (show msg)
       _ -> return ()
 
-twitchThread' :: TwitchThreadState -> IO ()
-twitchThread' tts = do
+twitchThreadLoop :: TwitchThreadState -> IO ()
+twitchThreadLoop tts = do
   threadDelay 10000 -- to prevent busy looping
   let incomingQueue = ttsIncomingQueue tts
   messages <- atomically $ flushQueue incomingQueue
@@ -223,7 +223,7 @@ twitchThread' tts = do
       Just (PartChannel (TwitchIrcChannel channelId)) ->
         writeQueue outgoingQueue $ ircPart channelId ""
       Nothing -> return ()
-  twitchThread' tts
+  twitchThreadLoop tts
 
 twitchCmdEscape :: T.Text -> T.Text
 twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip
