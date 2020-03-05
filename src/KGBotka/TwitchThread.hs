@@ -242,15 +242,15 @@ processUserMsgs tts messages = do
                      evalCommandPipe $
                      parseCommandPipe (CallPrefix "$") (PipeSuffix "|") message) $
                   EvalContext
-                    { evalContextVars = M.fromList [("sender", senderName)]
-                    , evalContextSqliteConnection = dbConn
-                    , evalContextSenderId = senderId
-                    , evalContextSenderName = senderName
-                    , evalContextChannel = TwitchIrcChannel channelId
-                    , evalContextBadgeRoles = badgeRoles
-                    , evalContextRoles = roles
-                    , evalContextLogQueue = logQueue
-                    , evalContextTwitchEmotes =
+                    { ecVars = M.fromList [("sender", senderName)]
+                    , ecSqliteConnection = dbConn
+                    , ecSenderId = senderId
+                    , ecSenderName = senderName
+                    , ecChannel = TwitchIrcChannel channelId
+                    , ecBadgeRoles = badgeRoles
+                    , ecRoles = roles
+                    , ecLogQueue = logQueue
+                    , ecTwitchEmotes =
                         do emotesTag <- lookupEntryValue "emotes" $ _msgTags msg
                            if not $ T.null emotesTag
                              then do
@@ -258,8 +258,8 @@ processUserMsgs tts messages = do
                                  listToMaybe $ T.splitOn "/" emotesTag
                                listToMaybe $ T.splitOn ":" emoteDesc
                              else Nothing
-                    , evalContextManager = manager
-                    , evalContextConfigTwitch = ttsConfig tts
+                    , ecManager = manager
+                    , ecConfigTwitch = ttsConfig tts
                     }
                 atomically $
                   case evalResult of

@@ -44,18 +44,18 @@ import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 
 data EvalContext = EvalContext
-  { evalContextVars :: M.Map T.Text T.Text
-  , evalContextSqliteConnection :: Sqlite.Connection
-  , evalContextSenderId :: TwitchUserId
-  , evalContextSenderName :: T.Text
+  { ecVars :: M.Map T.Text T.Text
+  , ecSqliteConnection :: Sqlite.Connection
+  , ecSenderId :: TwitchUserId
+  , ecSenderName :: T.Text
   -- TODO(#80): evalContextTwitchEmotes should be a list of some kind of emote type
-  , evalContextTwitchEmotes :: Maybe T.Text
-  , evalContextChannel :: TwitchIrcChannel
-  , evalContextBadgeRoles :: [TwitchBadgeRole]
-  , evalContextRoles :: [TwitchRole]
-  , evalContextManager :: HTTP.Manager
-  , evalContextLogQueue :: !(WriteQueue LogEntry)
-  , evalContextConfigTwitch :: !ConfigTwitch
+  , ecTwitchEmotes :: Maybe T.Text
+  , ecChannel :: TwitchIrcChannel
+  , ecBadgeRoles :: [TwitchBadgeRole]
+  , ecRoles :: [TwitchRole]
+  , ecManager :: HTTP.Manager
+  , ecLogQueue :: !(WriteQueue LogEntry)
+  , ecConfigTwitch :: !ConfigTwitch
   }
 
 newtype EvalError =
@@ -66,13 +66,13 @@ type Eval = EvalT EvalContext EvalError IO
 
 evalCommandCall :: CommandCall -> Eval T.Text
 evalCommandCall (CommandCall name args) = do
-  modifyEval $ evalContextVarsModify $ M.insert "1" args
-  dbConn <- evalContextSqliteConnection <$> getEval
+  modifyEval $ ecVarsModify $ M.insert "1" args
+  dbConn <- ecSqliteConnection <$> getEval
   command <- liftIO $ commandByName dbConn name
-  senderName <- evalContextSenderName <$> getEval
+  senderName <- ecSenderName <$> getEval
   case command of
     Just Command {commandId = commandIdent, commandCode = code} -> do
-      senderId <- evalContextSenderId <$> getEval
+      senderId <- ecSenderId <$> getEval
       cooledDown <- liftIO $ isCommandCooleddown dbConn senderId commandIdent
       unless cooledDown $
         throwExceptEval $
@@ -89,10 +89,10 @@ evalCommandPipe :: [CommandCall] -> Eval T.Text
 evalCommandPipe =
   foldlM (\args -> evalCommandCall . ccArgsModify (`T.append` args)) ""
 
-evalContextVarsModify ::
+ecVarsModify ::
      (M.Map T.Text T.Text -> M.Map T.Text T.Text) -> EvalContext -> EvalContext
-evalContextVarsModify f context =
-  context {evalContextVars = f $ evalContextVars context}
+ecVarsModify f context =
+  context {ecVars = f $ ecVars context}
 
 ytLinkRegex :: Either String Regex
 ytLinkRegex =
@@ -135,8 +135,8 @@ ytLinkId text = do
 
 failIfNotTrusted :: Eval ()
 failIfNotTrusted = do
-  roles <- evalContextRoles <$> getEval
-  badgeRoles <- evalContextBadgeRoles <$> getEval
+  roles <- ecRoles <$> getEval
+  badgeRoles <- ecBadgeRoles <$> getEval
   when (null roles && null badgeRoles) $
     throwExceptEval $ EvalError "Only for trusted users"
 
@@ -149,7 +149,7 @@ evalExpr (FunCallExpr "urlencode" args) =
   where
     encodeURI = escapeURIString (const False)
 evalExpr (FunCallExpr "markov" _) = do
-  dbConn <- evalContextSqliteConnection <$> getEval
+  dbConn <- ecSqliteConnection <$> getEval
   events <- liftIO $ seqMarkovEvents Begin End dbConn
   return $
     T.unwords $
@@ -164,11 +164,11 @@ evalExpr (FunCallExpr "flip" args) =
 -- FIXME(#18): Friday video list is not published on gist
 -- FIXME(#38): %nextvideo does not inform how many times a video was suggested
 evalExpr (FunCallExpr "nextvideo" _) = do
-  badgeRoles <- evalContextBadgeRoles <$> getEval
+  badgeRoles <- ecBadgeRoles <$> getEval
   if TwitchBroadcaster `elem` badgeRoles
     then do
-      dbConn <- evalContextSqliteConnection <$> getEval
-      channel <- evalContextChannel <$> getEval
+      dbConn <- ecSqliteConnection <$> getEval
+      channel <- ecChannel <$> getEval
       fridayVideo <-
         liftExceptT $
         maybeToExceptT (EvalError "Video queue is empty") $
@@ -184,23 +184,23 @@ evalExpr (FunCallExpr "nextvideo" _) = do
       T.pack (show subTime) <> " <" <> authorTwitchName <> "> " <> subText
 -- FIXME(#39): %friday does not inform how many times a video was suggested
 evalExpr (FunCallExpr "friday" args) = do
-  roles <- evalContextRoles <$> getEval
-  badgeRoles <- evalContextBadgeRoles <$> getEval
+  roles <- ecRoles <$> getEval
+  badgeRoles <- ecBadgeRoles <$> getEval
   when (null roles && null badgeRoles) $
     throwExceptEval $ EvalError "You have to be trusted to submit Friday videos"
   submissionText <- T.concat <$> mapM evalExpr args
   case ytLinkId submissionText of
     Right _ -> do
-      senderId <- evalContextSenderId <$> getEval
-      dbConn <- evalContextSqliteConnection <$> getEval
-      channel <- evalContextChannel <$> getEval
-      senderName <- evalContextSenderName <$> getEval
+      senderId <- ecSenderId <$> getEval
+      dbConn <- ecSqliteConnection <$> getEval
+      channel <- ecChannel <$> getEval
+      senderName <- ecSenderName <$> getEval
       liftIO $ submitVideo dbConn submissionText channel senderId senderName
       return "Added your video to suggestions"
     Left Nothing ->
       throwExceptEval $ EvalError "Your suggestion should contain YouTube link"
     Left (Just failReason) -> do
-      logQueue <- evalContextLogQueue <$> getEval
+      logQueue <- ecLogQueue <$> getEval
       liftIO $
         atomically $
         writeQueue logQueue $
@@ -212,14 +212,14 @@ evalExpr (FunCallExpr "friday" args) = do
           \We are already looking into it. Kapp"
 evalExpr (FunCallExpr "asciify" args) = do
   failIfNotTrusted
-  emotes <- evalContextTwitchEmotes <$> getEval
+  emotes <- ecTwitchEmotes <$> getEval
   let twitchEmoteUrl =
         let makeTwitchEmoteUrl emoteName =
               "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
               "/3.0"
          in makeTwitchEmoteUrl <$> hoistMaybe emotes
-  dbConn <- evalContextSqliteConnection <$> getEval
-  channel <- evalContextChannel <$> getEval
+  dbConn <- ecSqliteConnection <$> getEval
+  channel <- ecChannel <$> getEval
   emoteNameArg <- T.concat <$> mapM evalExpr args
   let bttvEmoteUrl =
         bttvEmoteImageUrl <$>
@@ -232,30 +232,30 @@ evalExpr (FunCallExpr "asciify" args) = do
     maybeToExceptT
       (EvalError "No emote found")
       (twitchEmoteUrl <|> bttvEmoteUrl <|> ffzEmoteUrl)
-  manager <- evalContextManager <$> getEval
+  manager <- ecManager <$> getEval
   image <- liftIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
   case image of
     Right image' -> return image'
     Left errorMessage -> do
-      logQueue <- evalContextLogQueue <$> getEval
-      senderName <- evalContextSenderName <$> getEval
+      logQueue <- ecLogQueue <$> getEval
+      senderName <- ecSenderName <$> getEval
       liftIO $
         atomically $
         writeQueue logQueue $ LogEntry "ASCIIFY" $ T.pack errorMessage
       throwExceptEval $ EvalError ("@" <> senderName <> " Could not load emote")
 evalExpr (FunCallExpr "help" args) = do
   name <- T.concat <$> mapM evalExpr args
-  dbConn <- evalContextSqliteConnection <$> getEval
+  dbConn <- ecSqliteConnection <$> getEval
   maybeCommand <- liftIO $ commandByName dbConn name
   case maybeCommand of
     Just Command {commandCode = code} ->
       return $ "Command `" <> name <> "` defined as `" <> code <> "`"
     Nothing -> return $ "Command `" <> name <> " does not exist"
 evalExpr (FunCallExpr "uptime" _) = do
-  manager <- evalContextManager <$> getEval
-  config <- evalContextConfigTwitch <$> getEval
-  channel <- evalContextChannel <$> getEval
-  logQueue <- evalContextLogQueue <$> getEval
+  manager <- ecManager <$> getEval
+  config <- ecConfigTwitch <$> getEval
+  channel <- ecChannel <$> getEval
+  logQueue <- ecLogQueue <$> getEval
   stream <-
     liftIO $
     getStreamByLogin
@@ -279,7 +279,7 @@ evalExpr (FunCallExpr "uptime" _) = do
         writeQueue logQueue $ LogEntry "TWITCHAPI" $ T.pack errorMessage
       return ""
 evalExpr (FunCallExpr funame _) = do
-  vars <- evalContextVars <$> getEval
+  vars <- ecVars <$> getEval
   liftExceptT $
     maybeToExceptT (EvalError $ "Function `" <> funame <> "` does not exists") $
     hoistMaybe $ M.lookup funame vars
