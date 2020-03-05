@@ -26,6 +26,7 @@ import qualified Network.HTTP.Client.TLS as TLS
 import System.Environment
 import System.Exit
 import System.IO
+import KGBotka.DiscordThread
 
 migrations :: [Migration]
 migrations =
@@ -135,6 +136,11 @@ mainWithArgs (configPath:databasePath:_) = do
             , ttpLogQueue = WriteQueue logQueue
             , ttpManager = manager
             , ttpConfig = configTwitch config
+            }
+        , discordThread $
+          DiscordThreadParams
+            { dtpConfig = configDiscord config
+            , dtpLogQueue = WriteQueue logQueue
             }
         , loggingThread "kgbotka.log" $ ReadQueue logQueue
         ] $ \_

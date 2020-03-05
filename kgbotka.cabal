@@ -79,6 +79,7 @@ executable kgbotka
                      , KGBotka.Ffz
                      , KGBotka.Eval
                      , KGBotka.Log
+                     , KGBotka.DiscordThread
                      , Control.Monad.Trans.Extra
                      , Control.Monad.Trans.Eval
 
@@ -109,6 +110,7 @@ executable kgbotka
                      , random >=1.1 && <1.2
                      , louis==0.1.0.2
                      , unordered-containers >=0.2.8.0 && <0.3
+                     , discord-haskell >= 1.4.0 && < 1.5.0
 
   -- Directories containing source files.
   hs-source-dirs:      src
