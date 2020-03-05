@@ -190,41 +190,41 @@ mainWithArgs (configPath:databasePath:_) = do
       logQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
-      withConnectionAndPragmas databasePath $ \dbConn -> do
+      withConnectionAndPragmas databasePath $ \dbConn ->
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
-        withConnection twitchConnectionParams $ \conn -> do
-          authorize config conn
-          -- TODO(#67): there is no supavisah that restarts essential threads on crashing
-          withForkIOs
-            [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
-            , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
-            , twitchThread $
-              TwitchState
-                { twitchStateIncomingQueue = ReadQueue incomingIrcQueue
-                , twitchStateOutgoingQueue = WriteQueue outgoingIrcQueue
-                , twitchStateReplQueue = ReadQueue replQueue
-                , twitchStateChannels = joinedChannels
-                , twitchStateSqliteFileName = databasePath
-                , twitchStateLogQueue = WriteQueue logQueue
-                , twitchStateManager = manager
-                , twitchStateConfigTwitch = config
-                }
-            , loggingThread "kgbotka.log" $ ReadQueue logQueue
-            ] $ \_
-            -- TODO(#63): backdoor port is hardcoded
-           ->
-            backdoorThread "6969" $
-            ReplState
-              { replStateChannels = joinedChannels
-              , replStateSqliteFileName = databasePath
-              , replStateCurrentChannel = Nothing
-              , replStateCommandQueue = WriteQueue replQueue
-              , replStateConfigTwitch = config
-              , replStateManager = manager
-              , replStateHandle = stdout
-              , replStateLogQueue = WriteQueue logQueue
-              , replStateConnAddr = Nothing
+      withConnection twitchConnectionParams $ \conn -> do
+        authorize config conn
+        -- TODO(#67): there is no supavisah that restarts essential threads on crashing
+        withForkIOs
+          [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
+          , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
+          , twitchThread $
+            TwitchThreadParams
+              { ttpReplQueue = ReadQueue replQueue
+              , ttpChannels = joinedChannels
+              , ttpSqliteFileName = databasePath
+              , ttpLogQueue = WriteQueue logQueue
+              , ttpManager = manager
+              , ttpConfig = config
+              , ttpIncomingQueue = ReadQueue incomingIrcQueue
+              , ttpOutgoingQueue = WriteQueue outgoingIrcQueue
               }
+          , loggingThread "kgbotka.log" $ ReadQueue logQueue
+          ] $ \_
+          -- TODO(#63): backdoor port is hardcoded
+         ->
+          backdoorThread "6969" $
+          ReplState
+            { replStateChannels = joinedChannels
+            , replStateSqliteFileName = databasePath
+            , replStateCurrentChannel = Nothing
+            , replStateCommandQueue = WriteQueue replQueue
+            , replStateConfigTwitch = config
+            , replStateManager = manager
+            , replStateHandle = stdout
+            , replStateLogQueue = WriteQueue logQueue
+            , replStateConnAddr = Nothing
+            }
       putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do

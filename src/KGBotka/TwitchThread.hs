@@ -2,7 +2,7 @@
 
 module KGBotka.TwitchThread
   ( twitchThread
-  , TwitchState(..)
+  , TwitchThreadParams(..)
   ) where
 
 import Control.Concurrent
@@ -66,26 +66,48 @@ userIdFromRawIrcMsg :: RawIrcMsg -> Maybe TwitchUserId
 userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
   TwitchUserId <$> lookupEntryValue "user-id" tags
 
-data TwitchState = TwitchState
-  { twitchStateIncomingQueue :: !(ReadQueue RawIrcMsg)
-  , twitchStateOutgoingQueue :: !(WriteQueue RawIrcMsg)
-  , twitchStateLogQueue :: !(WriteQueue LogEntry)
-  , twitchStateReplQueue :: !(ReadQueue ReplCommand)
-  , twitchStateChannels :: !(TVar (S.Set TwitchIrcChannel))
-  , twitchStateSqliteFileName :: !FilePath
-  , twitchStateManager :: !HTTP.Manager
-  , twitchStateConfigTwitch :: ConfigTwitch
+data TwitchThreadParams = TwitchThreadParams
+  { ttpLogQueue :: !(WriteQueue LogEntry)
+  , ttpReplQueue :: !(ReadQueue ReplCommand)
+  , ttpChannels :: !(TVar (S.Set TwitchIrcChannel))
+  , ttpSqliteFileName :: !FilePath
+  , ttpManager :: !HTTP.Manager
+  , ttpConfig :: ConfigTwitch
+  , ttpIncomingQueue :: !(ReadQueue RawIrcMsg)
+  , ttpOutgoingQueue :: !(WriteQueue RawIrcMsg)
   }
 
-twitchThread :: TwitchState -> IO ()
-twitchThread twitchState = do
-  let databaseFileName = twitchStateSqliteFileName twitchState
-  withConnectionAndPragmas databaseFileName $ \conn -> twitchThread' conn twitchState
+data TwitchThreadState = TwitchThreadState
+  { ttsLogQueue :: !(WriteQueue LogEntry)
+  , ttsReplQueue :: !(ReadQueue ReplCommand)
+  , ttsChannels :: !(TVar (S.Set TwitchIrcChannel))
+  , ttsSqliteConnection :: !Sqlite.Connection
+  , ttsManager :: !HTTP.Manager
+  , ttsConfig :: ConfigTwitch
+  , ttsIncomingQueue :: !(ReadQueue RawIrcMsg)
+  , ttsOutgoingQueue :: !(WriteQueue RawIrcMsg)
+  }
 
-processControlMsgs :: [RawIrcMsg] -> TwitchState -> IO ()
-processControlMsgs messages twitchState = do
-  let outgoingQueue = twitchStateOutgoingQueue twitchState
-  let channels = twitchStateChannels twitchState
+twitchThread :: TwitchThreadParams -> IO ()
+twitchThread params = do
+  let databaseFileName = ttpSqliteFileName params
+  withConnectionAndPragmas databaseFileName $ \sqliteConnection ->
+    twitchThread'
+      TwitchThreadState
+        { ttsLogQueue = ttpLogQueue params
+        , ttsReplQueue = ttpReplQueue params
+        , ttsChannels = ttpChannels params
+        , ttsSqliteConnection = sqliteConnection
+        , ttsManager = ttpManager params
+        , ttsConfig = ttpConfig params
+        , ttsIncomingQueue = ttpIncomingQueue params
+        , ttsOutgoingQueue = ttpOutgoingQueue params
+        }
+
+processControlMsgs :: TwitchThreadState -> [RawIrcMsg] -> IO ()
+processControlMsgs tts messages = do
+  let outgoingQueue = ttsOutgoingQueue tts
+  let channels = ttsChannels tts
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
     case cookedMsg of
@@ -96,12 +118,12 @@ processControlMsgs messages twitchState = do
         atomically $ modifyTVar channels $ S.delete $ TwitchIrcChannel channelId
       _ -> return ()
 
-processUserMsgs :: Sqlite.Connection -> [RawIrcMsg] -> TwitchState -> IO ()
-processUserMsgs dbConn messages twitchState = do
-  let outgoingQueue = twitchStateOutgoingQueue twitchState
-  let logQueue = twitchStateLogQueue twitchState
-  let manager = twitchStateManager twitchState
-  let botLogin = configTwitchAccount $ twitchStateConfigTwitch twitchState
+processUserMsgs :: TwitchThreadState -> [RawIrcMsg] -> IO ()
+processUserMsgs tts messages = do
+  let outgoingQueue = ttsOutgoingQueue tts
+  let logQueue = ttsLogQueue tts
+  let manager = ttsManager tts
+  let botLogin = configTwitchAccount $ ttsConfig tts
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
     atomically $ writeQueue logQueue $ LogEntry "TWITCH" $ T.pack $ show msg
@@ -109,6 +131,7 @@ processUserMsgs dbConn messages twitchState = do
       Privmsg userInfo channelId message ->
         case userIdFromRawIrcMsg msg of
           Just senderId -> do
+            let dbConn = ttsSqliteConnection tts
             roles <- getTwitchUserRoles dbConn senderId
             let badgeRoles = badgeRolesFromRawIrcMsg msg
             let displayName = lookupEntryValue "display-name" $ _msgTags msg
@@ -150,7 +173,7 @@ processUserMsgs dbConn messages twitchState = do
                                listToMaybe $ T.splitOn ":" emoteDesc
                              else Nothing
                     , evalContextManager = manager
-                    , evalContextConfigTwitch = twitchStateConfigTwitch twitchState
+                    , evalContextConfigTwitch = ttsConfig tts
                     }
                 atomically $
                   case evalResult of
@@ -172,24 +195,24 @@ processUserMsgs dbConn messages twitchState = do
             T.pack (show msg)
       _ -> return ()
 
-twitchThread' :: Sqlite.Connection -> TwitchState -> IO ()
-twitchThread' dbConn twitchState = do
+twitchThread' :: TwitchThreadState -> IO ()
+twitchThread' tts = do
   threadDelay 10000 -- to prevent busy looping
-  let incomingQueue = twitchStateIncomingQueue twitchState
+  let incomingQueue = ttsIncomingQueue tts
   messages <- atomically $ flushQueue incomingQueue
   let (userMessages, controlMessages) =
         partition (\x -> _msgCommand x == "PRIVMSG") messages
-  processControlMsgs controlMessages twitchState
+  processControlMsgs tts controlMessages
+  let dbConn = ttsSqliteConnection tts
   catch
-    (Sqlite.withTransaction dbConn $
-     processUserMsgs dbConn userMessages twitchState)
+    (Sqlite.withTransaction dbConn $ processUserMsgs tts userMessages)
     (\e ->
        atomically $
-       writeQueue (twitchStateLogQueue twitchState) $
+       writeQueue (ttsLogQueue tts) $
        LogEntry "SQLITE" $ T.pack $ show (e :: Sqlite.SQLError))
   atomically $ do
-    let outgoingQueue = twitchStateOutgoingQueue twitchState
-    let replQueue = twitchStateReplQueue twitchState
+    let outgoingQueue = ttsOutgoingQueue tts
+    let replQueue = ttsReplQueue tts
     replCommand <- tryReadQueue replQueue
     case replCommand of
       Just (Say channel msg) ->
@@ -200,7 +223,7 @@ twitchThread' dbConn twitchState = do
       Just (PartChannel (TwitchIrcChannel channelId)) ->
         writeQueue outgoingQueue $ ircPart channelId ""
       Nothing -> return ()
-  twitchThread' dbConn twitchState
+  twitchThread' tts
 
 twitchCmdEscape :: T.Text -> T.Text
 twitchCmdEscape = T.dropWhile (`elem` ['/', '.']) . T.strip
