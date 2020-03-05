@@ -253,14 +253,14 @@ evalExpr (FunCallExpr "help" args) = do
     Nothing -> return $ "Command `" <> name <> " does not exist"
 evalExpr (FunCallExpr "uptime" _) = do
   manager <- evalContextManager <$> getEval
-  configTwitch <- evalContextConfigTwitch <$> getEval
+  config <- evalContextConfigTwitch <$> getEval
   channel <- evalContextChannel <$> getEval
   logQueue <- evalContextLogQueue <$> getEval
   stream <-
     liftIO $
     getStreamByLogin
       manager
-      (configTwitchClientId configTwitch)
+      (configTwitchClientId config)
       (twitchIrcChannelName channel)
   case stream of
     Right (Just TwitchStream {tsStartedAt = startedAt}) -> do
