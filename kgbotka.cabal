@@ -65,7 +65,7 @@ executable kgbotka
                      , KGBotka.Flip
                      , KGBotka.Roles
                      , KGBotka.TwitchAPI
-                     , KGBotka.Bot
+                     , KGBotka.TwitchThread
                      , KGBotka.Queue
                      , KGBotka.Repl
                      , KGBotka.Config

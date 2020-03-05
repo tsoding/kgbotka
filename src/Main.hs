@@ -18,7 +18,7 @@ import Database.SQLite.Simple.QQ
 import Hookup
 import Irc.Commands
 import Irc.RawIrcMsg
-import KGBotka.Bot
+import KGBotka.TwitchThread
 import KGBotka.Config
 import KGBotka.Log
 import KGBotka.Migration
@@ -198,16 +198,16 @@ mainWithArgs (configPath:databasePath:_) = do
           withForkIOs
             [ twitchIncomingThread conn $ WriteQueue incomingIrcQueue
             , twitchOutgoingThread conn $ ReadQueue outgoingIrcQueue
-            , botThread $
-              BotState
-                { botStateIncomingQueue = ReadQueue incomingIrcQueue
-                , botStateOutgoingQueue = WriteQueue outgoingIrcQueue
-                , botStateReplQueue = ReadQueue replQueue
-                , botStateChannels = joinedChannels
-                , botStateSqliteFileName = databasePath
-                , botStateLogQueue = WriteQueue logQueue
-                , botStateManager = manager
-                , botStateConfigTwitch = config
+            , twitchThread $
+              TwitchState
+                { twitchStateIncomingQueue = ReadQueue incomingIrcQueue
+                , twitchStateOutgoingQueue = WriteQueue outgoingIrcQueue
+                , twitchStateReplQueue = ReadQueue replQueue
+                , twitchStateChannels = joinedChannels
+                , twitchStateSqliteFileName = databasePath
+                , twitchStateLogQueue = WriteQueue logQueue
+                , twitchStateManager = manager
+                , twitchStateConfigTwitch = config
                 }
             , loggingThread "kgbotka.log" $ ReadQueue logQueue
             ] $ \_
