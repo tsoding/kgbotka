@@ -23,7 +23,7 @@ data ConfigDiscord = ConfigDiscord
 
 instance FromJSON Config where
   parseJSON (Object v) =
-    Config <$> v .: "twitch" <*> v .: "discord"
+    Config <$> v .:? "twitch" <*> v .:? "discord"
   parseJSON invalid = typeMismatch "Config" invalid
 
 instance FromJSON ConfigTwitch where

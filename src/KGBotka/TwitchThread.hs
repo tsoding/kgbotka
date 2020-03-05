@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module KGBotka.TwitchThread
   ( twitchThread
@@ -35,6 +36,9 @@ import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
+import Hookup
+import Network.Socket (Family(AF_INET))
+import Data.Functor
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
@@ -72,9 +76,7 @@ data TwitchThreadParams = TwitchThreadParams
   , ttpChannels :: !(TVar (S.Set TwitchIrcChannel))
   , ttpSqliteFileName :: !FilePath
   , ttpManager :: !HTTP.Manager
-  , ttpConfig :: ConfigTwitch
-  , ttpIncomingQueue :: !(ReadQueue RawIrcMsg)
-  , ttpOutgoingQueue :: !(WriteQueue RawIrcMsg)
+  , ttpConfig :: Maybe ConfigTwitch
   }
 
 data TwitchThreadState = TwitchThreadState
@@ -88,21 +90,105 @@ data TwitchThreadState = TwitchThreadState
   , ttsOutgoingQueue :: !(WriteQueue RawIrcMsg)
   }
 
+withConnection :: ConnectionParams -> (Connection -> IO a) -> IO a
+withConnection params = bracket (connect params) close
+
+twitchConnectionParams :: ConnectionParams
+twitchConnectionParams =
+  ConnectionParams
+    { cpHost = "irc.chat.twitch.tv"
+    , cpPort = 443
+    , cpTls =
+        Just
+          TlsParams
+            { tpClientCertificate = Nothing
+            , tpClientPrivateKey = Nothing
+            , tpServerCertificate = Nothing
+            , tpCipherSuite = "HIGH"
+            , tpInsecure = False
+            }
+    , cpSocks = Nothing
+    , cpFamily = AF_INET
+    }
+
+authorize :: ConfigTwitch -> Connection -> IO ()
+authorize conf conn = do
+  sendMsg conn (ircPass $ configTwitchToken conf)
+  sendMsg conn (ircNick $ configTwitchAccount conf)
+  sendMsg conn (ircCapReq ["twitch.tv/tags"])
+
+sendMsg :: Connection -> RawIrcMsg -> IO ()
+sendMsg conn msg = send conn (renderRawIrcMsg msg)
+
+maxIrcMessage :: Int
+maxIrcMessage = 500 * 4
+
+readIrcLine :: Connection -> WriteQueue LogEntry -> IO (Maybe RawIrcMsg)
+readIrcLine conn logQueue = do
+  mb <-
+    catch
+      (recvLine conn maxIrcMessage)
+      (\case
+         LineTooLong -> do
+           atomically $
+             writeQueue logQueue $
+             LogEntry "TWITCH" $
+             T.pack $ "[WARN] Received LineTooLong. Ignoring it..."
+           return Nothing
+         e -> throwIO e)
+  case (parseRawIrcMsg . asUtf8) =<< mb of
+    Just msg -> return (Just msg)
+    Nothing -> do
+      atomically $
+        writeQueue logQueue $
+        LogEntry "TWITCH" $ T.pack $ "Server sent invalid message!"
+      return Nothing
+
+twitchIncomingThread ::
+     Connection -> WriteQueue RawIrcMsg -> WriteQueue LogEntry -> IO ()
+twitchIncomingThread conn queue logQueue = do
+  mb <- readIrcLine conn logQueue
+  for_ mb $ atomically . writeQueue queue
+  twitchIncomingThread conn queue logQueue
+
+twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
+twitchOutgoingThread conn queue = do
+  rawMsg <- atomically $ readQueue queue
+  sendMsg conn rawMsg
+  twitchOutgoingThread conn queue
+
 twitchThread :: TwitchThreadParams -> IO ()
-twitchThread params = do
-  let databaseFileName = ttpSqliteFileName params
-  withConnectionAndPragmas databaseFileName $ \sqliteConnection ->
-    twitchThreadLoop
-      TwitchThreadState
-        { ttsLogQueue = ttpLogQueue params
-        , ttsReplQueue = ttpReplQueue params
-        , ttsChannels = ttpChannels params
-        , ttsSqliteConnection = sqliteConnection
-        , ttsManager = ttpManager params
-        , ttsConfig = ttpConfig params
-        , ttsIncomingQueue = ttpIncomingQueue params
-        , ttsOutgoingQueue = ttpOutgoingQueue params
-        }
+twitchThread ttp = do
+  case ttpConfig ttp of
+    Just config -> do
+      withConnection twitchConnectionParams $ \twitchConn -> do
+        authorize config twitchConn
+        incomingIrcQueue <- atomically newTQueue
+        void $
+          forkIO $
+          twitchIncomingThread
+            twitchConn
+            (WriteQueue incomingIrcQueue)
+            (ttpLogQueue ttp)
+        outgoingIrcQueue <- atomically newTQueue
+        void $forkIO $
+          twitchOutgoingThread twitchConn $ ReadQueue outgoingIrcQueue
+        withConnectionAndPragmas (ttpSqliteFileName ttp) $ \sqliteConnection ->
+          twitchThreadLoop
+            TwitchThreadState
+              { ttsLogQueue = ttpLogQueue ttp
+              , ttsReplQueue = ttpReplQueue ttp
+              , ttsChannels = ttpChannels ttp
+              , ttsSqliteConnection = sqliteConnection
+              , ttsManager = ttpManager ttp
+              , ttsConfig = config
+              , ttsIncomingQueue = ReadQueue incomingIrcQueue
+              , ttsOutgoingQueue = WriteQueue outgoingIrcQueue
+              }
+    Nothing ->
+      atomically $
+      writeQueue (ttpLogQueue ttp) $
+      LogEntry "TWITCH" $ "[ERROR] Twitch configuration not found"
 
 processControlMsgs :: TwitchThreadState -> [RawIrcMsg] -> IO ()
 processControlMsgs tts messages = do

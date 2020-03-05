@@ -19,7 +19,6 @@ import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Bttv
 import KGBotka.Command
-import KGBotka.Config
 import KGBotka.Ffz
 import KGBotka.Log
 import KGBotka.Queue
@@ -35,7 +34,7 @@ data ReplState = ReplState
   , replStateSqliteFileName :: !FilePath
   , replStateCurrentChannel :: !(Maybe TwitchIrcChannel)
   , replStateCommandQueue :: !(WriteQueue ReplCommand)
-  , replStateConfigTwitch :: !ConfigTwitch
+  , replStateTwitchClientId :: Maybe T.Text
   , replStateManager :: !HTTP.Manager
   , replStateHandle :: !Handle
   , replStateLogQueue :: !(WriteQueue LogEntry)
@@ -164,21 +163,22 @@ replThread' dbConn state = do
       replThread' dbConn state
     ("assrole":roleName:users, _) -> do
       withTransactionLogErrors $ do
-        maybeRole <- getTwitchRoleByName dbConn roleName
-        response <-
-          HTTP.responseBody <$>
-          getUsersByLogins
-            (replStateManager state)
-            (configTwitchClientId $ replStateConfigTwitch state)
-            users
-        case (response, maybeRole) of
-          (Right twitchUsers, Just role') ->
-            traverse_
-              (assTwitchRoleToUser dbConn (twitchRoleId role') . twitchUserId)
-              twitchUsers
-          (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
-          (_, Nothing) ->
-            hPutStrLn replHandle "[ERROR] Such role does not exist"
+        case replStateTwitchClientId state of
+          Just clientId -> do
+            maybeRole <- getTwitchRoleByName dbConn roleName
+            response <-
+              HTTP.responseBody <$>
+              getUsersByLogins (replStateManager state) clientId users
+            case (response, maybeRole) of
+              (Right twitchUsers, Just role') ->
+                traverse_
+                  (assTwitchRoleToUser dbConn (twitchRoleId role') .
+                   twitchUserId)
+                  twitchUsers
+              (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
+              (_, Nothing) ->
+                hPutStrLn replHandle "[ERROR] Such role does not exist"
+          Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"
       replThread' dbConn state
     (unknown:_, _) -> do
       hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
