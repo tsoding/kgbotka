@@ -25,6 +25,7 @@ import Data.Maybe
 import qualified Data.Text as T
 import Data.Time.Clock
 import qualified Database.SQLite.Simple as Sqlite
+import Discord.Types
 import KGBotka.Asciify
 import KGBotka.Bttv
 import KGBotka.Command
@@ -43,7 +44,6 @@ import Network.URI
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Discord.Types
 
 data EvalTwitchContext = EvalTwitchContext
   { etcSenderId :: TwitchUserId
