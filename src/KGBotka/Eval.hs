@@ -249,7 +249,8 @@ evalExpr (FunCallExpr "asciify" args) = do
   platformContext <- ecPlatformContext <$> getEval
   dbConn <- ecSqliteConnection <$> getEval
   emoteNameArg <- T.concat <$> mapM evalExpr args
-  emoteUrl <-
+  manager <- ecManager <$> getEval
+  image <-
     case platformContext of
       Etc etc -> do
         let twitchEmoteUrl =
@@ -265,11 +266,12 @@ evalExpr (FunCallExpr "asciify" args) = do
         let ffzEmoteUrl =
               ffzEmoteImageUrl <$>
               getFfzEmoteByName dbConn emoteNameArg (Just channel)
-        liftExceptT $
+        emoteUrl <-
+          liftExceptT $
           maybeToExceptT
             (EvalError "No emote found")
             (twitchEmoteUrl <|> bttvEmoteUrl <|> ffzEmoteUrl)
-      -- TODO(#102): Discord asciification should separate image rows with new lines
+        liftIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
       Edc _ -> do
         regex <-
           liftExceptT $
@@ -280,12 +282,16 @@ evalExpr (FunCallExpr "asciify" args) = do
             case map (T.pack . flip Regex.extract (T.unpack emoteNameArg)) $
                  elems matches of
               [_, discordEmoteId] ->
-                return $
-                "https://cdn.discordapp.com/emojis/" <> discordEmoteId <> ".png"
+                liftIO $
+                runExceptT
+                  (T.unlines . T.splitOn " " <$>
+                   asciifyUrl
+                     dbConn
+                     manager
+                     ("https://cdn.discordapp.com/emojis/" <> discordEmoteId <>
+                      ".png"))
               _ -> throwExceptEval $ EvalError "No emote found"
           _ -> throwExceptEval $ EvalError "No emote found"
-  manager <- ecManager <$> getEval
-  image <- liftIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
   case image of
     Right image' -> return image'
     Left errorMessage -> do
