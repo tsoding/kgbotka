@@ -269,7 +269,7 @@ evalExpr (FunCallExpr "asciify" args) = do
           maybeToExceptT
             (EvalError "No emote found")
             (twitchEmoteUrl <|> bttvEmoteUrl <|> ffzEmoteUrl)
-      -- TODO: Discord asciification should separate image rows with new lines
+      -- TODO(#102): Discord asciification should separate image rows with new lines
       Edc _ -> do
         regex <-
           liftExceptT $
