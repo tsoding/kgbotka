@@ -283,11 +283,13 @@ evalExpr (FunCallExpr "asciify" args) = do
                  elems matches of
               [_, discordEmoteId] ->
                 liftIO $
-                runExceptT $
-                (T.unlines . T.splitOn " " <$>
-                 (asciifyUrl dbConn manager $
-                  "https://cdn.discordapp.com/emojis/" <> discordEmoteId <>
-                  ".png"))
+                runExceptT
+                  (T.unlines . T.splitOn " " <$>
+                   asciifyUrl
+                     dbConn
+                     manager
+                     ("https://cdn.discordapp.com/emojis/" <> discordEmoteId <>
+                      ".png"))
               _ -> throwExceptEval $ EvalError "No emote found"
           _ -> throwExceptEval $ EvalError "No emote found"
   case image of
