@@ -163,7 +163,7 @@ failIfNotTrusted
        in when (null roles && null badgeRoles) $
           throwExceptEval $ EvalError "Only for trusted users"
     Edc _ -> return ()
-  -- TODO: there is no authority filter on Discord
+  -- TODO(#100): there is no authority filter on Discord
 
 failIfNotAuthority :: Eval ()
 failIfNotAuthority = do
