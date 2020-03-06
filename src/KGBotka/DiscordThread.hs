@@ -63,7 +63,7 @@ discordThread dtp =
       LogEntry "DISCORD" "[ERROR] Discord configuration not found"
 
 -- TODO(#96): Discord messages are not logged
--- TODO: Discord messages do not contribute to Markov chain
+-- TODO(#97): Discord messages do not contribute to Markov chain
 eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
 eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
