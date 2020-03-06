@@ -56,7 +56,8 @@ data EvalTwitchContext = EvalTwitchContext
   , etcClientId :: !T.Text
   }
 
-data EvalDiscordContext = EvalDiscordContext
+data EvalDiscordContext =
+  EvalDiscordContext
 
 data EvalPlatformContext
   = Etc EvalTwitchContext
@@ -109,8 +110,7 @@ evalCommandPipe =
 
 ecVarsModify ::
      (M.Map T.Text T.Text -> M.Map T.Text T.Text) -> EvalContext -> EvalContext
-ecVarsModify f context =
-  context {ecVars = f $ ecVars context}
+ecVarsModify f context = context {ecVars = f $ ecVars context}
 
 ytLinkRegex :: Either String Regex
 ytLinkRegex =
@@ -152,8 +152,9 @@ ytLinkId text = do
     Nothing -> Left Nothing
 
 failIfNotTrusted :: Eval ()
-failIfNotTrusted = do
+failIfNotTrusted
   -- TODO: there is no trusted filter on Discord
+ = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
     Etc etc ->
@@ -162,8 +163,8 @@ failIfNotTrusted = do
        in when (null roles && null badgeRoles) $
           throwExceptEval $ EvalError "Only for trusted users"
     Edc _ -> return ()
-
   -- TODO: there is no authority filter on Discord
+
 failIfNotAuthority :: Eval ()
 failIfNotAuthority = do
   platformContext <- ecPlatformContext <$> getEval
@@ -197,8 +198,8 @@ evalExpr (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM evalExpr args
 -- FIXME(#18): Friday video list is not published on gist
 -- FIXME(#38): %nextvideo does not inform how many times a video was suggested
+-- TODO: Video queue is not implemented for Discord
 evalExpr (FunCallExpr "nextvideo" _) = do
-  -- TODO: Video queue is not implemented for Discord
   failIfNotAuthority
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of

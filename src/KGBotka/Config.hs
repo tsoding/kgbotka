@@ -22,8 +22,7 @@ newtype ConfigDiscord = ConfigDiscord
   } deriving (Eq)
 
 instance FromJSON Config where
-  parseJSON (Object v) =
-    Config <$> v .:? "twitch" <*> v .:? "discord"
+  parseJSON (Object v) = Config <$> v .:? "twitch" <*> v .:? "discord"
   parseJSON invalid = typeMismatch "Config" invalid
 
 instance FromJSON ConfigTwitch where
@@ -32,6 +31,5 @@ instance FromJSON ConfigTwitch where
   parseJSON invalid = typeMismatch "ConfigTwitch" invalid
 
 instance FromJSON ConfigDiscord where
-  parseJSON (Object v) =
-    ConfigDiscord <$> v .: "token"
+  parseJSON (Object v) = ConfigDiscord <$> v .: "token"
   parseJSON invalid = typeMismatch "DiscordTwitch" invalid

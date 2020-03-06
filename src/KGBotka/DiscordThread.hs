@@ -1,28 +1,29 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module KGBotka.DiscordThread
   ( DiscordThreadParams(..)
   , discordThread
   ) where
 
-import KGBotka.Config
-import KGBotka.Queue
-import KGBotka.Log
-import Discord
-import Discord.Types
 import Control.Concurrent.STM
-import qualified Discord.Requests as R
-import qualified Data.Text as T
-import Control.Monad
-import qualified Database.SQLite.Simple as Sqlite
-import KGBotka.Sqlite
-import KGBotka.Eval
-import qualified Data.Map as M
-import Control.Monad.Trans.Except
-import Control.Monad.Trans.Eval
-import Control.Monad.Trans.State.Strict
-import KGBotka.Command
-import qualified Network.HTTP.Client as HTTP
 import Control.Exception
+import Control.Monad
+import Control.Monad.Trans.Eval
+import Control.Monad.Trans.Except
+import Control.Monad.Trans.State.Strict
+import qualified Data.Map as M
+import qualified Data.Text as T
+import qualified Database.SQLite.Simple as Sqlite
+import Discord
+import qualified Discord.Requests as R
+import Discord.Types
+import KGBotka.Command
+import KGBotka.Config
+import KGBotka.Eval
+import KGBotka.Log
+import KGBotka.Queue
+import KGBotka.Sqlite
+import qualified Network.HTTP.Client as HTTP
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)
@@ -90,13 +91,9 @@ eventHandler dts dis (MessageCreate m)
          case evalResult of
            Right commandResponse ->
              void $
-             restCall dis $
-             R.CreateMessage (messageChannel m) commandResponse
+             restCall dis $ R.CreateMessage (messageChannel m) commandResponse
            Left (EvalError userMsg) ->
-             void $
-             restCall
-               dis
-               (R.CreateMessage (messageChannel m) userMsg))
+             void $ restCall dis (R.CreateMessage (messageChannel m) userMsg))
       (\e ->
          atomically $
          writeQueue (dtsLogQueue dts) $
