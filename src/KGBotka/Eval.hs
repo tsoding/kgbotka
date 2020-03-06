@@ -12,7 +12,6 @@ module KGBotka.Eval
   ) where
 
 import Control.Applicative
-import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Eval
@@ -44,6 +43,7 @@ import Network.URI
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import Discord.Types
 
 data EvalTwitchContext = EvalTwitchContext
   { etcSenderId :: TwitchUserId
@@ -56,8 +56,10 @@ data EvalTwitchContext = EvalTwitchContext
   , etcClientId :: !T.Text
   }
 
-data EvalDiscordContext =
-  EvalDiscordContext
+data EvalDiscordContext = EvalDiscordContext
+  { edcAuthor :: User
+  , edcGuild :: Maybe Guild
+  }
 
 data EvalPlatformContext
   = Etc EvalTwitchContext
@@ -70,6 +72,12 @@ data EvalContext = EvalContext
   , ecLogQueue :: !(WriteQueue LogEntry)
   , ecPlatformContext :: EvalPlatformContext
   }
+
+instance HasLogQueue EvalContext where
+  logQueue = ecLogQueue
+
+logEntryEval :: LogEntry -> Eval ()
+logEntryEval = undefined
 
 newtype EvalError =
   EvalError T.Text
@@ -163,17 +171,18 @@ failIfNotTrusted
        in when (null roles && null badgeRoles) $
           throwExceptEval $ EvalError "Only for trusted users"
     Edc _ -> return ()
-  -- TODO(#100): there is no authority filter on Discord
 
 failIfNotAuthority :: Eval ()
 failIfNotAuthority = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
-    Etc etc ->
-      let badgeRoles = etcBadgeRoles etc
-       in unless (TwitchBroadcaster `elem` badgeRoles) $
-          throwExceptEval $ EvalError "Only for mr strimmer :)"
-    Edc _ -> throwExceptEval $ EvalError "Only for mr strimmer :)"
+    Etc EvalTwitchContext {etcBadgeRoles = badgeRoles}
+      | TwitchBroadcaster `elem` badgeRoles -> return ()
+    Edc EvalDiscordContext { edcAuthor = User {userId = authorId}
+                           , edcGuild = Just (Guild {guildOwnerId = ownerId})
+                           }
+      | authorId == ownerId -> return ()
+    _ -> throwExceptEval $ EvalError "Only for mr strimmer :)"
 
 evalExpr :: Expr -> Eval T.Text
 evalExpr (TextExpr t) = return t
@@ -232,10 +241,7 @@ evalExpr (FunCallExpr "friday" args) = do
           throwExceptEval $
           EvalError "Your suggestion should contain YouTube link"
         Left (Just failReason) -> do
-          logQueue <- ecLogQueue <$> getEval
-          liftIO $
-            atomically $
-            writeQueue logQueue $
+          logEntryEval $
             LogEntry "YOUTUBE" $
             "An error occured while parsing YouTube link: " <> T.pack failReason
           throwExceptEval $
@@ -295,10 +301,7 @@ evalExpr (FunCallExpr "asciify" args) = do
   case image of
     Right image' -> return image'
     Left errorMessage -> do
-      logQueue <- ecLogQueue <$> getEval
-      liftIO $
-        atomically $
-        writeQueue logQueue $ LogEntry "ASCIIFY" $ T.pack errorMessage
+      logEntryEval $ LogEntry "ASCIIFY" $ T.pack errorMessage
       return ""
 evalExpr (FunCallExpr "help" args) = do
   name <- T.concat <$> mapM evalExpr args
@@ -315,7 +318,6 @@ evalExpr (FunCallExpr "uptime" _) = do
       manager <- ecManager <$> getEval
       let clientId = etcClientId etc
       let channel = etcChannel etc
-      logQueue <- ecLogQueue <$> getEval
       stream <-
         liftIO $
         getStreamByLogin manager clientId (twitchIrcChannelName channel)
@@ -324,18 +326,22 @@ evalExpr (FunCallExpr "uptime" _) = do
           now <- liftIO getCurrentTime
           return $ humanReadableDiffTime $ diffUTCTime now startedAt
         Right Nothing -> do
-          liftIO $
-            atomically $
-            writeQueue logQueue $
+          logEntryEval $
             LogEntry "TWITCHAPI" $
             "No streams for " <> twitchIrcChannelText channel <> " were found"
           return ""
         Left errorMessage -> do
-          liftIO $
-            atomically $
-            writeQueue logQueue $ LogEntry "TWITCHAPI" $ T.pack errorMessage
+          logEntryEval $ LogEntry "TWITCHAPI" $ T.pack errorMessage
           return ""
     Edc _ -> throwExceptEval $ EvalError "Uptime doesn't work in Discord"
+evalExpr (FunCallExpr "eval" args) = do
+  failIfNotAuthority
+  code <- T.concat <$> mapM evalExpr args
+  codeAst <-
+    liftExceptT $
+    withExceptT (EvalError . T.pack . show) $
+    except (snd <$> runParser exprs code)
+  evalExprs codeAst
 evalExpr (FunCallExpr funame _) = do
   vars <- ecVars <$> getEval
   liftExceptT $
