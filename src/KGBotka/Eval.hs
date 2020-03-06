@@ -153,7 +153,7 @@ ytLinkId text = do
 
 failIfNotTrusted :: Eval ()
 failIfNotTrusted
-  -- TODO: there is no trusted filter on Discord
+  -- TODO(#99): there is no trusted filter on Discord
  = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
