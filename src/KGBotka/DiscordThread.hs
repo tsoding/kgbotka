@@ -13,35 +13,96 @@ import Control.Concurrent.STM
 import qualified Discord.Requests as R
 import qualified Data.Text as T
 import Control.Monad
+import qualified Database.SQLite.Simple as Sqlite
+import KGBotka.Sqlite
+import KGBotka.Eval
+import qualified Data.Map as M
+import Control.Monad.Trans.Except
+import Control.Monad.Trans.Eval
+import Control.Monad.Trans.State.Strict
+import KGBotka.Command
+import qualified Network.HTTP.Client as HTTP
+import Control.Exception
 
 data DiscordThreadParams = DiscordThreadParams
-  { dtpConfig :: Maybe ConfigDiscord
-  , dtpLogQueue :: WriteQueue LogEntry
+  { dtpConfig :: !(Maybe ConfigDiscord)
+  , dtpLogQueue :: !(WriteQueue LogEntry)
+  , dtpSqliteFileName :: !FilePath
+  , dtpManager :: !HTTP.Manager
+  }
+
+data DiscordThreadState = DiscordThreadState
+  { dtsLogQueue :: !(WriteQueue LogEntry)
+  , dtsSqliteConnection :: Sqlite.Connection
+  , dtsManager :: !HTTP.Manager
   }
 
 discordThread :: DiscordThreadParams -> IO ()
 discordThread dtp =
   case dtpConfig dtp of
-    Just config -> do
-      userFacingError <-
-        runDiscord $
-        def
-          { discordToken = configDiscordToken config
-          , discordOnEvent = eventHandler
-          }
-      atomically $
-        writeQueue (dtpLogQueue dtp) $ LogEntry "DISCORD" userFacingError
+    Just config ->
+      withConnectionAndPragmas (dtpSqliteFileName dtp) $ \sqliteConnection -> do
+        userFacingError <-
+          runDiscord $
+          def
+            { discordToken = configDiscordToken config
+            , discordOnEvent =
+                eventHandler $
+                DiscordThreadState
+                  { dtsLogQueue = dtpLogQueue dtp
+                  , dtsSqliteConnection = sqliteConnection
+                  , dtsManager = dtpManager dtp
+                  }
+            }
+        atomically $
+          writeQueue (dtpLogQueue dtp) $ LogEntry "DISCORD" userFacingError
     Nothing ->
       atomically $
       writeQueue (dtpLogQueue dtp) $
       LogEntry "DISCORD" "[ERROR] Discord configuration not found"
 
-eventHandler :: DiscordHandle -> Event -> IO ()
-eventHandler dis (MessageCreate m)
+-- TODO: Discord messages are not logged
+-- TODO: Discord messages do not contribute to Markov chain
+eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
+eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
     void $
     restCall dis (R.CreateReaction (messageChannel m, messageId m) "eyes")
-eventHandler _ _ = pure ()
+  | not (fromBot m) = do
+    let dbConn = dtsSqliteConnection dts
+    catch
+      (Sqlite.withTransaction dbConn $ do
+         atomically $
+           writeQueue (dtsLogQueue dts) $ LogEntry "DISCORD" $ messageText m
+         evalResult <-
+           runExceptT $
+           evalStateT
+             (runEvalT $
+              evalCommandPipe $
+              parseCommandPipe (CallPrefix "$") (PipeSuffix "|") (messageText m)) $
+           EvalContext
+             { ecVars = M.fromList []
+             , ecSqliteConnection = dbConn
+             , ecPlatformContext = Edc EvalDiscordContext
+             , ecLogQueue = dtsLogQueue dts
+             , ecManager = dtsManager dts
+             }
+         case evalResult of
+           Right commandResponse ->
+             void $
+             restCall dis $
+             R.CreateMessage (messageChannel m) commandResponse
+           Left (EvalError userMsg) ->
+             void $
+             restCall
+               dis
+               (R.CreateMessage (messageChannel m) userMsg))
+      (\e ->
+         atomically $
+         writeQueue (dtsLogQueue dts) $
+         LogEntry "SQLITE" $ T.pack $ show (e :: Sqlite.SQLError))
+    pure ()
+eventHandler _ _ _ = pure ()
 
 fromBot :: Message -> Bool
 fromBot m = userIsBot (messageAuthor m)

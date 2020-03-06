@@ -67,7 +67,6 @@ data EvalContext = EvalContext
   , ecSqliteConnection :: Sqlite.Connection
   , ecManager :: HTTP.Manager
   , ecLogQueue :: !(WriteQueue LogEntry)
-
   , ecPlatformContext :: EvalPlatformContext
   }
 
@@ -248,6 +247,7 @@ evalExpr (FunCallExpr "asciify" args) = do
   failIfNotTrusted
   platformContext <- ecPlatformContext <$> getEval
   dbConn <- ecSqliteConnection <$> getEval
+  emoteNameArg <- T.concat <$> mapM evalExpr args
   emoteUrl <-
     case platformContext of
       Etc etc -> do
@@ -258,7 +258,6 @@ evalExpr (FunCallExpr "asciify" args) = do
                     "/3.0"
                in makeTwitchEmoteUrl <$> hoistMaybe emotes
         let channel = etcChannel etc
-        emoteNameArg <- T.concat <$> mapM evalExpr args
         let bttvEmoteUrl =
               bttvEmoteImageUrl <$>
               getBttvEmoteByName dbConn emoteNameArg (Just channel)
@@ -269,8 +268,21 @@ evalExpr (FunCallExpr "asciify" args) = do
           maybeToExceptT
             (EvalError "No emote found")
             (twitchEmoteUrl <|> bttvEmoteUrl <|> ffzEmoteUrl)
-      -- TODO: no Discord emote asciification
-      Edc _ -> throwExceptEval (EvalError "No emote found")
+      -- TODO: Discord asciification should separate image rows with new lines
+      Edc _ -> do
+        regex <-
+          liftExceptT $
+          withExceptT (EvalError . T.pack) $
+          except $ compile defaultCompOpt defaultExecOpt "<\\:.+\\:([0-9]+)>"
+        case execute regex (T.unpack emoteNameArg) of
+          Right (Just matches) ->
+            case map (T.pack . flip Regex.extract (T.unpack emoteNameArg)) $
+                 elems matches of
+              [_, discordEmoteId] ->
+                return $
+                "https://cdn.discordapp.com/emojis/" <> discordEmoteId <> ".png"
+              _ -> throwExceptEval $ EvalError "No emote found"
+          _ -> throwExceptEval $ EvalError "No emote found"
   manager <- ecManager <$> getEval
   image <- liftIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
   case image of

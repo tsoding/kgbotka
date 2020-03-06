@@ -141,6 +141,8 @@ mainWithArgs (configPath:databasePath:_) = do
           DiscordThreadParams
             { dtpConfig = configDiscord config
             , dtpLogQueue = WriteQueue logQueue
+            , dtpSqliteFileName = databasePath
+            , dtpManager = manager
             }
         , loggingThread "kgbotka.log" $ ReadQueue logQueue
         ] $ \_
