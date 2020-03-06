@@ -137,7 +137,7 @@ readIrcLine conn l = do
       (\case
          LineTooLong -> do
            logEntry l $
-             LogEntry "TWITCH" $ "[WARN] Received LineTooLong. Ignoring it..."
+             LogEntry "TWITCH" "[WARN] Received LineTooLong. Ignoring it..."
            return Nothing
          e -> throwIO e)
   case (parseRawIrcMsg . asUtf8) =<< mb of

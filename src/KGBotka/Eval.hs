@@ -179,7 +179,7 @@ failIfNotAuthority = do
     Etc EvalTwitchContext {etcBadgeRoles = badgeRoles}
       | TwitchBroadcaster `elem` badgeRoles -> return ()
     Edc EvalDiscordContext { edcAuthor = User {userId = authorId}
-                           , edcGuild = Just (Guild {guildOwnerId = ownerId})
+                           , edcGuild = Just Guild {guildOwnerId = ownerId}
                            }
       | authorId == ownerId -> return ()
     _ -> throwExceptEval $ EvalError "Only for mr strimmer :)"
