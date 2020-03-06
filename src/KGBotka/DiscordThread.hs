@@ -62,7 +62,7 @@ discordThread dtp =
       writeQueue (dtpLogQueue dtp) $
       LogEntry "DISCORD" "[ERROR] Discord configuration not found"
 
--- TODO: Discord messages are not logged
+-- TODO(#96): Discord messages are not logged
 -- TODO: Discord messages do not contribute to Markov chain
 eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
 eventHandler dts dis (MessageCreate m)
