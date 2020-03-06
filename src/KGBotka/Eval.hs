@@ -3,6 +3,9 @@
 
 module KGBotka.Eval
   ( EvalContext(..)
+  , EvalPlatformContext(..)
+  , EvalTwitchContext(..)
+  , EvalDiscordContext(..)
   , evalCommandCall
   , evalCommandPipe
   , EvalError(..)
@@ -26,7 +29,6 @@ import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Asciify
 import KGBotka.Bttv
 import KGBotka.Command
-import KGBotka.Config
 import KGBotka.Expr
 import KGBotka.Ffz
 import KGBotka.Flip
@@ -43,19 +45,30 @@ import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 
-data EvalContext = EvalContext
-  { evalContextVars :: M.Map T.Text T.Text
-  , evalContextSqliteConnection :: Sqlite.Connection
-  , evalContextSenderId :: TwitchUserId
-  , evalContextSenderName :: T.Text
+data EvalTwitchContext = EvalTwitchContext
+  { etcSenderId :: TwitchUserId
+  , etcSenderName :: T.Text
   -- TODO(#80): evalContextTwitchEmotes should be a list of some kind of emote type
-  , evalContextTwitchEmotes :: Maybe T.Text
-  , evalContextChannel :: TwitchIrcChannel
-  , evalContextBadgeRoles :: [TwitchBadgeRole]
-  , evalContextRoles :: [TwitchRole]
-  , evalContextManager :: HTTP.Manager
-  , evalContextLogQueue :: !(WriteQueue LogEntry)
-  , evalContextConfigTwitch :: !ConfigTwitch
+  , etcTwitchEmotes :: Maybe T.Text
+  , etcChannel :: TwitchIrcChannel
+  , etcBadgeRoles :: [TwitchBadgeRole]
+  , etcRoles :: [TwitchRole]
+  , etcClientId :: !T.Text
+  }
+
+data EvalDiscordContext =
+  EvalDiscordContext
+
+data EvalPlatformContext
+  = Etc EvalTwitchContext
+  | Edc EvalDiscordContext
+
+data EvalContext = EvalContext
+  { ecVars :: M.Map T.Text T.Text
+  , ecSqliteConnection :: Sqlite.Connection
+  , ecManager :: HTTP.Manager
+  , ecLogQueue :: !(WriteQueue LogEntry)
+  , ecPlatformContext :: EvalPlatformContext
   }
 
 newtype EvalError =
@@ -66,18 +79,24 @@ type Eval = EvalT EvalContext EvalError IO
 
 evalCommandCall :: CommandCall -> Eval T.Text
 evalCommandCall (CommandCall name args) = do
-  modifyEval $ evalContextVarsModify $ M.insert "1" args
-  dbConn <- evalContextSqliteConnection <$> getEval
+  modifyEval $ ecVarsModify $ M.insert "1" args
+  dbConn <- ecSqliteConnection <$> getEval
   command <- liftIO $ commandByName dbConn name
-  senderName <- evalContextSenderName <$> getEval
   case command of
     Just Command {commandId = commandIdent, commandCode = code} -> do
-      senderId <- evalContextSenderId <$> getEval
-      cooledDown <- liftIO $ isCommandCooleddown dbConn senderId commandIdent
-      unless cooledDown $
-        throwExceptEval $
-        EvalError $ "@" <> senderName <> " The command has not cooled down yet"
-      liftIO $ logCommand dbConn senderId commandIdent args
+      platformContext <- ecPlatformContext <$> getEval
+      case platformContext of
+        Etc etc -> do
+          let senderId = etcSenderId etc
+          cooledDown <-
+            liftIO $ isCommandCooleddown dbConn senderId commandIdent
+          unless cooledDown $
+            throwExceptEval $
+            EvalError $
+            "@" <> etcSenderName etc <> " The command has not cooled down yet"
+          liftIO $ logCommand dbConn senderId commandIdent args
+        -- TODO(#98): There is no command cooldown on Discord
+        Edc _ -> return ()
       codeAst <-
         liftExceptT $
         withExceptT (EvalError . T.pack . show) $
@@ -89,10 +108,9 @@ evalCommandPipe :: [CommandCall] -> Eval T.Text
 evalCommandPipe =
   foldlM (\args -> evalCommandCall . ccArgsModify (`T.append` args)) ""
 
-evalContextVarsModify ::
+ecVarsModify ::
      (M.Map T.Text T.Text -> M.Map T.Text T.Text) -> EvalContext -> EvalContext
-evalContextVarsModify f context =
-  context {evalContextVars = f $ evalContextVars context}
+ecVarsModify f context = context {ecVars = f $ ecVars context}
 
 ytLinkRegex :: Either String Regex
 ytLinkRegex =
@@ -134,11 +152,28 @@ ytLinkId text = do
     Nothing -> Left Nothing
 
 failIfNotTrusted :: Eval ()
-failIfNotTrusted = do
-  roles <- evalContextRoles <$> getEval
-  badgeRoles <- evalContextBadgeRoles <$> getEval
-  when (null roles && null badgeRoles) $
-    throwExceptEval $ EvalError "Only for trusted users"
+failIfNotTrusted
+  -- TODO(#99): there is no trusted filter on Discord
+ = do
+  platformContext <- ecPlatformContext <$> getEval
+  case platformContext of
+    Etc etc ->
+      let roles = etcRoles etc
+          badgeRoles = etcBadgeRoles etc
+       in when (null roles && null badgeRoles) $
+          throwExceptEval $ EvalError "Only for trusted users"
+    Edc _ -> return ()
+  -- TODO(#100): there is no authority filter on Discord
+
+failIfNotAuthority :: Eval ()
+failIfNotAuthority = do
+  platformContext <- ecPlatformContext <$> getEval
+  case platformContext of
+    Etc etc ->
+      let badgeRoles = etcBadgeRoles etc
+       in unless (TwitchBroadcaster `elem` badgeRoles) $
+          throwExceptEval $ EvalError "Only for mr strimmer :)"
+    Edc _ -> throwExceptEval $ EvalError "Only for mr strimmer :)"
 
 evalExpr :: Expr -> Eval T.Text
 evalExpr (TextExpr t) = return t
@@ -149,7 +184,7 @@ evalExpr (FunCallExpr "urlencode" args) =
   where
     encodeURI = escapeURIString (const False)
 evalExpr (FunCallExpr "markov" _) = do
-  dbConn <- evalContextSqliteConnection <$> getEval
+  dbConn <- ecSqliteConnection <$> getEval
   events <- liftIO $ seqMarkovEvents Begin End dbConn
   return $
     T.unwords $
@@ -163,123 +198,140 @@ evalExpr (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM evalExpr args
 -- FIXME(#18): Friday video list is not published on gist
 -- FIXME(#38): %nextvideo does not inform how many times a video was suggested
+-- TODO(#101): Video queue is not implemented for Discord
 evalExpr (FunCallExpr "nextvideo" _) = do
-  badgeRoles <- evalContextBadgeRoles <$> getEval
-  if TwitchBroadcaster `elem` badgeRoles
-    then do
-      dbConn <- evalContextSqliteConnection <$> getEval
-      channel <- evalContextChannel <$> getEval
+  failIfNotAuthority
+  platformContext <- ecPlatformContext <$> getEval
+  case platformContext of
+    Etc etc -> do
+      dbConn <- ecSqliteConnection <$> getEval
+      let channel = etcChannel etc
       fridayVideo <-
         liftExceptT $
         maybeToExceptT (EvalError "Video queue is empty") $
         nextVideo dbConn channel
       return $ fridayVideoAsMessage fridayVideo
-    else throwExceptEval $ EvalError "Only for mr strimmer :)"
-  where
-    fridayVideoAsMessage :: FridayVideo -> T.Text
-    fridayVideoAsMessage FridayVideo { fridayVideoSubText = subText
-                                     , fridayVideoSubTime = subTime
-                                     , fridayVideoAuthorTwitchName = authorTwitchName
-                                     } =
-      T.pack (show subTime) <> " <" <> authorTwitchName <> "> " <> subText
+    Edc _ ->
+      throwExceptEval $ EvalError "Video queue is not implemented for Discord"
 -- FIXME(#39): %friday does not inform how many times a video was suggested
 evalExpr (FunCallExpr "friday" args) = do
-  roles <- evalContextRoles <$> getEval
-  badgeRoles <- evalContextBadgeRoles <$> getEval
-  when (null roles && null badgeRoles) $
-    throwExceptEval $ EvalError "You have to be trusted to submit Friday videos"
-  submissionText <- T.concat <$> mapM evalExpr args
-  case ytLinkId submissionText of
-    Right _ -> do
-      senderId <- evalContextSenderId <$> getEval
-      dbConn <- evalContextSqliteConnection <$> getEval
-      channel <- evalContextChannel <$> getEval
-      senderName <- evalContextSenderName <$> getEval
-      liftIO $ submitVideo dbConn submissionText channel senderId senderName
-      return "Added your video to suggestions"
-    Left Nothing ->
-      throwExceptEval $ EvalError "Your suggestion should contain YouTube link"
-    Left (Just failReason) -> do
-      logQueue <- evalContextLogQueue <$> getEval
-      liftIO $
-        atomically $
-        writeQueue logQueue $
-        LogEntry "YOUTUBE" $
-        "An error occured while parsing YouTube link: " <> T.pack failReason
-      throwExceptEval $
-        EvalError
-          "Something went wrong while parsing your subsmission. \
-          \We are already looking into it. Kapp"
+  failIfNotTrusted
+  platformContext <- ecPlatformContext <$> getEval
+  case platformContext of
+    Etc etc -> do
+      submissionText <- T.concat <$> mapM evalExpr args
+      case ytLinkId submissionText of
+        Right _ -> do
+          let senderId = etcSenderId etc
+          dbConn <- ecSqliteConnection <$> getEval
+          let channel = etcChannel etc
+          let senderName = etcSenderName etc
+          liftIO $ submitVideo dbConn submissionText channel senderId senderName
+          return "Added your video to suggestions"
+        Left Nothing ->
+          throwExceptEval $
+          EvalError "Your suggestion should contain YouTube link"
+        Left (Just failReason) -> do
+          logQueue <- ecLogQueue <$> getEval
+          liftIO $
+            atomically $
+            writeQueue logQueue $
+            LogEntry "YOUTUBE" $
+            "An error occured while parsing YouTube link: " <> T.pack failReason
+          throwExceptEval $
+            EvalError
+              "Something went wrong while parsing your subsmission. \
+              \We are already looking into it. Kapp"
+    Edc _ ->
+      throwExceptEval $ EvalError "Video queue is not implemented for Discord"
 evalExpr (FunCallExpr "asciify" args) = do
   failIfNotTrusted
-  emotes <- evalContextTwitchEmotes <$> getEval
-  let twitchEmoteUrl =
-        let makeTwitchEmoteUrl emoteName =
-              "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
-              "/3.0"
-         in makeTwitchEmoteUrl <$> hoistMaybe emotes
-  dbConn <- evalContextSqliteConnection <$> getEval
-  channel <- evalContextChannel <$> getEval
+  platformContext <- ecPlatformContext <$> getEval
+  dbConn <- ecSqliteConnection <$> getEval
   emoteNameArg <- T.concat <$> mapM evalExpr args
-  let bttvEmoteUrl =
-        bttvEmoteImageUrl <$>
-        getBttvEmoteByName dbConn emoteNameArg (Just channel)
-  let ffzEmoteUrl =
-        ffzEmoteImageUrl <$>
-        getFfzEmoteByName dbConn emoteNameArg (Just channel)
   emoteUrl <-
-    liftExceptT $
-    maybeToExceptT
-      (EvalError "No emote found")
-      (twitchEmoteUrl <|> bttvEmoteUrl <|> ffzEmoteUrl)
-  manager <- evalContextManager <$> getEval
+    case platformContext of
+      Etc etc -> do
+        let twitchEmoteUrl =
+              let emotes = etcTwitchEmotes etc
+                  makeTwitchEmoteUrl emoteName =
+                    "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
+                    "/3.0"
+               in makeTwitchEmoteUrl <$> hoistMaybe emotes
+        let channel = etcChannel etc
+        let bttvEmoteUrl =
+              bttvEmoteImageUrl <$>
+              getBttvEmoteByName dbConn emoteNameArg (Just channel)
+        let ffzEmoteUrl =
+              ffzEmoteImageUrl <$>
+              getFfzEmoteByName dbConn emoteNameArg (Just channel)
+        liftExceptT $
+          maybeToExceptT
+            (EvalError "No emote found")
+            (twitchEmoteUrl <|> bttvEmoteUrl <|> ffzEmoteUrl)
+      -- TODO(#102): Discord asciification should separate image rows with new lines
+      Edc _ -> do
+        regex <-
+          liftExceptT $
+          withExceptT (EvalError . T.pack) $
+          except $ compile defaultCompOpt defaultExecOpt "<\\:.+\\:([0-9]+)>"
+        case execute regex (T.unpack emoteNameArg) of
+          Right (Just matches) ->
+            case map (T.pack . flip Regex.extract (T.unpack emoteNameArg)) $
+                 elems matches of
+              [_, discordEmoteId] ->
+                return $
+                "https://cdn.discordapp.com/emojis/" <> discordEmoteId <> ".png"
+              _ -> throwExceptEval $ EvalError "No emote found"
+          _ -> throwExceptEval $ EvalError "No emote found"
+  manager <- ecManager <$> getEval
   image <- liftIO $ runExceptT $ asciifyUrl dbConn manager emoteUrl
   case image of
     Right image' -> return image'
     Left errorMessage -> do
-      logQueue <- evalContextLogQueue <$> getEval
-      senderName <- evalContextSenderName <$> getEval
+      logQueue <- ecLogQueue <$> getEval
       liftIO $
         atomically $
         writeQueue logQueue $ LogEntry "ASCIIFY" $ T.pack errorMessage
-      throwExceptEval $ EvalError ("@" <> senderName <> " Could not load emote")
+      return ""
 evalExpr (FunCallExpr "help" args) = do
   name <- T.concat <$> mapM evalExpr args
-  dbConn <- evalContextSqliteConnection <$> getEval
+  dbConn <- ecSqliteConnection <$> getEval
   maybeCommand <- liftIO $ commandByName dbConn name
   case maybeCommand of
     Just Command {commandCode = code} ->
       return $ "Command `" <> name <> "` defined as `" <> code <> "`"
     Nothing -> return $ "Command `" <> name <> " does not exist"
 evalExpr (FunCallExpr "uptime" _) = do
-  manager <- evalContextManager <$> getEval
-  configTwitch <- evalContextConfigTwitch <$> getEval
-  channel <- evalContextChannel <$> getEval
-  logQueue <- evalContextLogQueue <$> getEval
-  stream <-
-    liftIO $
-    getStreamByLogin
-      manager
-      (configTwitchClientId configTwitch)
-      (twitchIrcChannelName channel)
-  case stream of
-    Right (Just TwitchStream {tsStartedAt = startedAt}) -> do
-      now <- liftIO getCurrentTime
-      return $ humanReadableDiffTime $ diffUTCTime now startedAt
-    Right Nothing -> do
-      liftIO $
-        atomically $
-        writeQueue logQueue $
-        LogEntry "TWITCHAPI" $
-        "No streams for " <> twitchIrcChannelText channel <> " were found"
-      return ""
-    Left errorMessage -> do
-      liftIO $
-        atomically $
-        writeQueue logQueue $ LogEntry "TWITCHAPI" $ T.pack errorMessage
-      return ""
+  platformContext <- ecPlatformContext <$> getEval
+  case platformContext of
+    Etc etc -> do
+      manager <- ecManager <$> getEval
+      let clientId = etcClientId etc
+      let channel = etcChannel etc
+      logQueue <- ecLogQueue <$> getEval
+      stream <-
+        liftIO $
+        getStreamByLogin manager clientId (twitchIrcChannelName channel)
+      case stream of
+        Right (Just TwitchStream {tsStartedAt = startedAt}) -> do
+          now <- liftIO getCurrentTime
+          return $ humanReadableDiffTime $ diffUTCTime now startedAt
+        Right Nothing -> do
+          liftIO $
+            atomically $
+            writeQueue logQueue $
+            LogEntry "TWITCHAPI" $
+            "No streams for " <> twitchIrcChannelText channel <> " were found"
+          return ""
+        Left errorMessage -> do
+          liftIO $
+            atomically $
+            writeQueue logQueue $ LogEntry "TWITCHAPI" $ T.pack errorMessage
+          return ""
+    Edc _ -> throwExceptEval $ EvalError "Uptime doesn't work in Discord"
 evalExpr (FunCallExpr funame _) = do
-  vars <- evalContextVars <$> getEval
+  vars <- ecVars <$> getEval
   liftExceptT $
     maybeToExceptT (EvalError $ "Function `" <> funame <> "` does not exists") $
     hoistMaybe $ M.lookup funame vars

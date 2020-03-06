@@ -4,6 +4,7 @@ module KGBotka.Friday
   ( submitVideo
   , FridayVideo(..)
   , nextVideo
+  , fridayVideoAsMessage
   ) where
 
 import Control.Applicative
@@ -97,3 +98,10 @@ nextVideo conn channel = do
     hoistMaybe (snd <$> M.lookupGT "" slice)
   lift $ watchVideoById conn $ fridayVideoId video
   return video
+
+fridayVideoAsMessage :: FridayVideo -> T.Text
+fridayVideoAsMessage FridayVideo { fridayVideoSubText = subText
+                                 , fridayVideoSubTime = subTime
+                                 , fridayVideoAuthorTwitchName = authorTwitchName
+                                 } =
+  T.pack (show subTime) <> " <" <> authorTwitchName <> "> " <> subText

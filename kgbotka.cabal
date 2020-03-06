@@ -65,7 +65,7 @@ executable kgbotka
                      , KGBotka.Flip
                      , KGBotka.Roles
                      , KGBotka.TwitchAPI
-                     , KGBotka.Bot
+                     , KGBotka.TwitchThread
                      , KGBotka.Queue
                      , KGBotka.Repl
                      , KGBotka.Config
@@ -79,6 +79,7 @@ executable kgbotka
                      , KGBotka.Ffz
                      , KGBotka.Eval
                      , KGBotka.Log
+                     , KGBotka.DiscordThread
                      , Control.Monad.Trans.Extra
                      , Control.Monad.Trans.Eval
 
@@ -93,7 +94,7 @@ executable kgbotka
                      , containers >=0.6 && <0.7
                      , transformers >=0.5.6.2 && <0.6
                      , bytestring >=0.10.8 && <0.11
-                     , time >=1.9.0 && <1.10
+                     , time >=1.8.0 && <1.9
                      , array >=0.5.3 && <0.6
                      -- hackage
                      , aeson >=1.4.6 && <1.5
@@ -109,6 +110,7 @@ executable kgbotka
                      , random >=1.1 && <1.2
                      , louis==0.1.0.2
                      , unordered-containers >=0.2.8.0 && <0.3
+                     , discord-haskell >= 1.4.0 && < 1.5.0
 
   -- Directories containing source files.
   hs-source-dirs:      src
