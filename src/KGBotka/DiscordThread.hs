@@ -5,7 +5,6 @@ module KGBotka.DiscordThread
   , discordThread
   ) where
 
-import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Control.Monad.Trans.Eval
@@ -38,6 +37,12 @@ data DiscordThreadState = DiscordThreadState
   , dtsManager :: !HTTP.Manager
   }
 
+instance HasLogQueue DiscordThreadState where
+  logQueue = dtsLogQueue
+
+instance HasLogQueue DiscordThreadParams where
+  logQueue = dtpLogQueue
+
 discordThread :: DiscordThreadParams -> IO ()
 discordThread dtp =
   case dtpConfig dtp of
@@ -55,11 +60,9 @@ discordThread dtp =
                   , dtsManager = dtpManager dtp
                   }
             }
-        atomically $
-          writeQueue (dtpLogQueue dtp) $ LogEntry "DISCORD" userFacingError
+        logEntry dtp $ LogEntry "DISCORD" userFacingError
     Nothing ->
-      atomically $
-      writeQueue (dtpLogQueue dtp) $
+      logEntry dtp $
       LogEntry "DISCORD" "[ERROR] Discord configuration not found"
 
 -- TODO(#96): Discord messages are not logged
@@ -68,13 +71,26 @@ eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
 eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
     void $
-    restCall dis (R.CreateReaction (messageChannel m, messageId m) "eyes")
+    restCall dis (R.CreateReaction (messageChannel m, messageId m) "hearts")
   | not (fromBot m) = do
     let dbConn = dtsSqliteConnection dts
     catch
       (Sqlite.withTransaction dbConn $ do
-         atomically $
-           writeQueue (dtsLogQueue dts) $ LogEntry "DISCORD" $ messageText m
+         logEntry dts $ LogEntry "DISCORD" $ messageText m
+         -- TODO: DiscordThread doesn't cache the guilds
+         guild <-
+           case messageGuild m of
+             Just guildId' -> do
+               res <- restCall dis $ R.GetGuild guildId'
+               case res of
+                 Right guild' -> return $ Just guild'
+                 Left restError -> do
+                   logEntry dts $ LogEntry "DISCORD" $ T.pack $ show restError
+                   return Nothing
+             Nothing -> do
+               logEntry dts $
+                 LogEntry "DISCORD" "[WARN] Message was not sent in a Guild"
+               return Nothing
          evalResult <-
            runExceptT $
            evalStateT
@@ -84,7 +100,10 @@ eventHandler dts dis (MessageCreate m)
            EvalContext
              { ecVars = M.fromList []
              , ecSqliteConnection = dbConn
-             , ecPlatformContext = Edc EvalDiscordContext
+             , ecPlatformContext =
+                 Edc
+                   EvalDiscordContext
+                     {edcAuthor = messageAuthor m, edcGuild = guild}
              , ecLogQueue = dtsLogQueue dts
              , ecManager = dtsManager dts
              }
@@ -95,9 +114,7 @@ eventHandler dts dis (MessageCreate m)
            Left (EvalError userMsg) ->
              void $ restCall dis (R.CreateMessage (messageChannel m) userMsg))
       (\e ->
-         atomically $
-         writeQueue (dtsLogQueue dts) $
-         LogEntry "SQLITE" $ T.pack $ show (e :: Sqlite.SQLError))
+         logEntry dts $ LogEntry "SQLITE" $ T.pack $ show (e :: Sqlite.SQLError))
     pure ()
 eventHandler _ _ _ = pure ()
 

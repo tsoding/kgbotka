@@ -79,6 +79,9 @@ data TwitchThreadParams = TwitchThreadParams
   , ttpConfig :: Maybe ConfigTwitch
   }
 
+instance HasLogQueue TwitchThreadParams where
+  logQueue = ttpLogQueue
+
 data TwitchThreadState = TwitchThreadState
   { ttsLogQueue :: !(WriteQueue LogEntry)
   , ttsReplQueue :: !(ReadQueue ReplCommand)
@@ -89,6 +92,9 @@ data TwitchThreadState = TwitchThreadState
   , ttsIncomingQueue :: !(ReadQueue RawIrcMsg)
   , ttsOutgoingQueue :: !(WriteQueue RawIrcMsg)
   }
+
+instance HasLogQueue TwitchThreadState where
+  logQueue = ttsLogQueue
 
 withConnection :: ConnectionParams -> (Connection -> IO a) -> IO a
 withConnection params = bracket (connect params) close
@@ -123,33 +129,29 @@ sendMsg conn msg = send conn (renderRawIrcMsg msg)
 maxIrcMessage :: Int
 maxIrcMessage = 500 * 4
 
-readIrcLine :: Connection -> WriteQueue LogEntry -> IO (Maybe RawIrcMsg)
-readIrcLine conn logQueue = do
+readIrcLine :: HasLogQueue l => Connection -> l -> IO (Maybe RawIrcMsg)
+readIrcLine conn l = do
   mb <-
     catch
       (recvLine conn maxIrcMessage)
       (\case
          LineTooLong -> do
-           atomically $
-             writeQueue logQueue $
-             LogEntry "TWITCH" $
-             T.pack "[WARN] Received LineTooLong. Ignoring it..."
+           logEntry l $
+             LogEntry "TWITCH" "[WARN] Received LineTooLong. Ignoring it..."
            return Nothing
          e -> throwIO e)
   case (parseRawIrcMsg . asUtf8) =<< mb of
     Just msg -> return (Just msg)
     Nothing -> do
-      atomically $
-        writeQueue logQueue $
-        LogEntry "TWITCH" $ T.pack "Server sent invalid message!"
+      logEntry l $ LogEntry "TWITCH" "Server sent invalid message!"
       return Nothing
 
 twitchIncomingThread ::
-     Connection -> WriteQueue RawIrcMsg -> WriteQueue LogEntry -> IO ()
-twitchIncomingThread conn queue logQueue = do
-  mb <- readIrcLine conn logQueue
+     HasLogQueue l => Connection -> WriteQueue RawIrcMsg -> l -> IO ()
+twitchIncomingThread conn queue l = do
+  mb <- readIrcLine conn l
   for_ mb $ atomically . writeQueue queue
-  twitchIncomingThread conn queue logQueue
+  twitchIncomingThread conn queue l
 
 twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
 twitchOutgoingThread conn queue = do
@@ -166,10 +168,7 @@ twitchThread ttp =
         incomingIrcQueue <- atomically newTQueue
         void $
           forkIO $
-          twitchIncomingThread
-            twitchConn
-            (WriteQueue incomingIrcQueue)
-            (ttpLogQueue ttp)
+          twitchIncomingThread twitchConn (WriteQueue incomingIrcQueue) ttp
         outgoingIrcQueue <- atomically newTQueue
         void $forkIO $
           twitchOutgoingThread twitchConn $ ReadQueue outgoingIrcQueue
@@ -207,12 +206,11 @@ processControlMsgs tts messages = do
 processUserMsgs :: TwitchThreadState -> [RawIrcMsg] -> IO ()
 processUserMsgs tts messages = do
   let outgoingQueue = ttsOutgoingQueue tts
-  let logQueue = ttsLogQueue tts
   let manager = ttsManager tts
   let botLogin = configTwitchAccount $ ttsConfig tts
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
-    atomically $ writeQueue logQueue $ LogEntry "TWITCH" $ T.pack $ show msg
+    logEntry tts $ LogEntry "TWITCH" $ T.pack $ show msg
     case cookedMsg of
       Privmsg userInfo channelId message ->
         case userIdFromRawIrcMsg msg of
@@ -263,7 +261,7 @@ processUserMsgs tts messages = do
                                        listToMaybe $ T.splitOn ":" emoteDesc
                                      else Nothing
                             }
-                    , ecLogQueue = logQueue
+                    , ecLogQueue = logQueue tts
                     , ecManager = manager
                     }
                 atomically $
@@ -275,12 +273,10 @@ processUserMsgs tts messages = do
                     Left (EvalError userMsg) ->
                       writeQueue outgoingQueue $
                       ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
-              else atomically $
-                   writeQueue logQueue $
+              else logEntry tts $
                    LogEntry "TWITCH" "WARNING: Bot received its own message"
           Nothing ->
-            atomically $
-            writeQueue logQueue $
+            logEntry tts $
             LogEntry "TWITCH" $
             "ERROR: Could not extract twitch user id from PRIVMSG " <>
             T.pack (show msg)

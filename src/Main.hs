@@ -121,7 +121,7 @@ mainWithArgs (configPath:databasePath:_) = do
   eitherDecodeFileStrict configPath >>= \case
     Right config -> do
       replQueue <- atomically newTQueue
-      logQueue <- atomically newTQueue
+      rawLogQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
       withConnectionAndPragmas databasePath $ \dbConn ->
@@ -133,18 +133,18 @@ mainWithArgs (configPath:databasePath:_) = do
             { ttpReplQueue = ReadQueue replQueue
             , ttpChannels = joinedChannels
             , ttpSqliteFileName = databasePath
-            , ttpLogQueue = WriteQueue logQueue
+            , ttpLogQueue = WriteQueue rawLogQueue
             , ttpManager = manager
             , ttpConfig = configTwitch config
             }
         , discordThread $
           DiscordThreadParams
             { dtpConfig = configDiscord config
-            , dtpLogQueue = WriteQueue logQueue
+            , dtpLogQueue = WriteQueue rawLogQueue
             , dtpSqliteFileName = databasePath
             , dtpManager = manager
             }
-        , loggingThread "kgbotka.log" $ ReadQueue logQueue
+        , loggingThread "kgbotka.log" $ ReadQueue rawLogQueue
         ] $ \_
         -- TODO(#63): backdoor port is hardcoded
        ->
@@ -158,7 +158,7 @@ mainWithArgs (configPath:databasePath:_) = do
               configTwitchClientId <$> configTwitch config
           , replStateManager = manager
           , replStateHandle = stdout
-          , replStateLogQueue = WriteQueue logQueue
+          , replStateLogQueue = WriteQueue rawLogQueue
           , replStateConnAddr = Nothing
           }
       putStrLn "Done"

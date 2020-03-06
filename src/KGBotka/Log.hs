@@ -1,6 +1,10 @@
+{-# LANGUAGE ViewPatterns #-}
+
 module KGBotka.Log
   ( loggingThread
   , LogEntry(..)
+  , HasLogQueue(..)
+  , logEntry
   ) where
 
 import Control.Concurrent
@@ -34,3 +38,9 @@ loggingThread logFilePath messageQueue = withFile logFilePath AppendMode loop
         messages
       hFlush logHandle
       loop logHandle
+
+class HasLogQueue l where
+  logQueue :: l -> WriteQueue LogEntry
+
+logEntry :: HasLogQueue l => l -> LogEntry -> IO ()
+logEntry (logQueue -> queue) = atomically . writeQueue queue
