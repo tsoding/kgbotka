@@ -163,14 +163,14 @@ failIfNotTrusted = do
           throwExceptEval $ EvalError "Only for trusted users"
     Edc _ -> return ()
 
+  -- TODO: there is no authority filter on Discord
 failIfNotAuthority :: Eval ()
 failIfNotAuthority = do
-  -- TODO: there is no authority filter on Discord
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
     Etc etc ->
       let badgeRoles = etcBadgeRoles etc
-       in when (not (TwitchBroadcaster `elem` badgeRoles)) $
+       in unless (TwitchBroadcaster `elem` badgeRoles) $
           throwExceptEval $ EvalError "Only for mr strimmer :)"
     Edc _ -> throwExceptEval $ EvalError "Only for mr strimmer :)"
 

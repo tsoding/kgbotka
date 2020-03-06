@@ -162,7 +162,7 @@ replThread' dbConn state = do
       withTransactionLogErrors $ deleteCommandName dbConn name
       replThread' dbConn state
     ("assrole":roleName:users, _) -> do
-      withTransactionLogErrors $ do
+      withTransactionLogErrors $
         case replStateTwitchClientId state of
           Just clientId -> do
             maybeRole <- getTwitchRoleByName dbConn roleName

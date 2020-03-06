@@ -17,8 +17,8 @@ data ConfigTwitch = ConfigTwitch
   , configTwitchClientId :: !T.Text
   } deriving (Eq)
 
-data ConfigDiscord = ConfigDiscord
-  { configDiscordToken :: !T.Text
+newtype ConfigDiscord = ConfigDiscord
+  { configDiscordToken :: T.Text
   } deriving (Eq)
 
 instance FromJSON Config where

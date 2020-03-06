@@ -133,7 +133,7 @@ readIrcLine conn logQueue = do
            atomically $
              writeQueue logQueue $
              LogEntry "TWITCH" $
-             T.pack $ "[WARN] Received LineTooLong. Ignoring it..."
+             T.pack "[WARN] Received LineTooLong. Ignoring it..."
            return Nothing
          e -> throwIO e)
   case (parseRawIrcMsg . asUtf8) =<< mb of
@@ -141,7 +141,7 @@ readIrcLine conn logQueue = do
     Nothing -> do
       atomically $
         writeQueue logQueue $
-        LogEntry "TWITCH" $ T.pack $ "Server sent invalid message!"
+        LogEntry "TWITCH" $ T.pack "Server sent invalid message!"
       return Nothing
 
 twitchIncomingThread ::
@@ -158,9 +158,9 @@ twitchOutgoingThread conn queue = do
   twitchOutgoingThread conn queue
 
 twitchThread :: TwitchThreadParams -> IO ()
-twitchThread ttp = do
+twitchThread ttp =
   case ttpConfig ttp of
-    Just config -> do
+    Just config ->
       withConnection twitchConnectionParams $ \twitchConn -> do
         authorize config twitchConn
         incomingIrcQueue <- atomically newTQueue
@@ -188,7 +188,7 @@ twitchThread ttp = do
     Nothing ->
       atomically $
       writeQueue (ttpLogQueue ttp) $
-      LogEntry "TWITCH" $ "[ERROR] Twitch configuration not found"
+      LogEntry "TWITCH" "[ERROR] Twitch configuration not found"
 
 processControlMsgs :: TwitchThreadState -> [RawIrcMsg] -> IO ()
 processControlMsgs tts messages = do
