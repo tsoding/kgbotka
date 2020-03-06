@@ -95,7 +95,7 @@ evalCommandCall (CommandCall name args) = do
             EvalError $
             "@" <> etcSenderName etc <> " The command has not cooled down yet"
           liftIO $ logCommand dbConn senderId commandIdent args
-        -- TODO: There is no command cooldown on Discord
+        -- TODO(#98): There is no command cooldown on Discord
         Edc _ -> return ()
       codeAst <-
         liftExceptT $
