@@ -19,6 +19,7 @@ import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Ffz
+import KGBotka.Http
 import KGBotka.Log
 import KGBotka.Queue
 import KGBotka.Roles
@@ -27,7 +28,6 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-import KGBotka.Http
 
 data ReplThreadParams = ReplThreadParams
   { rtpChannels :: !(TVar (S.Set TwitchIrcChannel))
@@ -56,7 +56,7 @@ data ReplThreadState = ReplThreadState
   }
 
 instance ProvidesDatabase ReplThreadState where
-    getSqliteConnection = rtsSqliteConnection
+  getSqliteConnection = rtsSqliteConnection
 
 instance ProvidesHttpManager ReplThreadState where
   httpManager = rtsManager
@@ -208,7 +208,6 @@ replThreadLoop rts = do
       hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
       replThreadLoop rts
     _ -> replThreadLoop rts
-
 
 data BackdoorThreadParams = BackdoorThreadParams
   { btpChannels :: !(TVar (S.Set TwitchIrcChannel))

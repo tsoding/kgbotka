@@ -20,10 +20,10 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import Irc.Identifier (idText)
 import KGBotka.Http
+import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import Network.HTTP.Client
 import Network.URI
-import KGBotka.Sqlite
 
 data BttvEmote = BttvEmote
   { bttvEmoteName :: T.Text

@@ -25,8 +25,8 @@ import qualified Data.Text as T
 import Data.Time
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
-import KGBotka.TwitchAPI
 import KGBotka.Sqlite
+import KGBotka.TwitchAPI
 
 data Command = Command
   { commandId :: Int

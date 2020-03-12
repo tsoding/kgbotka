@@ -17,8 +17,8 @@ import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
-import KGBotka.TwitchAPI
 import KGBotka.Sqlite
+import KGBotka.TwitchAPI
 
 data TwitchBadgeRole
   = TwitchSub
