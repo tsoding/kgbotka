@@ -78,7 +78,7 @@ eventHandler dts dis (MessageCreate m)
     catch
       (Sqlite.withTransaction dbConn $ do
          logEntry dts $ LogEntry "DISCORD" $ messageText m
-         -- TODO: DiscordThread doesn't cache the guilds
+         -- TODO(#109): DiscordThread doesn't cache the guilds
          guild <-
            case messageGuild m of
              Just guildId' -> do
