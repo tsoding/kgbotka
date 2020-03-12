@@ -80,6 +80,7 @@ executable kgbotka
                      , KGBotka.Eval
                      , KGBotka.Log
                      , KGBotka.DiscordThread
+                     , KGBotka.DiscordLog
                      , Control.Monad.Trans.Extra
                      , Control.Monad.Trans.Eval
 
