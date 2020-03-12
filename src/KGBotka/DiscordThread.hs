@@ -23,6 +23,7 @@ import KGBotka.Log
 import KGBotka.Queue
 import KGBotka.Sqlite
 import qualified Network.HTTP.Client as HTTP
+import Data.Maybe
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)
@@ -81,8 +82,8 @@ eventHandler dts dis (MessageCreate m)
          guild <-
            case messageGuild m of
              Just guildId' -> do
-               res <- restCall dis $ R.GetGuild guildId'
-               case res of
+               resGuild <- restCall dis $ R.GetGuild guildId'
+               case resGuild of
                  Right guild' -> return $ Just guild'
                  Left restError -> do
                    logEntry dts $ LogEntry "DISCORD" $ T.pack $ show restError
@@ -91,6 +92,18 @@ eventHandler dts dis (MessageCreate m)
                logEntry dts $
                  LogEntry "DISCORD" "[WARN] Message was not sent in a Guild"
                return Nothing
+         guildMember <-
+           case guild of
+             Just guild' -> do
+               res <-
+                 restCall dis $
+                 R.GetGuildMember (guildId guild') (userId $ messageAuthor m)
+               case res of
+                 Right guildMember' -> return $ Just guildMember'
+                 Left restError -> do
+                   logEntry dts $ LogEntry "DISCORD" $ T.pack $ show restError
+                   return Nothing
+             Nothing -> undefined
          evalResult <-
            runExceptT $
            evalStateT
@@ -103,7 +116,11 @@ eventHandler dts dis (MessageCreate m)
              , ecPlatformContext =
                  Edc
                    EvalDiscordContext
-                     {edcAuthor = messageAuthor m, edcGuild = guild}
+                     { edcAuthor = messageAuthor m
+                     , edcGuild = guild
+                     , edcRoles =
+                         concat $ maybeToList (memberRoles <$> guildMember)
+                     }
              , ecLogQueue = dtsLogQueue dts
              , ecManager = dtsManager dts
              }

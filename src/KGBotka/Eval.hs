@@ -59,6 +59,7 @@ data EvalTwitchContext = EvalTwitchContext
 data EvalDiscordContext = EvalDiscordContext
   { edcAuthor :: User
   , edcGuild :: Maybe Guild
+  , edcRoles :: [Snowflake]
   }
 
 data EvalPlatformContext
