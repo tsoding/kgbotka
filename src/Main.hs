@@ -145,21 +145,16 @@ mainWithArgs (configPath:databasePath:_) = do
             , dtpManager = manager
             }
         , loggingThread "kgbotka.log" $ ReadQueue rawLogQueue
-        ] $ \_
-        -- TODO(#63): backdoor port is hardcoded
-       ->
-        backdoorThread "6969" $
-        ReplState
-          { replStateChannels = joinedChannels
-          , replStateSqliteFileName = databasePath
-          , replStateCurrentChannel = Nothing
-          , replStateCommandQueue = WriteQueue replQueue
-          , replStateTwitchClientId =
-              configTwitchClientId <$> configTwitch config
-          , replStateManager = manager
-          , replStateHandle = stdout
-          , replStateLogQueue = WriteQueue rawLogQueue
-          , replStateConnAddr = Nothing
+        ] $ \_ ->
+        backdoorThread $
+        BackdoorThreadParams
+          { btpChannels = joinedChannels
+          , btpSqliteFileName = databasePath
+          , btpCommandQueue = WriteQueue replQueue
+          , btpTwitchClientId = configTwitchClientId <$> configTwitch config
+          , btpManager = manager
+          , btpLogQueue = WriteQueue rawLogQueue
+          , btpPort = 6969 -- TODO(#63): backdoor port is hardcoded
           }
       putStrLn "Done"
     Left errorMessage -> error errorMessage

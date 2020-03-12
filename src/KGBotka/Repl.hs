@@ -1,10 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module KGBotka.Repl
-  ( replThread
-  , backdoorThread
-  , ReplState(..)
+  ( backdoorThread
   , ReplCommand(..)
+  , BackdoorThreadParams(..)
   ) where
 
 import Control.Concurrent
@@ -20,6 +19,7 @@ import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Ffz
+import KGBotka.Http
 import KGBotka.Log
 import KGBotka.Queue
 import KGBotka.Roles
@@ -29,17 +29,37 @@ import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
 
-data ReplState = ReplState
-  { replStateChannels :: !(TVar (S.Set TwitchIrcChannel))
-  , replStateSqliteFileName :: !FilePath
-  , replStateCurrentChannel :: !(Maybe TwitchIrcChannel)
-  , replStateCommandQueue :: !(WriteQueue ReplCommand)
-  , replStateTwitchClientId :: Maybe T.Text
-  , replStateManager :: !HTTP.Manager
-  , replStateHandle :: !Handle
-  , replStateLogQueue :: !(WriteQueue LogEntry)
-  , replStateConnAddr :: !(Maybe SockAddr)
+data ReplThreadParams = ReplThreadParams
+  { rtpChannels :: !(TVar (S.Set TwitchIrcChannel))
+  , rtpSqliteFileName :: !FilePath
+  , rtpCommandQueue :: !(WriteQueue ReplCommand)
+  , rtpTwitchClientId :: Maybe T.Text
+  , rtpManager :: !HTTP.Manager
+  , rtpHandle :: !Handle
+  , rtpLogQueue :: !(WriteQueue LogEntry)
+  , rtpConnAddr :: !SockAddr
   }
+
+instance ProvidesLogging ReplThreadParams where
+  logQueue = rtpLogQueue
+
+data ReplThreadState = ReplThreadState
+  { rtsChannels :: !(TVar (S.Set TwitchIrcChannel))
+  , rtsSqliteConnection :: !Sqlite.Connection
+  , rtsCurrentChannel :: !(Maybe TwitchIrcChannel)
+  , rtsCommandQueue :: !(WriteQueue ReplCommand)
+  , rtsTwitchClientId :: Maybe T.Text
+  , rtsManager :: !HTTP.Manager
+  , rtsHandle :: !Handle
+  , rtsLogQueue :: !(WriteQueue LogEntry)
+  , rtsConnAddr :: !SockAddr
+  }
+
+instance ProvidesDatabase ReplThreadState where
+  getSqliteConnection = rtsSqliteConnection
+
+instance ProvidesHttpManager ReplThreadState where
+  httpManager = rtsManager
 
 data ReplCommand
   = Say TwitchIrcChannel
@@ -47,77 +67,83 @@ data ReplCommand
   | JoinChannel TwitchIrcChannel
   | PartChannel TwitchIrcChannel
 
-replThread :: ReplState -> IO ()
-replThread initState =
-  withConnectionAndPragmas (replStateSqliteFileName initState) $ \conn -> do
+replThread :: ReplThreadParams -> IO ()
+replThread rtp =
+  withConnectionAndPragmas (rtpSqliteFileName rtp) $ \conn -> do
     Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
-    replThread' conn initState
+    replThreadLoop
+      ReplThreadState
+        { rtsChannels = rtpChannels rtp
+        , rtsSqliteConnection = conn
+        , rtsCurrentChannel = Nothing
+        , rtsCommandQueue = rtpCommandQueue rtp
+        , rtsTwitchClientId = rtpTwitchClientId rtp
+        , rtsManager = rtpManager rtp
+        , rtsHandle = rtpHandle rtp
+        , rtsLogQueue = rtpLogQueue rtp
+        , rtsConnAddr = rtpConnAddr rtp
+        }
 
 -- TODO(#60): there is no shutdown command that shuts down the whole bot
 -- Since we introduce backdoor connections the quit command does
 -- not serve such purpose anymore, 'cause it only closes the current
 -- REPL connection
 -- TODO(#65): there is no `who` command that would show all of the Backdoor connections
-replThread' :: Sqlite.Connection -> ReplState -> IO ()
-replThread' dbConn state = do
-  let replHandle = replStateHandle state
+replThreadLoop :: ReplThreadState -> IO ()
+replThreadLoop rts = do
+  let replHandle = rtsHandle rts
   let withTransactionLogErrors :: IO () -> IO ()
       withTransactionLogErrors f =
         catch
-          (Sqlite.withTransaction dbConn f)
+          (Sqlite.withTransaction (rtsSqliteConnection rts) f)
           (\e -> hPrint replHandle (e :: Sqlite.SQLError))
   hPutStr replHandle $
     "[" <>
-    T.unpack
-      (twitchIrcChannelText $ fromMaybe "#" $ replStateCurrentChannel state) <>
+    T.unpack (twitchIrcChannelText $ fromMaybe "#" $ rtsCurrentChannel rts) <>
     "]> "
-  hFlush (replStateHandle state)
+  hFlush (rtsHandle rts)
   inputLine <- T.pack <$> hGetLine replHandle
   atomically $
-    writeQueue (replStateLogQueue state) $
-    LogEntry "BACKDOOR" $
-    T.pack (show $ replStateConnAddr state) <> ": " <> inputLine
-  case (T.words inputLine, replStateCurrentChannel state) of
+    writeQueue (rtsLogQueue rts) $
+    LogEntry "BACKDOOR" $ T.pack (show $ rtsConnAddr rts) <> ": " <> inputLine
+  case (T.words inputLine, rtsCurrentChannel rts) of
     ("cd":channel:_, _) ->
-      replThread' dbConn $
-      state {replStateCurrentChannel = Just $ mkTwitchIrcChannel channel}
-    ("cd":_, _) ->
-      replThread' dbConn $ state {replStateCurrentChannel = Nothing}
+      replThreadLoop $
+      rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
+    ("cd":_, _) -> replThreadLoop $ rts {rtsCurrentChannel = Nothing}
     ("say":args, Just channel) -> do
       atomically $
-        writeQueue (replStateCommandQueue state) $ Say channel $ T.unwords args
-      replThread' dbConn state
+        writeQueue (rtsCommandQueue rts) $ Say channel $ T.unwords args
+      replThreadLoop rts
     ("say":_, Nothing) -> do
       hPutStrLn replHandle "No current channel to say anything to is selected"
-      replThread' dbConn state
+      replThreadLoop rts
     ("quit":_, _) -> return ()
     ("q":_, _) -> return ()
     ("join":channel:_, _) -> do
       atomically $
-        writeQueue (replStateCommandQueue state) $
+        writeQueue (rtsCommandQueue rts) $
         JoinChannel $ mkTwitchIrcChannel channel
-      replThread' dbConn $
-        state {replStateCurrentChannel = Just $ mkTwitchIrcChannel channel}
+      replThreadLoop $
+        rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
     ("part":_, Just channel) -> do
       atomically $ do
-        isMember <- S.member channel <$> readTVar (replStateChannels state)
-        when isMember $
-          writeQueue (replStateCommandQueue state) $ PartChannel channel
-      replThread' dbConn $ state {replStateCurrentChannel = Nothing}
+        isMember <- S.member channel <$> readTVar (rtsChannels rts)
+        when isMember $ writeQueue (rtsCommandQueue rts) $ PartChannel channel
+      replThreadLoop $ rts {rtsCurrentChannel = Nothing}
     ("ls":_, _) -> do
       traverse_ (hPutStrLn replHandle . T.unpack . twitchIrcChannelText) =<<
-        S.toList <$> readTVarIO (replStateChannels state)
-      replThread' dbConn state
+        S.toList <$> readTVarIO (rtsChannels rts)
+      replThreadLoop rts
     ("addcmd":name:args, _) -> do
-      withTransactionLogErrors $ addCommand dbConn name (T.unwords args)
-      replThread' dbConn state
+      withTransactionLogErrors $ addCommand rts name (T.unwords args)
+      replThreadLoop rts
     ("addalias":alias:name:_, _) -> do
-      withTransactionLogErrors $ addCommandName dbConn alias name
-      replThread' dbConn state
+      withTransactionLogErrors $ addCommandName rts alias name
+      replThreadLoop rts
     ("updatebttv":_, channel) -> do
       withTransactionLogErrors $ do
-        result <-
-          runExceptT $ updateBttvEmotes dbConn (replStateManager state) channel
+        result <- runExceptT $ updateBttvEmotes rts channel
         case (result, channel) of
           (Right (), Nothing) ->
             hPutStrLn replHandle "Global BTTV emotes are updated"
@@ -126,11 +152,10 @@ replThread' dbConn state = do
             "BTTV emotes are updated for channel " <>
             T.unpack (twitchIrcChannelText channelName)
           (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
-      replThread' dbConn state
+      replThreadLoop rts
     ("updateffz":_, channel) -> do
       withTransactionLogErrors $ do
-        result <-
-          runExceptT $ updateFfzEmotes dbConn (replStateManager state) channel
+        result <- runExceptT $ updateFfzEmotes rts channel
         case (result, channel) of
           (Right (), Nothing) ->
             hPutStrLn replHandle "Global FFZ emotes are updated"
@@ -139,55 +164,68 @@ replThread' dbConn state = do
             "FFZ emotes are updated for channel " <>
             T.unpack (twitchIrcChannelText channelName)
           (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
-      replThread' dbConn state
+      replThreadLoop rts
     ("addrole":name:_, _) -> do
       withTransactionLogErrors $ do
-        role <- getTwitchRoleByName dbConn name
+        role <- getTwitchRoleByName rts name
         case role of
           Just _ ->
             hPutStrLn replHandle $ "Role " <> T.unpack name <> " already exists"
           Nothing -> do
-            addTwitchRole dbConn name
+            addTwitchRole rts name
             hPutStrLn replHandle $ "Added a new role: " <> T.unpack name
-      replThread' dbConn state
+      replThreadLoop rts
     ("lsroles":_, _) -> do
       withTransactionLogErrors $ do
-        roles <- listTwitchRoles dbConn
+        roles <- listTwitchRoles rts
         mapM_ (hPutStrLn replHandle . T.unpack . twitchRoleName) roles
-      replThread' dbConn state
+      replThreadLoop rts
     ("delcmd":name:_, _) -> do
-      withTransactionLogErrors $ deleteCommandByName dbConn name
-      replThread' dbConn state
+      withTransactionLogErrors $ deleteCommandByName rts name
+      replThreadLoop rts
     ("delalias":name:_, _) -> do
-      withTransactionLogErrors $ deleteCommandName dbConn name
-      replThread' dbConn state
+      withTransactionLogErrors $ deleteCommandName rts name
+      replThreadLoop rts
     ("assrole":roleName:users, _) -> do
       withTransactionLogErrors $
-        case replStateTwitchClientId state of
+        case rtsTwitchClientId rts of
           Just clientId -> do
-            maybeRole <- getTwitchRoleByName dbConn roleName
+            maybeRole <- getTwitchRoleByName rts roleName
             response <-
               HTTP.responseBody <$>
-              getUsersByLogins (replStateManager state) clientId users
+              getUsersByLogins (rtsManager rts) clientId users
             case (response, maybeRole) of
               (Right twitchUsers, Just role') ->
                 traverse_
-                  (assTwitchRoleToUser dbConn (twitchRoleId role') .
-                   twitchUserId)
+                  (assTwitchRoleToUser rts (twitchRoleId role') . twitchUserId)
                   twitchUsers
               (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
               (_, Nothing) ->
                 hPutStrLn replHandle "[ERROR] Such role does not exist"
           Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"
-      replThread' dbConn state
+      replThreadLoop rts
     (unknown:_, _) -> do
       hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
-      replThread' dbConn state
-    _ -> replThread' dbConn state
+      replThreadLoop rts
+    _ -> replThreadLoop rts
 
-backdoorThread :: String -> ReplState -> IO ()
-backdoorThread port initState = do
-  addr:_ <- getAddrInfo (Just hints) (Just "127.0.0.1") (Just port)
+data BackdoorThreadParams = BackdoorThreadParams
+  { btpChannels :: !(TVar (S.Set TwitchIrcChannel))
+  , btpSqliteFileName :: !FilePath
+  , btpCommandQueue :: !(WriteQueue ReplCommand)
+  , btpTwitchClientId :: Maybe T.Text
+  , btpManager :: !HTTP.Manager
+  , btpLogQueue :: !(WriteQueue LogEntry)
+  , btpPort :: Int
+  }
+
+instance ProvidesLogging BackdoorThreadParams where
+  logQueue = btpLogQueue
+
+backdoorThread :: BackdoorThreadParams -> IO ()
+backdoorThread btp = do
+  addr:_ <-
+    getAddrInfo (Just hints) (Just "127.0.0.1") (Just $ show $ btpPort btp)
   bracket (open addr) close loop
   where
     hints = defaultHints {addrFlags = [AI_PASSIVE], addrSocketType = Stream}
@@ -204,11 +242,19 @@ backdoorThread port initState = do
       void $ forkFinally (talk conn addr) (const $ close conn)
       loop sock
     talk conn addr = do
-      atomically $
-        writeQueue (replStateLogQueue initState) $
+      logEntry btp $
         LogEntry "BACKDOOR" $
         T.pack (show addr) <> " has connected to the Backdoor gachiBASS"
       connHandle <- socketToHandle conn ReadWriteMode
       replThread $
-        initState {replStateHandle = connHandle, replStateConnAddr = Just addr}
+        ReplThreadParams
+          { rtpChannels = btpChannels btp
+          , rtpSqliteFileName = btpSqliteFileName btp
+          , rtpCommandQueue = btpCommandQueue btp
+          , rtpManager = btpManager btp
+          , rtpHandle = connHandle
+          , rtpLogQueue = btpLogQueue btp
+          , rtpConnAddr = addr
+          , rtpTwitchClientId = btpTwitchClientId btp
+          }
 -- TODO(#82): there is no REPL mechanism to update command cooldown

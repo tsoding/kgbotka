@@ -2,6 +2,7 @@
 
 module KGBotka.Sqlite
   ( withConnectionAndPragmas
+  , ProvidesDatabase(..)
   ) where
 
 import qualified Database.SQLite.Simple as Sqlite
@@ -15,3 +16,6 @@ withConnectionAndPragmas filePath body =
     Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
     Sqlite.execute_ conn "PRAGMA journal_mode=WAL"
     body conn
+
+class ProvidesDatabase pd where
+  getSqliteConnection :: pd -> Sqlite.Connection

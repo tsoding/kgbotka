@@ -20,6 +20,7 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import Irc.Identifier (idText)
 import KGBotka.Http
+import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import Network.HTTP.Client
 import Network.URI
@@ -79,8 +80,13 @@ queryBttvEmotes manager channel'@(Just (TwitchIrcChannel (idText -> channel))) =
           " does not start with #"
 
 updateBttvEmotes ::
-     Connection -> Manager -> Maybe TwitchIrcChannel -> ExceptT String IO ()
-updateBttvEmotes dbConn manager channel = do
+     (ProvidesDatabase s, ProvidesHttpManager s)
+  => s
+  -> Maybe TwitchIrcChannel
+  -> ExceptT String IO ()
+updateBttvEmotes state channel = do
+  let dbConn = getSqliteConnection state
+  let manager = httpManager state
   lift $
     executeNamed
       dbConn

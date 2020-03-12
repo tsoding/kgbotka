@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module KGBotka.Command
   ( CommandCall(..)
@@ -24,6 +25,7 @@ import qualified Data.Text as T
 import Data.Time
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
+import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 
 data Command = Command
@@ -63,8 +65,8 @@ commandByName conn name =
            INNER JOIN CommandName cn ON c.id = cn.commandId
            WHERE cn.name = :commandName;|]
 
-addCommand :: Connection -> T.Text -> T.Text -> IO ()
-addCommand dbConn name code = do
+addCommand :: ProvidesDatabase pd => pd -> T.Text -> T.Text -> IO ()
+addCommand (getSqliteConnection -> dbConn) name code = do
   executeNamed
     dbConn
     "INSERT INTO Command (code) VALUES (:commandCode)"
@@ -83,20 +85,20 @@ deleteCommandById dbConn ident =
     "DELETE FROM Command WHERE id = :commandId"
     [":commandId" := ident]
 
-deleteCommandByName :: Connection -> T.Text -> IO ()
-deleteCommandByName dbConn name =
+deleteCommandByName :: ProvidesDatabase s => s -> T.Text -> IO ()
+deleteCommandByName (getSqliteConnection -> dbConn) name =
   commandByName dbConn name >>=
   maybe (return ()) (deleteCommandById dbConn . commandId)
 
-deleteCommandName :: Connection -> T.Text -> IO ()
-deleteCommandName dbConn name =
+deleteCommandName :: ProvidesDatabase s => s -> T.Text -> IO ()
+deleteCommandName (getSqliteConnection -> dbConn) name =
   executeNamed
     dbConn
     "DELETE FROM CommandName WHERE name = :commandName"
     [":commandName" := name]
 
-addCommandName :: Connection -> T.Text -> T.Text -> IO ()
-addCommandName dbConn alias name = do
+addCommandName :: ProvidesDatabase pd => pd -> T.Text -> T.Text -> IO ()
+addCommandName (getSqliteConnection -> dbConn) alias name = do
   command <- commandByName dbConn name
   case command of
     Just Command {commandId = ident} ->
