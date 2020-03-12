@@ -21,6 +21,7 @@ import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Eval
 import KGBotka.Log
+import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Sqlite
 import qualified Network.HTTP.Client as HTTP
@@ -104,6 +105,7 @@ eventHandler dts dis (MessageCreate m)
                    logEntry dts $ LogEntry "DISCORD" $ T.pack $ show restError
                    return Nothing
              Nothing -> undefined
+         addMarkovSentence (dtsSqliteConnection dts) $ messageText m
          evalResult <-
            runExceptT $
            evalStateT
