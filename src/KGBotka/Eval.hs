@@ -44,6 +44,8 @@ import Network.URI
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import Text.Printf
+import Data.Word
 
 data EvalTwitchContext = EvalTwitchContext
   { etcSenderId :: TwitchUserId
@@ -343,6 +345,24 @@ evalExpr (FunCallExpr "eval" args) = do
     withExceptT (EvalError . T.pack . show) $
     except (snd <$> runParser exprs code)
   evalExprs codeAst
+evalExpr (FunCallExpr "roles" _) = do
+  platformContext <- ecPlatformContext <$> getEval
+  case platformContext of
+    Etc etc ->
+      return $
+      T.pack $
+      printf
+        "@%s Your badge roles: %s. Your custom roles: %s"
+        (etcSenderName etc)
+        (show $ etcBadgeRoles etc)
+        (show $ etcRoles etc)
+    Edc edc ->
+      return $
+      T.pack $
+      printf
+        "<@!%d> Your roles: %s."
+        ((fromIntegral $ userId $ edcAuthor edc) :: Word64)
+        (show $ edcRoles edc)
 evalExpr (FunCallExpr funame _) = do
   vars <- ecVars <$> getEval
   liftExceptT $
