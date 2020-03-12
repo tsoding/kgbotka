@@ -21,10 +21,10 @@ import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Eval
 import KGBotka.Log
+import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Sqlite
 import qualified Network.HTTP.Client as HTTP
-import KGBotka.Markov
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)

@@ -1,7 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
-module KGBotka.Markov (addMarkovSentence, genMarkovSentence) where
+module KGBotka.Markov
+  ( addMarkovSentence
+  , genMarkovSentence
+  ) where
 
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe

@@ -24,13 +24,13 @@ import Data.Char
 import Data.Maybe
 import qualified Data.Text as T
 import Data.Time
+import Data.Word
 import Database.SQLite.Simple
-import Database.SQLite.Simple.ToField
 import Database.SQLite.Simple.QQ
+import Database.SQLite.Simple.ToField
+import Discord.Types
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
-import Discord.Types
-import Data.Word
 
 data Command = Command
   { commandId :: Int
@@ -144,13 +144,15 @@ parseCommandCall (CallPrefix prefix) source =
 ccArgsModify :: (T.Text -> T.Text) -> CommandCall -> CommandCall
 ccArgsModify f cc = cc {ccArgs = f $ ccArgs cc}
 
-newtype DiscordUserId = DiscordUserId Snowflake
+newtype DiscordUserId =
+  DiscordUserId Snowflake
 
 instance ToField DiscordUserId where
   toField (DiscordUserId userDiscordId) =
     toField (fromIntegral userDiscordId :: Word64)
 
-isCommandCooleddown :: Connection -> Maybe DiscordUserId -> Maybe TwitchUserId -> Int -> IO Bool
+isCommandCooleddown ::
+     Connection -> Maybe DiscordUserId -> Maybe TwitchUserId -> Int -> IO Bool
 isCommandCooleddown dbConn userDiscordId userTwitchId commandIdent = do
   x <-
     listToMaybe <$>
