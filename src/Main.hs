@@ -87,7 +87,8 @@ migrations =
            ADD COLUMN user_cooldown_ms INTEGER NOT NULL DEFAULT 0;|]
   , Migration
       [sql|CREATE TABLE CommandLog (
-             userTwitchId TEXT NOT NULL,
+             userTwitchId TEXT,
+             userDiscordId TEXT,
              commandId INTEGER NOT NULL,
              commandArgs TEXT NOT NULL,
              timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

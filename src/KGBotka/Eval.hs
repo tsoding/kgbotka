@@ -100,14 +100,26 @@ evalCommandCall (CommandCall name args) = do
         Etc etc -> do
           let senderId = etcSenderId etc
           cooledDown <-
-            liftIO $ isCommandCooleddown dbConn senderId commandIdent
+            liftIO $
+            isCommandCooleddown dbConn Nothing (Just senderId) commandIdent
           unless cooledDown $
             throwExceptEval $
             EvalError $
             "@" <> etcSenderName etc <> " The command has not cooled down yet"
-          liftIO $ logCommand dbConn senderId commandIdent args
-        -- TODO(#98): There is no command cooldown on Discord
-        Edc _ -> return ()
+          liftIO $ logCommand dbConn Nothing (Just senderId) commandIdent args
+        Edc edc -> do
+          let senderId = DiscordUserId $ userId $ edcAuthor edc
+          cooledDown <-
+            liftIO $
+            isCommandCooleddown dbConn (Just senderId) Nothing commandIdent
+          unless cooledDown $
+            throwExceptEval $
+            EvalError $
+            T.pack $
+            printf
+              "<@!%d> The command has not cooled down yet"
+              ((fromIntegral $ userId $ edcAuthor edc) :: Word64)
+          liftIO $ logCommand dbConn (Just senderId) Nothing commandIdent args
       codeAst <-
         liftExceptT $
         withExceptT (EvalError . T.pack . show) $
