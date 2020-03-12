@@ -11,6 +11,7 @@ import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import qualified Data.Map as M
+import Data.Maybe
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import Discord
@@ -23,7 +24,6 @@ import KGBotka.Log
 import KGBotka.Queue
 import KGBotka.Sqlite
 import qualified Network.HTTP.Client as HTTP
-import Data.Maybe
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)

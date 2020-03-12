@@ -24,6 +24,7 @@ import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
 import Data.Time.Clock
+import Data.Word
 import qualified Database.SQLite.Simple as Sqlite
 import Discord.Types
 import KGBotka.Asciify
@@ -41,11 +42,10 @@ import KGBotka.Roles
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
+import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Text.Printf
-import Data.Word
 
 data EvalTwitchContext = EvalTwitchContext
   { etcSenderId :: TwitchUserId
