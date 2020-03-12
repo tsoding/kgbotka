@@ -149,17 +149,16 @@ mainWithArgs (configPath:databasePath:_) = do
         -- TODO(#63): backdoor port is hardcoded
        ->
         backdoorThread "6969" $
-        ReplState
-          { replStateChannels = joinedChannels
-          , replStateSqliteFileName = databasePath
-          , replStateCurrentChannel = Nothing
-          , replStateCommandQueue = WriteQueue replQueue
-          , replStateTwitchClientId =
-              configTwitchClientId <$> configTwitch config
-          , replStateManager = manager
-          , replStateHandle = stdout
-          , replStateLogQueue = WriteQueue rawLogQueue
-          , replStateConnAddr = Nothing
+        ReplThreadParams
+          { rtpChannels = joinedChannels
+          , rtpSqliteFileName = databasePath
+          , rtpCurrentChannel = Nothing
+          , rtpCommandQueue = WriteQueue replQueue
+          , rtpTwitchClientId = configTwitchClientId <$> configTwitch config
+          , rtpManager = manager
+          , rtpHandle = stdout
+          , rtpLogQueue = WriteQueue rawLogQueue
+          , rtpConnAddr = Nothing
           }
       putStrLn "Done"
     Left errorMessage -> error errorMessage
