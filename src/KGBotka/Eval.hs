@@ -163,9 +163,7 @@ ytLinkId text = do
     Nothing -> Left Nothing
 
 failIfNotTrusted :: Eval ()
-failIfNotTrusted
-  -- TODO(#99): there is no trusted filter on Discord
- = do
+failIfNotTrusted = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
     Etc etc ->
@@ -173,7 +171,9 @@ failIfNotTrusted
           badgeRoles = etcBadgeRoles etc
        in when (null roles && null badgeRoles) $
           throwExceptEval $ EvalError "Only for trusted users"
-    Edc _ -> return ()
+    Edc edc ->
+      when (null $ edcRoles edc) $
+      throwExceptEval $ EvalError "Only for trusted users"
 
 failIfNotAuthority :: Eval ()
 failIfNotAuthority = do
