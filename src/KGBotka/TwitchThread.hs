@@ -79,7 +79,7 @@ data TwitchThreadParams = TwitchThreadParams
   , ttpConfig :: Maybe ConfigTwitch
   }
 
-instance HasLogQueue TwitchThreadParams where
+instance ProvidesLogging TwitchThreadParams where
   logQueue = ttpLogQueue
 
 data TwitchThreadState = TwitchThreadState
@@ -93,7 +93,7 @@ data TwitchThreadState = TwitchThreadState
   , ttsOutgoingQueue :: !(WriteQueue RawIrcMsg)
   }
 
-instance HasLogQueue TwitchThreadState where
+instance ProvidesLogging TwitchThreadState where
   logQueue = ttsLogQueue
 
 withConnection :: ConnectionParams -> (Connection -> IO a) -> IO a
@@ -129,7 +129,7 @@ sendMsg conn msg = send conn (renderRawIrcMsg msg)
 maxIrcMessage :: Int
 maxIrcMessage = 500 * 4
 
-readIrcLine :: HasLogQueue l => Connection -> l -> IO (Maybe RawIrcMsg)
+readIrcLine :: ProvidesLogging l => Connection -> l -> IO (Maybe RawIrcMsg)
 readIrcLine conn l = do
   mb <-
     catch
@@ -147,7 +147,7 @@ readIrcLine conn l = do
       return Nothing
 
 twitchIncomingThread ::
-     HasLogQueue l => Connection -> WriteQueue RawIrcMsg -> l -> IO ()
+     ProvidesLogging l => Connection -> WriteQueue RawIrcMsg -> l -> IO ()
 twitchIncomingThread conn queue l = do
   mb <- readIrcLine conn l
   for_ mb $ atomically . writeQueue queue

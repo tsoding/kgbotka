@@ -3,7 +3,7 @@
 module KGBotka.Log
   ( loggingThread
   , LogEntry(..)
-  , HasLogQueue(..)
+  , ProvidesLogging(..)
   , logEntry
   ) where
 
@@ -39,8 +39,8 @@ loggingThread logFilePath messageQueue = withFile logFilePath AppendMode loop
       hFlush logHandle
       loop logHandle
 
-class HasLogQueue l where
+class ProvidesLogging l where
   logQueue :: l -> WriteQueue LogEntry
 
-logEntry :: HasLogQueue l => l -> LogEntry -> IO ()
+logEntry :: ProvidesLogging l => l -> LogEntry -> IO ()
 logEntry (logQueue -> queue) = atomically . writeQueue queue
