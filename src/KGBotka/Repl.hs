@@ -71,7 +71,7 @@ replThread :: ReplThreadParams -> IO ()
 replThread rtp =
   withConnectionAndPragmas (rtpSqliteFileName rtp) $ \conn -> do
     Sqlite.execute_ conn "PRAGMA foreign_keys=ON"
-    replThread'
+    replThreadLoop
       ReplThreadState
         { rtsChannels = rtpChannels rtp
         , rtsSqliteConnection = conn
@@ -89,8 +89,8 @@ replThread rtp =
 -- not serve such purpose anymore, 'cause it only closes the current
 -- REPL connection
 -- TODO(#65): there is no `who` command that would show all of the Backdoor connections
-replThread' :: ReplThreadState -> IO ()
-replThread' rts = do
+replThreadLoop :: ReplThreadState -> IO ()
+replThreadLoop rts = do
   let replHandle = rtsHandle rts
   let withTransactionLogErrors :: IO () -> IO ()
       withTransactionLogErrors f =
@@ -108,37 +108,39 @@ replThread' rts = do
     LogEntry "BACKDOOR" $ T.pack (show $ rtsConnAddr rts) <> ": " <> inputLine
   case (T.words inputLine, rtsCurrentChannel rts) of
     ("cd":channel:_, _) ->
-      replThread' $ rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
-    ("cd":_, _) -> replThread' $ rts {rtsCurrentChannel = Nothing}
+      replThreadLoop $
+      rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
+    ("cd":_, _) -> replThreadLoop $ rts {rtsCurrentChannel = Nothing}
     ("say":args, Just channel) -> do
       atomically $
         writeQueue (rtsCommandQueue rts) $ Say channel $ T.unwords args
-      replThread' rts
+      replThreadLoop rts
     ("say":_, Nothing) -> do
       hPutStrLn replHandle "No current channel to say anything to is selected"
-      replThread' rts
+      replThreadLoop rts
     ("quit":_, _) -> return ()
     ("q":_, _) -> return ()
     ("join":channel:_, _) -> do
       atomically $
         writeQueue (rtsCommandQueue rts) $
         JoinChannel $ mkTwitchIrcChannel channel
-      replThread' $ rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
+      replThreadLoop $
+        rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
     ("part":_, Just channel) -> do
       atomically $ do
         isMember <- S.member channel <$> readTVar (rtsChannels rts)
         when isMember $ writeQueue (rtsCommandQueue rts) $ PartChannel channel
-      replThread' $ rts {rtsCurrentChannel = Nothing}
+      replThreadLoop $ rts {rtsCurrentChannel = Nothing}
     ("ls":_, _) -> do
       traverse_ (hPutStrLn replHandle . T.unpack . twitchIrcChannelText) =<<
         S.toList <$> readTVarIO (rtsChannels rts)
-      replThread' rts
+      replThreadLoop rts
     ("addcmd":name:args, _) -> do
       withTransactionLogErrors $ addCommand rts name (T.unwords args)
-      replThread' rts
+      replThreadLoop rts
     ("addalias":alias:name:_, _) -> do
       withTransactionLogErrors $ addCommandName rts alias name
-      replThread' rts
+      replThreadLoop rts
     ("updatebttv":_, channel) -> do
       withTransactionLogErrors $ do
         result <- runExceptT $ updateBttvEmotes rts channel
@@ -150,7 +152,7 @@ replThread' rts = do
             "BTTV emotes are updated for channel " <>
             T.unpack (twitchIrcChannelText channelName)
           (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
-      replThread' rts
+      replThreadLoop rts
     ("updateffz":_, channel) -> do
       withTransactionLogErrors $ do
         result <- runExceptT $ updateFfzEmotes rts channel
@@ -162,7 +164,7 @@ replThread' rts = do
             "FFZ emotes are updated for channel " <>
             T.unpack (twitchIrcChannelText channelName)
           (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
-      replThread' rts
+      replThreadLoop rts
     ("addrole":name:_, _) -> do
       withTransactionLogErrors $ do
         role <- getTwitchRoleByName rts name
@@ -172,18 +174,18 @@ replThread' rts = do
           Nothing -> do
             addTwitchRole rts name
             hPutStrLn replHandle $ "Added a new role: " <> T.unpack name
-      replThread' rts
+      replThreadLoop rts
     ("lsroles":_, _) -> do
       withTransactionLogErrors $ do
         roles <- listTwitchRoles rts
         mapM_ (hPutStrLn replHandle . T.unpack . twitchRoleName) roles
-      replThread' rts
+      replThreadLoop rts
     ("delcmd":name:_, _) -> do
       withTransactionLogErrors $ deleteCommandByName rts name
-      replThread' rts
+      replThreadLoop rts
     ("delalias":name:_, _) -> do
       withTransactionLogErrors $ deleteCommandName rts name
-      replThread' rts
+      replThreadLoop rts
     ("assrole":roleName:users, _) -> do
       withTransactionLogErrors $
         case rtsTwitchClientId rts of
@@ -201,11 +203,11 @@ replThread' rts = do
               (_, Nothing) ->
                 hPutStrLn replHandle "[ERROR] Such role does not exist"
           Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"
-      replThread' rts
+      replThreadLoop rts
     (unknown:_, _) -> do
       hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
-      replThread' rts
-    _ -> replThread' rts
+      replThreadLoop rts
+    _ -> replThreadLoop rts
 
 
 data BackdoorThreadParams = BackdoorThreadParams
