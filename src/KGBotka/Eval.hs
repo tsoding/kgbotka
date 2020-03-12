@@ -73,7 +73,7 @@ data EvalContext = EvalContext
   , ecPlatformContext :: EvalPlatformContext
   }
 
-instance HasLogQueue EvalContext where
+instance ProvidesLogging EvalContext where
   logQueue = ecLogQueue
 
 logEntryEval :: LogEntry -> Eval ()

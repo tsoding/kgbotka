@@ -37,10 +37,10 @@ data DiscordThreadState = DiscordThreadState
   , dtsManager :: !HTTP.Manager
   }
 
-instance HasLogQueue DiscordThreadState where
+instance ProvidesLogging DiscordThreadState where
   logQueue = dtsLogQueue
 
-instance HasLogQueue DiscordThreadParams where
+instance ProvidesLogging DiscordThreadParams where
   logQueue = dtpLogQueue
 
 discordThread :: DiscordThreadParams -> IO ()
