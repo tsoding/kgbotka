@@ -17,6 +17,7 @@ module KGBotka.Command
   , isCommandCooleddown
   , CallPrefix(..)
   , PipeSuffix(..)
+  , DiscordUserId(..)
   ) where
 
 import Data.Char
@@ -24,9 +25,12 @@ import Data.Maybe
 import qualified Data.Text as T
 import Data.Time
 import Database.SQLite.Simple
+import Database.SQLite.Simple.ToField
 import Database.SQLite.Simple.QQ
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
+import Discord.Types
+import Data.Word
 
 data Command = Command
   { commandId :: Int
@@ -41,13 +45,20 @@ data CommandLog = CommandLog
   , commnadLogTimestamp :: UTCTime
   } deriving (Show)
 
-logCommand :: Connection -> TwitchUserId -> Int -> T.Text -> IO ()
-logCommand dbConn userTwitchId commandIdent commandArgs =
+logCommand ::
+     Connection
+  -> Maybe DiscordUserId
+  -> Maybe TwitchUserId
+  -> Int
+  -> T.Text
+  -> IO ()
+logCommand dbConn userDiscordId userTwitchId commandIdent commandArgs =
   executeNamed
     dbConn
-    [sql|INSERT INTO CommandLog (userTwitchId, commandId, commandArgs)
-         VALUES (:userTwitchId, :commandId, :commandArgs)|]
-    [ ":userTwitchId" := userTwitchId
+    [sql|INSERT INTO CommandLog (userDiscordId, userTwitchId, commandId, commandArgs)
+         VALUES (:userDiscordId, :userTwitchId, :commandId, :commandArgs)|]
+    [ ":userDiscordId" := userDiscordId
+    , ":userTwitchId" := userTwitchId
     , ":commandId" := commandIdent
     , ":commandArgs" := commandArgs
     ]
@@ -133,8 +144,14 @@ parseCommandCall (CallPrefix prefix) source =
 ccArgsModify :: (T.Text -> T.Text) -> CommandCall -> CommandCall
 ccArgsModify f cc = cc {ccArgs = f $ ccArgs cc}
 
-isCommandCooleddown :: Connection -> TwitchUserId -> Int -> IO Bool
-isCommandCooleddown dbConn userTwitchId commandIdent = do
+newtype DiscordUserId = DiscordUserId Snowflake
+
+instance ToField DiscordUserId where
+  toField (DiscordUserId userDiscordId) =
+    toField (fromIntegral userDiscordId :: Word64)
+
+isCommandCooleddown :: Connection -> Maybe DiscordUserId -> Maybe TwitchUserId -> Int -> IO Bool
+isCommandCooleddown dbConn userDiscordId userTwitchId commandIdent = do
   x <-
     listToMaybe <$>
     queryNamed
@@ -142,11 +159,15 @@ isCommandCooleddown dbConn userTwitchId commandIdent = do
       [sql|SELECT cl.timestamp, c.user_cooldown_ms
            FROM CommandLog cl
            JOIN Command c ON c.id = cl.commandId
-           WHERE cl.userTwitchId = :userTwitchId
+           WHERE cl.userTwitchId is :userTwitchId
+             AND cl.userDiscordId is :userDiscordId
              AND cl.commandId = :commandIdent
            ORDER BY cl.timestamp DESC
            LIMIT 1; |]
-      [":userTwitchId" := userTwitchId, ":commandIdent" := commandIdent]
+      [ ":userTwitchId" := userTwitchId
+      , ":commandIdent" := commandIdent
+      , ":userDiscordId" := userDiscordId
+      ]
   case x of
     Just (timestamp, cooldownMs) -> do
       now <- getCurrentTime
