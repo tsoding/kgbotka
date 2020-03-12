@@ -24,6 +24,7 @@ import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
 import Data.Time.Clock
+import Data.Word
 import qualified Database.SQLite.Simple as Sqlite
 import Discord.Types
 import KGBotka.Asciify
@@ -41,6 +42,7 @@ import KGBotka.Roles
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
+import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
@@ -59,6 +61,7 @@ data EvalTwitchContext = EvalTwitchContext
 data EvalDiscordContext = EvalDiscordContext
   { edcAuthor :: User
   , edcGuild :: Maybe Guild
+  , edcRoles :: [Snowflake]
   }
 
 data EvalPlatformContext
@@ -160,9 +163,7 @@ ytLinkId text = do
     Nothing -> Left Nothing
 
 failIfNotTrusted :: Eval ()
-failIfNotTrusted
-  -- TODO(#99): there is no trusted filter on Discord
- = do
+failIfNotTrusted = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
     Etc etc ->
@@ -170,7 +171,9 @@ failIfNotTrusted
           badgeRoles = etcBadgeRoles etc
        in when (null roles && null badgeRoles) $
           throwExceptEval $ EvalError "Only for trusted users"
-    Edc _ -> return ()
+    Edc edc ->
+      when (null $ edcRoles edc) $
+      throwExceptEval $ EvalError "Only for trusted users"
 
 failIfNotAuthority :: Eval ()
 failIfNotAuthority = do
@@ -342,6 +345,24 @@ evalExpr (FunCallExpr "eval" args) = do
     withExceptT (EvalError . T.pack . show) $
     except (snd <$> runParser exprs code)
   evalExprs codeAst
+evalExpr (FunCallExpr "roles" _) = do
+  platformContext <- ecPlatformContext <$> getEval
+  case platformContext of
+    Etc etc ->
+      return $
+      T.pack $
+      printf
+        "@%s Your badge roles: %s. Your custom roles: %s"
+        (etcSenderName etc)
+        (show $ etcBadgeRoles etc)
+        (show $ etcRoles etc)
+    Edc edc ->
+      return $
+      T.pack $
+      printf
+        "<@!%d> Your roles: %s."
+        ((fromIntegral $ userId $ edcAuthor edc) :: Word64)
+        (show $ edcRoles edc)
 evalExpr (FunCallExpr funame _) = do
   vars <- ecVars <$> getEval
   liftExceptT $
