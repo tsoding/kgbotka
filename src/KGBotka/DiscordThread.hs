@@ -24,6 +24,7 @@ import KGBotka.Log
 import KGBotka.Queue
 import KGBotka.Sqlite
 import qualified Network.HTTP.Client as HTTP
+import KGBotka.Markov
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)
@@ -104,6 +105,7 @@ eventHandler dts dis (MessageCreate m)
                    logEntry dts $ LogEntry "DISCORD" $ T.pack $ show restError
                    return Nothing
              Nothing -> undefined
+         addMarkovSentence (dtsSqliteConnection dts) $ messageText m
          evalResult <-
            runExceptT $
            evalStateT

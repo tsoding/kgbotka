@@ -209,15 +209,7 @@ evalExpr (FunCallExpr "urlencode" args) =
     encodeURI = escapeURIString (const False)
 evalExpr (FunCallExpr "markov" _) = do
   dbConn <- ecSqliteConnection <$> getEval
-  events <- liftIO $ seqMarkovEvents Begin End dbConn
-  return $
-    T.unwords $
-    mapMaybe
-      (\case
-         Begin -> Nothing
-         End -> Nothing
-         Word x -> Just x)
-      events
+  liftIO $ genMarkovSentence dbConn
 evalExpr (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM evalExpr args
 -- FIXME(#18): Friday video list is not published on gist

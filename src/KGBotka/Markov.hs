@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
-module KGBotka.Markov where
+module KGBotka.Markov (addMarkovSentence, genMarkovSentence) where
 
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
@@ -80,3 +81,15 @@ seqMarkovEvents begin end m
 
 scanPairs :: [a] -> [(a, a)]
 scanPairs xs = zip xs $ tail xs
+
+genMarkovSentence :: Connection -> IO T.Text
+genMarkovSentence dbConn = do
+  events <- seqMarkovEvents Begin End dbConn
+  return $
+    T.unwords $
+    mapMaybe
+      (\case
+         Begin -> Nothing
+         End -> Nothing
+         Word x -> Just x)
+      events
