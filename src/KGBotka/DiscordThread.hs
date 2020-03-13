@@ -19,6 +19,7 @@ import qualified Discord.Requests as R
 import Discord.Types
 import KGBotka.Command
 import KGBotka.Config
+import KGBotka.DiscordLog
 import KGBotka.Eval
 import KGBotka.Log
 import KGBotka.Markov
@@ -105,7 +106,13 @@ eventHandler dts dis (MessageCreate m)
                    logEntry dts $ LogEntry "DISCORD" $ T.pack $ show restError
                    return Nothing
              Nothing -> undefined
-         addMarkovSentence (dtsSqliteConnection dts) $ messageText m
+         logMessage
+           dbConn
+           (messageGuild m)
+           (messageChannel m)
+           (userId $ messageAuthor m) $
+           messageText m
+         addMarkovSentence dbConn $ messageText m
          evalResult <-
            runExceptT $
            evalStateT
@@ -133,7 +140,7 @@ eventHandler dts dis (MessageCreate m)
            Left (EvalError userMsg) ->
              void $ restCall dis (R.CreateMessage (messageChannel m) userMsg))
       (\e ->
-         logEntry dts $ LogEntry "SQLITE" $ T.pack $ show (e :: Sqlite.SQLError))
+         logEntry dts $ LogEntry "SQLITE" $ T.pack $ show (e :: SomeException))
     pure ()
 eventHandler _ _ _ = pure ()
 

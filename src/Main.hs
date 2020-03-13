@@ -111,6 +111,15 @@ migrations =
               channel TEXT DEFAULT NULL,
               imageUrl TEXT NOT NULL
            );|]
+  , Migration
+      [sql|CREATE TABLE DiscordLog (
+             id INTEGER PRIMARY KEY,
+             guildId TEXT,
+             channelId TEXT NOT NULL,
+             senderDiscordId TEXT NOT NULL,
+             message TEXT NOT NULL,
+             messageTime DATETIME DEFAULT (datetime('now')) NOT NULL
+           )|]
   ]
 
 withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b
