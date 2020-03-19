@@ -26,6 +26,7 @@ import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Sqlite
 import qualified Network.HTTP.Client as HTTP
+import Data.List
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)
@@ -132,6 +133,10 @@ eventHandler dts dis (MessageCreate m)
                      }
              , ecLogQueue = dtsLogQueue dts
              , ecManager = dtsManager dts
+             , ecIsMentioned =
+                 isJust $
+                 find (\u -> userId u == userId (messageAuthor m)) $
+                 messageMentions m
              }
          case evalResult of
            Right commandResponse ->

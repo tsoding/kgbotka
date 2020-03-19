@@ -47,20 +47,20 @@ import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 
 data EvalTwitchContext = EvalTwitchContext
-  { etcSenderId :: TwitchUserId
-  , etcSenderName :: T.Text
+  { etcSenderId :: !TwitchUserId
+  , etcSenderName :: !T.Text
   -- TODO(#80): evalContextTwitchEmotes should be a list of some kind of emote type
-  , etcTwitchEmotes :: Maybe T.Text
-  , etcChannel :: TwitchIrcChannel
-  , etcBadgeRoles :: [TwitchBadgeRole]
-  , etcRoles :: [TwitchRole]
+  , etcTwitchEmotes :: !(Maybe T.Text)
+  , etcChannel :: !TwitchIrcChannel
+  , etcBadgeRoles :: ([TwitchBadgeRole])
+  , etcRoles :: ![TwitchRole]
   , etcClientId :: !T.Text
   }
 
 data EvalDiscordContext = EvalDiscordContext
-  { edcAuthor :: User
-  , edcGuild :: Maybe Guild
-  , edcRoles :: [Snowflake]
+  { edcAuthor :: !User
+  , edcGuild :: !(Maybe Guild)
+  , edcRoles :: ![Snowflake]
   }
 
 data EvalPlatformContext
@@ -68,11 +68,12 @@ data EvalPlatformContext
   | Edc EvalDiscordContext
 
 data EvalContext = EvalContext
-  { ecVars :: M.Map T.Text T.Text
-  , ecSqliteConnection :: Sqlite.Connection
-  , ecManager :: HTTP.Manager
+  { ecVars :: !(M.Map T.Text T.Text)
+  , ecSqliteConnection :: !Sqlite.Connection
+  , ecManager :: !HTTP.Manager
   , ecLogQueue :: !(WriteQueue LogEntry)
-  , ecPlatformContext :: EvalPlatformContext
+  , ecPlatformContext :: !EvalPlatformContext
+  , ecIsMentioned :: Bool
   }
 
 instance ProvidesLogging EvalContext where
