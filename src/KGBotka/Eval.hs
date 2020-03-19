@@ -52,7 +52,7 @@ data EvalTwitchContext = EvalTwitchContext
   -- TODO(#80): evalContextTwitchEmotes should be a list of some kind of emote type
   , etcTwitchEmotes :: !(Maybe T.Text)
   , etcChannel :: !TwitchIrcChannel
-  , etcBadgeRoles :: ([TwitchBadgeRole])
+  , etcBadgeRoles :: ![TwitchBadgeRole]
   , etcRoles :: ![TwitchRole]
   , etcClientId :: !T.Text
   }
@@ -73,7 +73,6 @@ data EvalContext = EvalContext
   , ecManager :: !HTTP.Manager
   , ecLogQueue :: !(WriteQueue LogEntry)
   , ecPlatformContext :: !EvalPlatformContext
-  , ecIsMentioned :: Bool
   }
 
 instance ProvidesLogging EvalContext where

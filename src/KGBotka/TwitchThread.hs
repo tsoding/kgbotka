@@ -263,9 +263,6 @@ processUserMsgs tts messages = do
                             }
                     , ecLogQueue = logQueue tts
                     , ecManager = manager
-                    , ecIsMentioned =
-                        (T.toUpper $ configTwitchAccount $ ttsConfig tts) `T.isInfixOf`
-                        T.toUpper message
                     }
                 atomically $
                   case evalResult of
