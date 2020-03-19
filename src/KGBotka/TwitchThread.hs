@@ -9,11 +9,11 @@ module KGBotka.TwitchThread
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
+import Control.Monad
 import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Data.Foldable
-import Data.Functor
 import Data.List
 import qualified Data.Map as M
 import Data.Maybe
@@ -39,7 +39,6 @@ import KGBotka.TwitchAPI
 import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
-import Control.Monad
 import Text.Printf
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
