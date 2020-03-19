@@ -9,11 +9,11 @@ module KGBotka.TwitchThread
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
+import Control.Monad
 import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Data.Foldable
-import Data.Functor
 import Data.List
 import qualified Data.Map as M
 import Data.Maybe
@@ -39,6 +39,7 @@ import KGBotka.TwitchAPI
 import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
+import Text.Printf
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
@@ -233,46 +234,59 @@ processUserMsgs tts messages = do
                   message
                 addMarkovSentence dbConn message
                 -- FIXME(#31): Link filtering is not disablable
-                evalResult <-
-                  runExceptT $
-                  evalStateT
-                    (runEvalT $
-                     evalCommandPipe $
-                     parseCommandPipe (CallPrefix "$") (PipeSuffix "|") message) $
-                  EvalContext
-                    { ecVars = M.fromList [("sender", senderName)]
-                    , ecSqliteConnection = dbConn
-                    , ecPlatformContext =
-                        Etc
-                          EvalTwitchContext
-                            { etcSenderId = senderId
-                            , etcSenderName = senderName
-                            , etcChannel = TwitchIrcChannel channelId
-                            , etcBadgeRoles = badgeRoles
-                            , etcRoles = roles
-                            , etcClientId = configTwitchClientId $ ttsConfig tts
-                            , etcTwitchEmotes =
-                                do emotesTag <-
-                                     lookupEntryValue "emotes" $ _msgTags msg
-                                   if not $ T.null emotesTag
-                                     then do
-                                       emoteDesc <-
-                                         listToMaybe $ T.splitOn "/" emotesTag
-                                       listToMaybe $ T.splitOn ":" emoteDesc
-                                     else Nothing
-                            }
-                    , ecLogQueue = logQueue tts
-                    , ecManager = manager
-                    }
-                atomically $
-                  case evalResult of
-                    Right commandResponse ->
-                      writeQueue outgoingQueue $
-                      ircPrivmsg (idText channelId) $
-                      twitchCmdEscape commandResponse
-                    Left (EvalError userMsg) ->
-                      writeQueue outgoingQueue $
-                      ircPrivmsg (idText channelId) $ twitchCmdEscape userMsg
+                case parseCommandPipe (CallPrefix "$") (PipeSuffix "|") message of
+                  [] ->
+                    when
+                      (T.toUpper (configTwitchAccount $ ttsConfig tts) `T.isInfixOf`
+                       T.toUpper message) $ do
+                      markovResponse <- genMarkovSentence dbConn
+                      atomically $
+                        writeQueue outgoingQueue $
+                        ircPrivmsg (idText channelId) $
+                        twitchCmdEscape $
+                        T.pack $ printf "@%s %s" senderName markovResponse
+                  pipe -> do
+                    evalResult <-
+                      runExceptT $
+                      evalStateT (runEvalT $ evalCommandPipe pipe) $
+                      EvalContext
+                        { ecVars = M.fromList [("sender", senderName)]
+                        , ecSqliteConnection = dbConn
+                        , ecPlatformContext =
+                            Etc
+                              EvalTwitchContext
+                                { etcSenderId = senderId
+                                , etcSenderName = senderName
+                                , etcChannel = TwitchIrcChannel channelId
+                                , etcBadgeRoles = badgeRoles
+                                , etcRoles = roles
+                                , etcClientId =
+                                    configTwitchClientId $ ttsConfig tts
+                                , etcTwitchEmotes =
+                                    do emotesTag <-
+                                         lookupEntryValue "emotes" $
+                                         _msgTags msg
+                                       if not $ T.null emotesTag
+                                         then do
+                                           emoteDesc <-
+                                             listToMaybe $
+                                             T.splitOn "/" emotesTag
+                                           listToMaybe $ T.splitOn ":" emoteDesc
+                                         else Nothing
+                                }
+                        , ecLogQueue = logQueue tts
+                        , ecManager = manager
+                        }
+                    atomically $
+                      case evalResult of
+                        Right commandResponse ->
+                          writeQueue outgoingQueue $
+                          ircPrivmsg (idText channelId) $
+                          twitchCmdEscape commandResponse
+                        Left (EvalError userMsg) ->
+                          writeQueue outgoingQueue $
+                          ircPrivmsg (idText channelId) $
+                          twitchCmdEscape userMsg
               else logEntry tts $
                    LogEntry "TWITCH" "WARNING: Bot received its own message"
           Nothing ->

@@ -5,16 +5,20 @@ module KGBotka.DiscordThread
   , discordThread
   ) where
 
+import Control.Concurrent
 import Control.Exception
 import Control.Monad
 import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
+import Data.List
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
+import Data.Word
 import qualified Database.SQLite.Simple as Sqlite
 import Discord
+import Discord.Requests
 import qualified Discord.Requests as R
 import Discord.Types
 import KGBotka.Command
@@ -26,6 +30,7 @@ import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Sqlite
 import qualified Network.HTTP.Client as HTTP
+import Text.Printf
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)
@@ -38,6 +43,7 @@ data DiscordThreadState = DiscordThreadState
   { dtsLogQueue :: !(WriteQueue LogEntry)
   , dtsSqliteConnection :: Sqlite.Connection
   , dtsManager :: !HTTP.Manager
+  , dtsCurrentUser :: !(MVar User)
   }
 
 instance ProvidesLogging DiscordThreadState where
@@ -51,22 +57,32 @@ discordThread dtp =
   case dtpConfig dtp of
     Just config ->
       withConnectionAndPragmas (dtpSqliteFileName dtp) $ \sqliteConnection -> do
+        currentUser <- newEmptyMVar
+        let dts =
+              DiscordThreadState
+                { dtsLogQueue = dtpLogQueue dtp
+                , dtsSqliteConnection = sqliteConnection
+                , dtsManager = dtpManager dtp
+                , dtsCurrentUser = currentUser
+                }
         userFacingError <-
           runDiscord $
           def
             { discordToken = configDiscordToken config
-            , discordOnEvent =
-                eventHandler $
-                DiscordThreadState
-                  { dtsLogQueue = dtpLogQueue dtp
-                  , dtsSqliteConnection = sqliteConnection
-                  , dtsManager = dtpManager dtp
-                  }
+            , discordOnEvent = eventHandler dts
+            , discordOnStart = discordThreadOnStart dts
             }
         logEntry dtp $ LogEntry "DISCORD" userFacingError
     Nothing ->
       logEntry dtp $
       LogEntry "DISCORD" "[ERROR] Discord configuration not found"
+
+discordThreadOnStart :: DiscordThreadState -> DiscordHandle -> IO ()
+discordThreadOnStart dts dis = do
+  response <- restCall dis GetCurrentUser
+  case response of
+    Right user -> putMVar (dtsCurrentUser dts) user
+    Left err -> logEntry dts $ LogEntry "DISCORD" $ T.pack $ show err
 
 -- TODO(#96): Discord messages are not logged
 -- TODO(#97): Discord messages do not contribute to Markov chain
@@ -77,6 +93,7 @@ eventHandler dts dis (MessageCreate m)
     restCall dis (R.CreateReaction (messageChannel m, messageId m) "hearts")
   | not (fromBot m) = do
     let dbConn = dtsSqliteConnection dts
+    currentUser <- tryReadMVar $ dtsCurrentUser dts
     catch
       (Sqlite.withTransaction dbConn $ do
          logEntry dts $ LogEntry "DISCORD" $ messageText m
@@ -113,32 +130,47 @@ eventHandler dts dis (MessageCreate m)
            (userId $ messageAuthor m) $
            messageText m
          addMarkovSentence dbConn $ messageText m
-         evalResult <-
-           runExceptT $
-           evalStateT
-             (runEvalT $
-              evalCommandPipe $
-              parseCommandPipe (CallPrefix "$") (PipeSuffix "|") (messageText m)) $
-           EvalContext
-             { ecVars = M.fromList []
-             , ecSqliteConnection = dbConn
-             , ecPlatformContext =
-                 Edc
-                   EvalDiscordContext
-                     { edcAuthor = messageAuthor m
-                     , edcGuild = guild
-                     , edcRoles =
-                         concat $ maybeToList (memberRoles <$> guildMember)
-                     }
-             , ecLogQueue = dtsLogQueue dts
-             , ecManager = dtsManager dts
-             }
-         case evalResult of
-           Right commandResponse ->
-             void $
-             restCall dis $ R.CreateMessage (messageChannel m) commandResponse
-           Left (EvalError userMsg) ->
-             void $ restCall dis (R.CreateMessage (messageChannel m) userMsg))
+         case parseCommandPipe (CallPrefix "$") (PipeSuffix "|") (messageText m) of
+           [] ->
+             when
+               (isJust $
+                find (\u -> Just (userId u) == (userId <$> currentUser)) $
+                messageMentions m) $ do
+               markovResponse <- genMarkovSentence dbConn
+               void $
+                 restCall dis $
+                 R.CreateMessage (messageChannel m) $
+                 T.pack $
+                 printf
+                   "<@!%d> %s"
+                   ((fromIntegral $ userId $ messageAuthor m) :: Word64)
+                   markovResponse
+           pipe -> do
+             evalResult <-
+               runExceptT $
+               evalStateT (runEvalT $ evalCommandPipe pipe) $
+               EvalContext
+                 { ecVars = M.fromList []
+                 , ecSqliteConnection = dbConn
+                 , ecPlatformContext =
+                     Edc
+                       EvalDiscordContext
+                         { edcAuthor = messageAuthor m
+                         , edcGuild = guild
+                         , edcRoles =
+                             concat $ maybeToList (memberRoles <$> guildMember)
+                         }
+                 , ecLogQueue = dtsLogQueue dts
+                 , ecManager = dtsManager dts
+                 }
+             case evalResult of
+               Right commandResponse ->
+                 void $
+                 restCall dis $
+                 R.CreateMessage (messageChannel m) commandResponse
+               Left (EvalError userMsg) ->
+                 void $
+                 restCall dis (R.CreateMessage (messageChannel m) userMsg))
       (\e ->
          logEntry dts $ LogEntry "SQLITE" $ T.pack $ show (e :: SomeException))
     pure ()
