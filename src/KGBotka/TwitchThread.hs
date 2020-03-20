@@ -34,7 +34,6 @@ import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
-import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
@@ -75,7 +74,7 @@ data TwitchThreadParams = TwitchThreadParams
   { ttpLogQueue :: !(WriteQueue LogEntry)
   , ttpReplQueue :: !(ReadQueue ReplCommand)
   , ttpChannels :: !(TVar (S.Set TwitchIrcChannel))
-  , ttpSqliteFileName :: !FilePath
+  , ttpSqliteConnection :: !(MVar Sqlite.Connection)
   , ttpManager :: !HTTP.Manager
   , ttpConfig :: Maybe ConfigTwitch
   }
@@ -87,7 +86,7 @@ data TwitchThreadState = TwitchThreadState
   { ttsLogQueue :: !(WriteQueue LogEntry)
   , ttsReplQueue :: !(ReadQueue ReplCommand)
   , ttsChannels :: !(TVar (S.Set TwitchIrcChannel))
-  , ttsSqliteConnection :: !Sqlite.Connection
+  , ttsSqliteConnection :: !(MVar Sqlite.Connection)
   , ttsManager :: !HTTP.Manager
   , ttsConfig :: ConfigTwitch
   , ttsIncomingQueue :: !(ReadQueue RawIrcMsg)
@@ -173,18 +172,17 @@ twitchThread ttp =
         outgoingIrcQueue <- atomically newTQueue
         void $forkIO $
           twitchOutgoingThread twitchConn $ ReadQueue outgoingIrcQueue
-        withConnectionAndPragmas (ttpSqliteFileName ttp) $ \sqliteConnection ->
-          twitchThreadLoop
-            TwitchThreadState
-              { ttsLogQueue = ttpLogQueue ttp
-              , ttsReplQueue = ttpReplQueue ttp
-              , ttsChannels = ttpChannels ttp
-              , ttsSqliteConnection = sqliteConnection
-              , ttsManager = ttpManager ttp
-              , ttsConfig = config
-              , ttsIncomingQueue = ReadQueue incomingIrcQueue
-              , ttsOutgoingQueue = WriteQueue outgoingIrcQueue
-              }
+        twitchThreadLoop
+          TwitchThreadState
+            { ttsLogQueue = ttpLogQueue ttp
+            , ttsReplQueue = ttpReplQueue ttp
+            , ttsChannels = ttpChannels ttp
+            , ttsSqliteConnection = ttpSqliteConnection ttp
+            , ttsManager = ttpManager ttp
+            , ttsConfig = config
+            , ttsIncomingQueue = ReadQueue incomingIrcQueue
+            , ttsOutgoingQueue = WriteQueue outgoingIrcQueue
+            }
     Nothing ->
       atomically $
       writeQueue (ttpLogQueue ttp) $
@@ -204,8 +202,9 @@ processControlMsgs tts messages = do
         atomically $ modifyTVar channels $ S.delete $ TwitchIrcChannel channelId
       _ -> return ()
 
-processUserMsgs :: TwitchThreadState -> [RawIrcMsg] -> IO ()
-processUserMsgs tts messages = do
+processUserMsgs ::
+     Sqlite.Connection -> TwitchThreadState -> [RawIrcMsg] -> IO ()
+processUserMsgs dbConn tts messages = do
   let outgoingQueue = ttsOutgoingQueue tts
   let manager = ttsManager tts
   let botLogin = configTwitchAccount $ ttsConfig tts
@@ -216,7 +215,6 @@ processUserMsgs tts messages = do
       Privmsg userInfo channelId message ->
         case userIdFromRawIrcMsg msg of
           Just senderId -> do
-            let dbConn = ttsSqliteConnection tts
             roles <- getTwitchUserRoles dbConn senderId
             let badgeRoles = badgeRolesFromRawIrcMsg msg
             let displayName = lookupEntryValue "display-name" $ _msgTags msg
@@ -304,9 +302,9 @@ twitchThreadLoop tts = do
   let (userMessages, controlMessages) =
         partition (\x -> _msgCommand x == "PRIVMSG") messages
   processControlMsgs tts controlMessages
-  let dbConn = ttsSqliteConnection tts
   catch
-    (Sqlite.withTransaction dbConn $ processUserMsgs tts userMessages)
+    (withMVar (ttsSqliteConnection tts) $ \dbConn ->
+       Sqlite.withTransaction dbConn $ processUserMsgs dbConn tts userMessages)
     (\e ->
        atomically $
        writeQueue (ttsLogQueue tts) $

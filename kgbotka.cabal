@@ -72,7 +72,6 @@ executable kgbotka
                      , KGBotka.Friday
                      , KGBotka.TwitchLog
                      , KGBotka.Markov
-                     , KGBotka.Sqlite
                      , KGBotka.Asciify
                      , KGBotka.Bttv
                      , KGBotka.Http

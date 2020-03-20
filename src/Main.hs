@@ -21,7 +21,6 @@ import KGBotka.Log
 import KGBotka.Migration
 import KGBotka.Queue
 import KGBotka.Repl
-import KGBotka.Sqlite
 import KGBotka.TwitchThread
 import qualified Network.HTTP.Client.TLS as TLS
 import System.Environment
@@ -134,38 +133,40 @@ mainWithArgs (configPath:databasePath:_) = do
       rawLogQueue <- atomically newTQueue
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
-      withConnectionAndPragmas databasePath $ \dbConn ->
-        Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
+      sqliteConnection <- newEmptyMVar
       -- TODO(#67): there is no supavisah that restarts essential threads on crashing
-      withForkIOs
-        [ twitchThread $
-          TwitchThreadParams
-            { ttpReplQueue = ReadQueue replQueue
-            , ttpChannels = joinedChannels
-            , ttpSqliteFileName = databasePath
-            , ttpLogQueue = WriteQueue rawLogQueue
-            , ttpManager = manager
-            , ttpConfig = configTwitch config
+      Sqlite.withConnection databasePath $ \dbConn -> do
+        Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
+        putMVar sqliteConnection dbConn
+        withForkIOs
+          [ twitchThread $
+            TwitchThreadParams
+              { ttpReplQueue = ReadQueue replQueue
+              , ttpChannels = joinedChannels
+              , ttpSqliteConnection = sqliteConnection
+              , ttpLogQueue = WriteQueue rawLogQueue
+              , ttpManager = manager
+              , ttpConfig = configTwitch config
+              }
+          , discordThread $
+            DiscordThreadParams
+              { dtpConfig = configDiscord config
+              , dtpLogQueue = WriteQueue rawLogQueue
+              , dtpSqliteConnection = sqliteConnection
+              , dtpManager = manager
+              }
+          , loggingThread "kgbotka.log" $ ReadQueue rawLogQueue
+          ] $ \_ ->
+          backdoorThread $
+          BackdoorThreadParams
+            { btpChannels = joinedChannels
+            , btpSqliteConnection = sqliteConnection
+            , btpCommandQueue = WriteQueue replQueue
+            , btpTwitchClientId = configTwitchClientId <$> configTwitch config
+            , btpManager = manager
+            , btpLogQueue = WriteQueue rawLogQueue
+            , btpPort = 6969 -- TODO(#63): backdoor port is hardcoded
             }
-        , discordThread $
-          DiscordThreadParams
-            { dtpConfig = configDiscord config
-            , dtpLogQueue = WriteQueue rawLogQueue
-            , dtpSqliteFileName = databasePath
-            , dtpManager = manager
-            }
-        , loggingThread "kgbotka.log" $ ReadQueue rawLogQueue
-        ] $ \_ ->
-        backdoorThread $
-        BackdoorThreadParams
-          { btpChannels = joinedChannels
-          , btpSqliteFileName = databasePath
-          , btpCommandQueue = WriteQueue replQueue
-          , btpTwitchClientId = configTwitchClientId <$> configTwitch config
-          , btpManager = manager
-          , btpLogQueue = WriteQueue rawLogQueue
-          , btpPort = 6969 -- TODO(#63): backdoor port is hardcoded
-          }
       putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do

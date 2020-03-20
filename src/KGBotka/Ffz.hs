@@ -23,7 +23,6 @@ import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.Http
-import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import Network.HTTP.Client
 
@@ -108,13 +107,8 @@ queryFfzEmotes manager (Just channel) =
       " does not start with #"
 
 updateFfzEmotes ::
-     (ProvidesDatabase s, ProvidesHttpManager s)
-  => s
-  -> Maybe TwitchIrcChannel
-  -> ExceptT String IO ()
-updateFfzEmotes state channel = do
-  let dbConn = getSqliteConnection state
-  let manager = httpManager state
+     Connection -> Manager -> Maybe TwitchIrcChannel -> ExceptT String IO ()
+updateFfzEmotes dbConn manager channel = do
   lift $
     executeNamed
       dbConn

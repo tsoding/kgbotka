@@ -17,7 +17,6 @@ import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
-import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 
 data TwitchBadgeRole
@@ -35,8 +34,8 @@ data TwitchRole = TwitchRole
 instance FromRow TwitchRole where
   fromRow = TwitchRole <$> field <*> field
 
-assTwitchRoleToUser :: ProvidesDatabase s => s -> Int -> TwitchUserId -> IO ()
-assTwitchRoleToUser (getSqliteConnection -> conn) roleId' userId' =
+assTwitchRoleToUser :: Connection -> Int -> TwitchUserId -> IO ()
+assTwitchRoleToUser conn roleId' userId' =
   executeNamed
     conn
     "INSERT INTO TwitchUserRoles (userId, roleId) \
@@ -56,9 +55,8 @@ getTwitchUserRoles conn userId = queryNamed conn queryText [":userId" := userId]
       \ON ur.roleId = r.id \
       \WHERE ur.userId = :userId;"
 
-getTwitchRoleByName ::
-     ProvidesDatabase s => s -> T.Text -> IO (Maybe TwitchRole)
-getTwitchRoleByName (getSqliteConnection -> conn) name =
+getTwitchRoleByName :: Connection -> T.Text -> IO (Maybe TwitchRole)
+getTwitchRoleByName conn name =
   listToMaybe <$>
   queryNamed
     conn
@@ -66,13 +64,13 @@ getTwitchRoleByName (getSqliteConnection -> conn) name =
     \WHERE name = :roleName;"
     [":roleName" := name]
 
-addTwitchRole :: ProvidesDatabase s => s -> T.Text -> IO ()
-addTwitchRole (getSqliteConnection -> dbConn) name =
+addTwitchRole :: Connection -> T.Text -> IO ()
+addTwitchRole dbConn name =
   executeNamed
     dbConn
     [sql|INSERT INTO TwitchRoles (name) VALUES (:name)|]
     [":name" := name]
 
-listTwitchRoles :: ProvidesDatabase s => s -> IO [TwitchRole]
-listTwitchRoles (getSqliteConnection -> dbConn) =
+listTwitchRoles :: Connection -> IO [TwitchRole]
+listTwitchRoles dbConn =
   queryNamed dbConn [sql|SELECT id, name FROM TwitchRoles |] []
