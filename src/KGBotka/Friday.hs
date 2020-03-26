@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.Friday
   ( submitVideo
@@ -16,6 +17,7 @@ import Data.Maybe
 import qualified Data.Text as T
 import Data.Time
 import Database.SQLite.Simple
+import Database.SQLite.Simple.QQ
 import KGBotka.TwitchAPI
 
 data FridayVideo = FridayVideo
@@ -25,74 +27,68 @@ data FridayVideo = FridayVideo
   , fridayVideoAuthorTwitchId :: TwitchUserId
   , fridayVideoAuthorTwitchName :: T.Text
   , fridayVideoWatchedAt :: Maybe UTCTime
-  , fridayVideoChannel :: TwitchIrcChannel
   }
 
 instance FromRow FridayVideo where
   fromRow =
-    FridayVideo <$> field <*> field <*> field <*> field <*> field <*> field <*>
-    field
+    FridayVideo <$> field <*> field <*> field <*> field <*> field <*> field
 
 submitVideo ::
-     Connection -> T.Text -> TwitchIrcChannel -> TwitchUserId -> T.Text -> IO ()
-submitVideo conn subText channel authorTwitchId authorTwitchName =
+     Connection -> T.Text -> TwitchUserId -> T.Text -> IO ()
+submitVideo conn subText authorTwitchId authorTwitchName =
   executeNamed
     conn
-    "INSERT INTO FridayVideo \
-    \(submissionText, submissionTime, authorTwitchId, authorTwitchName, channel) \
-    \VALUES \
-    \(:submissionText, datetime('now'), :authorTwitchId, :authorTwitchName, :channel)"
+    [sql| INSERT INTO FridayVideo
+          (submissionText, submissionTime, authorTwitchId, authorTwitchName)
+          VALUES
+          (:submissionText, datetime('now'), :authorTwitchId, :authorTwitchName) |]
     [ ":submissionText" := subText
     , ":authorTwitchId" := authorTwitchId
     , ":authorTwitchName" := authorTwitchName
-    , ":channel" := channel
     ]
 
 queueSlice ::
-     Connection -> TwitchIrcChannel -> IO (M.Map TwitchUserId FridayVideo)
-queueSlice conn channel =
+     Connection -> IO (M.Map TwitchUserId FridayVideo)
+queueSlice conn =
   M.fromList . map (\x -> (fridayVideoAuthorTwitchId x, x)) <$>
   queryNamed
     conn
-    "SELECT id, \
-    \       submissionText, \
-    \       min(submissionTime), \
-    \       authorTwitchId, \
-    \       authorTwitchName, \
-    \       watchedAt, \
-    \       channel \
-    \FROM FridayVideo  \
-    \WHERE watchedAt is NULL \
-    \AND channel = :channel \
-    \GROUP BY authorTwitchId"
-    [":channel" := channel]
+    [sql|SELECT id,
+                submissionText,
+                min(submissionTime),
+                authorTwitchId,
+                authorTwitchName,
+                watchedAt
+         FROM FridayVideo
+         WHERE watchedAt is NULL
+         GROUP BY authorTwitchId|]
+    []
 
-lastWatchedAuthor :: Connection -> TwitchIrcChannel -> MaybeT IO TwitchUserId
-lastWatchedAuthor conn channel =
+lastWatchedAuthor :: Connection -> MaybeT IO TwitchUserId
+lastWatchedAuthor conn =
   MaybeT
     (listToMaybe <$>
      queryNamed
        conn
-       "SELECT authorTwitchId FROM FridayVideo \
-       \WHERE watchedAt IS NOT NULL \
-       \  AND channel = :channel \
-       \ORDER BY watchedAt DESC \
-       \LIMIT 1"
-       [":channel" := channel])
+       [sql| SELECT authorTwitchId FROM FridayVideo
+             WHERE watchedAt IS NOT NULL
+             ORDER BY watchedAt DESC
+             LIMIT 1 |]
+       [])
 
 watchVideoById :: Connection -> Int -> IO ()
 watchVideoById conn videoId =
   executeNamed
     conn
-    "UPDATE FridayVideo \
-    \SET watchedAt = datetime('now') \
-    \WHERE id = :id"
+    [sql| UPDATE FridayVideo
+          SET watchedAt = datetime('now')
+          WHERE id = :id |]
     [":id" := videoId]
 
-nextVideo :: Connection -> TwitchIrcChannel -> MaybeT IO FridayVideo
-nextVideo conn channel = do
-  author <- lastWatchedAuthor conn channel <|> return ""
-  slice <- lift $ queueSlice conn channel
+nextVideo :: Connection -> MaybeT IO FridayVideo
+nextVideo conn = do
+  author <- lastWatchedAuthor conn <|> return ""
+  slice <- lift $ queueSlice conn
   video <-
     hoistMaybe (snd <$> M.lookupGT author slice) <|>
     hoistMaybe (snd <$> M.lookupGT "" slice)

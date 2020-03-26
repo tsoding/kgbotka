@@ -58,8 +58,7 @@ migrations =
              submissionTime DATETIME NOT NULL,
              authorTwitchId TEXT NOT NULL,
              authorTwitchName TEXT NOT NULL,
-             watchedAt DATETIME,
-             channel TEXT NOT NULL
+             watchedAt DATETIME
            );|]
   , Migration
       [sql|CREATE TABLE TwitchLog (

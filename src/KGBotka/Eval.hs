@@ -218,13 +218,12 @@ evalExpr (FunCallExpr "nextvideo" _) = do
   failIfNotAuthority
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
-    Etc etc -> do
+    Etc _ -> do
       dbConn <- ecSqliteConnection <$> getEval
-      let channel = etcChannel etc
       fridayVideo <-
         liftExceptT $
         maybeToExceptT (EvalError "Video queue is empty") $
-        nextVideo dbConn channel
+        nextVideo dbConn
       return $ fridayVideoAsMessage fridayVideo
     Edc _ ->
       throwExceptEval $ EvalError "Video queue is not implemented for Discord"
@@ -239,9 +238,8 @@ evalExpr (FunCallExpr "friday" args) = do
         Right _ -> do
           let senderId = etcSenderId etc
           dbConn <- ecSqliteConnection <$> getEval
-          let channel = etcChannel etc
           let senderName = etcSenderName etc
-          liftIO $ submitVideo dbConn submissionText channel senderId senderName
+          liftIO $ submitVideo dbConn submissionText senderId senderName
           return "Added your video to suggestions"
         Left Nothing ->
           throwExceptEval $
