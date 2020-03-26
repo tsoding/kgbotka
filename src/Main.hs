@@ -118,6 +118,10 @@ migrations =
              message TEXT NOT NULL,
              messageTime DATETIME DEFAULT (datetime('now')) NOT NULL
            )|]
+  , Migration
+      [sql|ALTER TABLE FridayVideo RENAME
+           COLUMN authorTwitchName
+           TO authorDisplayName |]
   ]
 
 withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b

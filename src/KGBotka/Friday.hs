@@ -25,7 +25,7 @@ data FridayVideo = FridayVideo
   , fridayVideoSubText :: T.Text
   , fridayVideoSubTime :: UTCTime
   , fridayVideoAuthorTwitchId :: TwitchUserId
-  , fridayVideoAuthorTwitchName :: T.Text
+  , fridayVideoAuthorDisplayName :: T.Text
   , fridayVideoWatchedAt :: Maybe UTCTime
   }
 
@@ -35,16 +35,16 @@ instance FromRow FridayVideo where
 
 submitVideo ::
      Connection -> T.Text -> TwitchUserId -> T.Text -> IO ()
-submitVideo conn subText authorTwitchId authorTwitchName =
+submitVideo conn subText authorTwitchId authorDisplayName =
   executeNamed
     conn
     [sql| INSERT INTO FridayVideo
-          (submissionText, submissionTime, authorTwitchId, authorTwitchName)
+          (submissionText, submissionTime, authorTwitchId, authorDisplayName)
           VALUES
-          (:submissionText, datetime('now'), :authorTwitchId, :authorTwitchName) |]
+          (:submissionText, datetime('now'), :authorTwitchId, :authorDisplayName) |]
     [ ":submissionText" := subText
     , ":authorTwitchId" := authorTwitchId
-    , ":authorTwitchName" := authorTwitchName
+    , ":authorDisplayName" := authorDisplayName
     ]
 
 queueSlice ::
@@ -57,7 +57,7 @@ queueSlice conn =
                 submissionText,
                 min(submissionTime),
                 authorTwitchId,
-                authorTwitchName,
+                authorDisplayName,
                 watchedAt
          FROM FridayVideo
          WHERE watchedAt is NULL
@@ -98,6 +98,6 @@ nextVideo conn = do
 fridayVideoAsMessage :: FridayVideo -> T.Text
 fridayVideoAsMessage FridayVideo { fridayVideoSubText = subText
                                  , fridayVideoSubTime = subTime
-                                 , fridayVideoAuthorTwitchName = authorTwitchName
+                                 , fridayVideoAuthorDisplayName = authorDisplayName
                                  } =
-  T.pack (show subTime) <> " <" <> authorTwitchName <> "> " <> subText
+  T.pack (show subTime) <> " <" <> authorDisplayName <> "> " <> subText
