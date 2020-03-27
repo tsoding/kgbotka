@@ -6,7 +6,7 @@ module KGBotka.Settings
 import qualified Data.Text as T
 import Database.SQLite.Simple
 
--- FIXME: Difference between KGBotka.Settings and KGBotka.Config is not clear
+-- FIXME(#124): Difference between KGBotka.Settings and KGBotka.Config is not clear
 newtype Settings = Settings
   { settingsFridayGithubGistId :: Maybe T.Text
   }
