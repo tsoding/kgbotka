@@ -66,7 +66,7 @@ submitVideo conn subText authorId authorDisplayName =
     , ":authorDisplayName" := authorDisplayName
     ]
 
--- FIXME: allQueues is not implemented
+-- FIXME(#121): allQueues is not implemented
 fetchAllQueues :: Connection -> IO (M.Map AuthorId [FridayVideo])
 fetchAllQueues _ = return M.empty
 
