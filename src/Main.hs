@@ -17,6 +17,7 @@ import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple.QQ
 import KGBotka.Config
 import KGBotka.DiscordThread
+import KGBotka.GithubThread
 import KGBotka.Log
 import KGBotka.Migration
 import KGBotka.Queue
@@ -26,7 +27,6 @@ import qualified Network.HTTP.Client.TLS as TLS
 import System.Environment
 import System.Exit
 import System.IO
-import KGBotka.GithubThread
 
 migrations :: [Migration]
 migrations =

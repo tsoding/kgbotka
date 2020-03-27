@@ -6,17 +6,17 @@ module KGBotka.GithubThread
   ) where
 
 import Control.Concurrent
-import qualified Database.SQLite.Simple as Sqlite
-import Network.HTTP.Client
-import KGBotka.Config
-import KGBotka.Queue
-import KGBotka.Log
-import KGBotka.Settings
-import qualified Data.Map as M
-import KGBotka.Friday
-import qualified Data.Text as T
-import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
+import qualified Data.Map as M
+import qualified Data.Text as T
+import qualified Database.SQLite.Simple as Sqlite
+import KGBotka.Config
+import KGBotka.Friday
+import KGBotka.Log
+import KGBotka.Queue
+import KGBotka.Settings
+import Network.HTTP.Client
 
 data GithubThreadParams = GithubThreadParams
   { gtpSqliteConnection :: !(MVar Sqlite.Connection)

@@ -1,10 +1,12 @@
-module KGBotka.Settings (Settings(..), fetchSettings) where
+module KGBotka.Settings
+  ( Settings(..)
+  , fetchSettings
+  ) where
 
 import qualified Data.Text as T
 import Database.SQLite.Simple
 
 -- FIXME: Difference between KGBotka.Settings and KGBotka.Config is not clear
-
 newtype Settings = Settings
   { settingsFridayGithubGistId :: Maybe T.Text
   }
