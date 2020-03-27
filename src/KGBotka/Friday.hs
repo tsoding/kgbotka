@@ -15,15 +15,17 @@ import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
 import qualified Data.Map as M
 import Data.Maybe
+import Data.String
 import qualified Data.Text as T
 import Data.Time
 import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
-import Database.SQLite.Simple.ToField
 import Database.SQLite.Simple.QQ
-import Data.String
+import Database.SQLite.Simple.ToField
 
-newtype AuthorId = AuthorId T.Text deriving (Eq, Ord)
+newtype AuthorId =
+  AuthorId T.Text
+  deriving (Eq, Ord)
 
 instance FromField AuthorId where
   fromField x = AuthorId <$> fromField x
@@ -50,8 +52,7 @@ instance FromRow FridayVideo where
   fromRow =
     FridayVideo <$> field <*> field <*> field <*> field <*> field <*> field
 
-submitVideo ::
-     Connection -> T.Text -> AuthorId -> T.Text -> IO ()
+submitVideo :: Connection -> T.Text -> AuthorId -> T.Text -> IO ()
 submitVideo conn subText authorId authorDisplayName =
   executeNamed
     conn
@@ -64,8 +65,7 @@ submitVideo conn subText authorId authorDisplayName =
     , ":authorDisplayName" := authorDisplayName
     ]
 
-queueSlice ::
-     Connection -> IO (M.Map AuthorId FridayVideo)
+queueSlice :: Connection -> IO (M.Map AuthorId FridayVideo)
 queueSlice conn =
   M.fromList . map (\x -> (fridayVideoAuthorId x, x)) <$>
   queryNamed

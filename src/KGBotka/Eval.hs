@@ -219,8 +219,7 @@ evalExpr (FunCallExpr "nextvideo" _) = do
   dbConn <- ecSqliteConnection <$> getEval
   fridayVideo <-
     liftExceptT $
-    maybeToExceptT (EvalError "Video queue is empty") $
-    nextVideo dbConn
+    maybeToExceptT (EvalError "Video queue is empty") $ nextVideo dbConn
   return $ fridayVideoAsMessage fridayVideo
 -- FIXME(#39): %friday does not inform how many times a video was suggested
 evalExpr (FunCallExpr "friday" args) = do
