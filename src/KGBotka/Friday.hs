@@ -6,6 +6,7 @@ module KGBotka.Friday
   , FridayVideo(..)
   , nextVideo
   , fridayVideoAsMessage
+  , AuthorId(..)
   ) where
 
 import Control.Applicative
@@ -17,14 +18,30 @@ import Data.Maybe
 import qualified Data.Text as T
 import Data.Time
 import Database.SQLite.Simple
+import Database.SQLite.Simple.FromField
+import Database.SQLite.Simple.ToField
 import Database.SQLite.Simple.QQ
-import KGBotka.TwitchAPI
+import Data.String
+
+newtype AuthorId = AuthorId T.Text deriving (Eq, Ord)
+
+instance FromField AuthorId where
+  fromField x = AuthorId <$> fromField x
+
+instance FromRow AuthorId where
+  fromRow = AuthorId <$> field
+
+instance ToField AuthorId where
+  toField (AuthorId x) = toField x
+
+instance IsString AuthorId where
+  fromString = AuthorId . T.pack
 
 data FridayVideo = FridayVideo
   { fridayVideoId :: Int
   , fridayVideoSubText :: T.Text
   , fridayVideoSubTime :: UTCTime
-  , fridayVideoAuthorTwitchId :: TwitchUserId
+  , fridayVideoAuthorId :: AuthorId
   , fridayVideoAuthorDisplayName :: T.Text
   , fridayVideoWatchedAt :: Maybe UTCTime
   }
@@ -34,43 +51,43 @@ instance FromRow FridayVideo where
     FridayVideo <$> field <*> field <*> field <*> field <*> field <*> field
 
 submitVideo ::
-     Connection -> T.Text -> TwitchUserId -> T.Text -> IO ()
-submitVideo conn subText authorTwitchId authorDisplayName =
+     Connection -> T.Text -> AuthorId -> T.Text -> IO ()
+submitVideo conn subText authorId authorDisplayName =
   executeNamed
     conn
     [sql| INSERT INTO FridayVideo
-          (submissionText, submissionTime, authorTwitchId, authorDisplayName)
+          (submissionText, submissionTime, authorId, authorDisplayName)
           VALUES
-          (:submissionText, datetime('now'), :authorTwitchId, :authorDisplayName) |]
+          (:submissionText, datetime('now'), :authorId, :authorDisplayName) |]
     [ ":submissionText" := subText
-    , ":authorTwitchId" := authorTwitchId
+    , ":authorId" := authorId
     , ":authorDisplayName" := authorDisplayName
     ]
 
 queueSlice ::
-     Connection -> IO (M.Map TwitchUserId FridayVideo)
+     Connection -> IO (M.Map AuthorId FridayVideo)
 queueSlice conn =
-  M.fromList . map (\x -> (fridayVideoAuthorTwitchId x, x)) <$>
+  M.fromList . map (\x -> (fridayVideoAuthorId x, x)) <$>
   queryNamed
     conn
     [sql|SELECT id,
                 submissionText,
                 min(submissionTime),
-                authorTwitchId,
+                authorId,
                 authorDisplayName,
                 watchedAt
          FROM FridayVideo
          WHERE watchedAt is NULL
-         GROUP BY authorTwitchId|]
+         GROUP BY authorId|]
     []
 
-lastWatchedAuthor :: Connection -> MaybeT IO TwitchUserId
+lastWatchedAuthor :: Connection -> MaybeT IO AuthorId
 lastWatchedAuthor conn =
   MaybeT
     (listToMaybe <$>
      queryNamed
        conn
-       [sql| SELECT authorTwitchId FROM FridayVideo
+       [sql| SELECT authorId FROM FridayVideo
              WHERE watchedAt IS NOT NULL
              ORDER BY watchedAt DESC
              LIMIT 1 |]

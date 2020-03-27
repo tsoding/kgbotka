@@ -56,8 +56,8 @@ migrations =
              id INTEGER PRIMARY KEY,
              submissionText TEXT NOT NULL,
              submissionTime DATETIME NOT NULL,
-             authorTwitchId TEXT NOT NULL,
-             authorTwitchName TEXT NOT NULL,
+             authorId TEXT NOT NULL,
+             authorDisplayName TEXT NOT NULL,
              watchedAt DATETIME
            );|]
   , Migration
@@ -118,10 +118,6 @@ migrations =
              message TEXT NOT NULL,
              messageTime DATETIME DEFAULT (datetime('now')) NOT NULL
            )|]
-  , Migration
-      [sql|ALTER TABLE FridayVideo RENAME
-           COLUMN authorTwitchName
-           TO authorDisplayName |]
   ]
 
 withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b
