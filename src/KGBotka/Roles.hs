@@ -4,7 +4,6 @@
 
 module KGBotka.Roles
   ( assTwitchRoleToUser
-  , delTwitchRoleFromUser
   , getTwitchUserRoles
   , getTwitchRoleByName
   , TwitchRole(..)
@@ -41,9 +40,6 @@ assTwitchRoleToUser conn roleId' userId' =
     "INSERT INTO TwitchUserRoles (userId, roleId) \
     \VALUES (:userId, :roleId);"
     [":userId" := userId', ":roleId" := roleId']
-
-delTwitchRoleFromUser :: Connection -> Int -> TwitchUserId -> IO ()
-delTwitchRoleFromUser = undefined
 
 getTwitchUserRoles :: Connection -> TwitchUserId -> IO [TwitchRole]
 getTwitchUserRoles conn userId = queryNamed conn queryText [":userId" := userId]
