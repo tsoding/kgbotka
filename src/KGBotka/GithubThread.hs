@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module KGBotka.GithubThread
   ( githubThread
   , GithubThreadParams(..)
@@ -9,6 +11,12 @@ import Network.HTTP.Client
 import KGBotka.Config
 import KGBotka.Queue
 import KGBotka.Log
+import KGBotka.Settings
+import qualified Data.Map as M
+import KGBotka.Friday
+import qualified Data.Text as T
+import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Class
 
 data GithubThreadParams = GithubThreadParams
   { gtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -46,5 +54,29 @@ githubThread gtp =
 githubThreadLoop :: GithubThreadState -> IO ()
 githubThreadLoop gts = do
   threadDelay $ 60 * 1000 * 1000
-  logEntry gts $ LogEntry "GITHUB" "Updating Friday Video Queue gist"
+  fridayGist <-
+    withMVar (gtsSqliteConnection gts) $ \conn ->
+      Sqlite.withTransaction conn $
+      runMaybeT $ do
+        gistId <- MaybeT $ settingsFridayGithubGistId <$> fetchSettings conn
+        gistText <- lift $ renderAllQueues <$> fetchAllQueues conn
+        return $ (gistId, gistText)
+  case fridayGist of
+    Just (gistId, gistText) -> do
+      logEntry gts $ LogEntry "GITHUB" "Updating Friday Video Queue gist..."
+      updateGistText (gtsManager gts) gistId gistText
+    Nothing ->
+      logEntry gts $
+      LogEntry
+        "GITHUB"
+        "[WARN] Tried to update Friday Video Queue, \
+        \but the gist id is not setup"
   githubThreadLoop gts
+
+-- FIXME: updateGistText is not implemented
+updateGistText :: Manager -> T.Text -> T.Text -> IO ()
+updateGistText _ _ _ = return ()
+
+-- FIXME: renderAllQueues is not implemented
+renderAllQueues :: M.Map AuthorId [FridayVideo] -> T.Text
+renderAllQueues _ = ""

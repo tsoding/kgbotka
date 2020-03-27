@@ -1,4 +1,4 @@
-module KGBotka.Settings where
+module KGBotka.Settings (Settings(..), fetchSettings) where
 
 import qualified Data.Text as T
 import Database.SQLite.Simple
@@ -11,4 +11,4 @@ data Settings = Settings
 
 -- FIXME: fetchSettings is not implemented
 fetchSettings :: Connection -> IO Settings
-fetchSettings = undefined
+fetchSettings _ = return $ Settings Nothing

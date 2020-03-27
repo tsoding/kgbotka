@@ -52,6 +52,7 @@ migrations =
              roleId INTEGER NOT NULL REFERENCES TwitchRoles(id) ON DELETE CASCADE,
              UNIQUE(userId, roleId) ON CONFLICT IGNORE
            );|]
+  -- TODO: There is no way to find out from where the video was submitted (Twitch or Discord) based on the data from FridayVideo
   , Migration
       [sql|CREATE TABLE FridayVideo (
              id INTEGER PRIMARY KEY,
