@@ -11,6 +11,6 @@ newtype Settings = Settings
   { settingsFridayGithubGistId :: Maybe T.Text
   }
 
--- FIXME: fetchSettings is not implemented
+-- FIXME(#125): fetchSettings is not implemented
 fetchSettings :: Connection -> IO Settings
 fetchSettings _ = return $ Settings Nothing
