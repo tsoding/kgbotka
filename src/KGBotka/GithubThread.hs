@@ -77,6 +77,6 @@ githubThreadLoop gts = do
 updateGistText :: Manager -> T.Text -> T.Text -> IO ()
 updateGistText _ _ _ = return ()
 
--- FIXME: renderAllQueues is not implemented
+-- FIXME(#123): renderAllQueues is not implemented
 renderAllQueues :: M.Map AuthorId [FridayVideo] -> T.Text
 renderAllQueues _ = ""
