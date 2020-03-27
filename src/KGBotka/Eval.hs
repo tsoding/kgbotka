@@ -216,46 +216,40 @@ evalExpr (FunCallExpr "flip" args) =
 -- TODO(#101): Video queue is not implemented for Discord
 evalExpr (FunCallExpr "nextvideo" _) = do
   failIfNotAuthority
-  platformContext <- ecPlatformContext <$> getEval
-  case platformContext of
-    Etc etc -> do
-      dbConn <- ecSqliteConnection <$> getEval
-      let channel = etcChannel etc
-      fridayVideo <-
-        liftExceptT $
-        maybeToExceptT (EvalError "Video queue is empty") $
-        nextVideo dbConn channel
-      return $ fridayVideoAsMessage fridayVideo
-    Edc _ ->
-      throwExceptEval $ EvalError "Video queue is not implemented for Discord"
+  dbConn <- ecSqliteConnection <$> getEval
+  fridayVideo <-
+    liftExceptT $
+    maybeToExceptT (EvalError "Video queue is empty") $ nextVideo dbConn
+  return $ fridayVideoAsMessage fridayVideo
 -- FIXME(#39): %friday does not inform how many times a video was suggested
 evalExpr (FunCallExpr "friday" args) = do
   failIfNotTrusted
-  platformContext <- ecPlatformContext <$> getEval
-  case platformContext of
-    Etc etc -> do
-      submissionText <- T.concat <$> mapM evalExpr args
-      case ytLinkId submissionText of
-        Right _ -> do
-          let senderId = etcSenderId etc
-          dbConn <- ecSqliteConnection <$> getEval
-          let channel = etcChannel etc
-          let senderName = etcSenderName etc
-          liftIO $ submitVideo dbConn submissionText channel senderId senderName
-          return "Added your video to suggestions"
-        Left Nothing ->
-          throwExceptEval $
-          EvalError "Your suggestion should contain YouTube link"
-        Left (Just failReason) -> do
-          logEntryEval $
-            LogEntry "YOUTUBE" $
-            "An error occured while parsing YouTube link: " <> T.pack failReason
-          throwExceptEval $
-            EvalError
-              "Something went wrong while parsing your subsmission. \
-              \We are already looking into it. Kapp"
-    Edc _ ->
-      throwExceptEval $ EvalError "Video queue is not implemented for Discord"
+  submissionText <- T.concat <$> mapM evalExpr args
+  case ytLinkId submissionText of
+    Right _ -> do
+      platformContext <- ecPlatformContext <$> getEval
+      dbConn <- ecSqliteConnection <$> getEval
+      let (authorDisplayName, authorId) =
+            case platformContext of
+              Etc etc ->
+                let TwitchUserId senderId = etcSenderId etc
+                 in (etcSenderName etc, senderId)
+              Edc edc ->
+                ( userName $ edcAuthor edc
+                , T.pack $ show $ userId $ edcAuthor edc)
+      liftIO $
+        submitVideo dbConn submissionText (AuthorId authorId) authorDisplayName
+      return "Added your video to suggestions"
+    Left Nothing ->
+      throwExceptEval $ EvalError "Your suggestion should contain YouTube link"
+    Left (Just failReason) -> do
+      logEntryEval $
+        LogEntry "YOUTUBE" $
+        "An error occured while parsing YouTube link: " <> T.pack failReason
+      throwExceptEval $
+        EvalError
+          "Something went wrong while parsing your subsmission. \
+          \We are already looking into it. Kapp"
 evalExpr (FunCallExpr "asciify" args) = do
   failIfNotTrusted
   platformContext <- ecPlatformContext <$> getEval
