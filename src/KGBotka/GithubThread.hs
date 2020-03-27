@@ -60,7 +60,7 @@ githubThreadLoop gts = do
       runMaybeT $ do
         gistId <- MaybeT $ settingsFridayGithubGistId <$> fetchSettings conn
         gistText <- lift $ renderAllQueues <$> fetchAllQueues conn
-        return $ (gistId, gistText)
+        return (gistId, gistText)
   case fridayGist of
     Just (gistId, gistText) -> do
       logEntry gts $ LogEntry "GITHUB" "Updating Friday Video Queue gist..."
