@@ -79,7 +79,9 @@ instance ProvidesLogging EvalContext where
   logQueue = ecLogQueue
 
 logEntryEval :: LogEntry -> Eval ()
-logEntryEval = undefined
+logEntryEval entry = do
+  context <- getEval
+  liftIO $ logEntry context entry
 
 newtype EvalError =
   EvalError T.Text

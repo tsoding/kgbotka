@@ -7,6 +7,7 @@ module KGBotka.Friday
   , nextVideo
   , fridayVideoAsMessage
   , AuthorId(..)
+  , fetchAllQueues
   ) where
 
 import Control.Applicative
@@ -64,6 +65,10 @@ submitVideo conn subText authorId authorDisplayName =
     , ":authorId" := authorId
     , ":authorDisplayName" := authorDisplayName
     ]
+
+-- FIXME(#121): allQueues is not implemented
+fetchAllQueues :: Connection -> IO (M.Map AuthorId [FridayVideo])
+fetchAllQueues _ = return M.empty
 
 queueSlice :: Connection -> IO (M.Map AuthorId FridayVideo)
 queueSlice conn =

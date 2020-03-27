@@ -17,6 +17,7 @@ import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple.QQ
 import KGBotka.Config
 import KGBotka.DiscordThread
+import KGBotka.GithubThread
 import KGBotka.Log
 import KGBotka.Migration
 import KGBotka.Queue
@@ -51,6 +52,7 @@ migrations =
              roleId INTEGER NOT NULL REFERENCES TwitchRoles(id) ON DELETE CASCADE,
              UNIQUE(userId, roleId) ON CONFLICT IGNORE
            );|]
+  -- TODO(#126): There is no way to find out from where the video was submitted (Twitch or Discord) based on the data from FridayVideo
   , Migration
       [sql|CREATE TABLE FridayVideo (
              id INTEGER PRIMARY KEY,
@@ -155,6 +157,13 @@ mainWithArgs (configPath:databasePath:_) = do
               , dtpManager = manager
               }
           , loggingThread "kgbotka.log" $ ReadQueue rawLogQueue
+          , githubThread $
+            GithubThreadParams
+              { gtpSqliteConnection = sqliteConnection
+              , gtpManager = manager
+              , gtpLogQueue = WriteQueue rawLogQueue
+              , gtpConfig = configGithub config
+              }
           ] $ \_ ->
           backdoorThread $
           BackdoorThreadParams

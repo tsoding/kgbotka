@@ -9,6 +9,11 @@ import qualified Data.Text as T
 data Config = Config
   { configTwitch :: !(Maybe ConfigTwitch)
   , configDiscord :: !(Maybe ConfigDiscord)
+  , configGithub :: !(Maybe ConfigGithub)
+  } deriving (Eq)
+
+newtype ConfigGithub = ConfigGithub
+  { configGithubToken :: T.Text
   } deriving (Eq)
 
 data ConfigTwitch = ConfigTwitch
@@ -22,7 +27,8 @@ newtype ConfigDiscord = ConfigDiscord
   } deriving (Eq)
 
 instance FromJSON Config where
-  parseJSON (Object v) = Config <$> v .:? "twitch" <*> v .:? "discord"
+  parseJSON (Object v) =
+    Config <$> v .:? "twitch" <*> v .:? "discord" <*> v .:? "github"
   parseJSON invalid = typeMismatch "Config" invalid
 
 instance FromJSON ConfigTwitch where
@@ -32,4 +38,8 @@ instance FromJSON ConfigTwitch where
 
 instance FromJSON ConfigDiscord where
   parseJSON (Object v) = ConfigDiscord <$> v .: "token"
-  parseJSON invalid = typeMismatch "DiscordTwitch" invalid
+  parseJSON invalid = typeMismatch "ConfigDiscord" invalid
+
+instance FromJSON ConfigGithub where
+  parseJSON (Object v) = ConfigGithub <$> v .: "token"
+  parseJSON invalid = typeMismatch "ConfigGithub" invalid

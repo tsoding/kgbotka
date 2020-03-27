@@ -120,7 +120,12 @@ eventHandler dts dis (MessageCreate m)
                    Left restError -> do
                      logEntry dts $ LogEntry "DISCORD" $ T.pack $ show restError
                      return Nothing
-               Nothing -> undefined
+               Nothing -> do
+                 logEntry dts $
+                   LogEntry
+                     "DISCORD"
+                     "[WARN] Recieved a message outside of a Guild"
+                 return Nothing
            logMessage
              dbConn
              (messageGuild m)
