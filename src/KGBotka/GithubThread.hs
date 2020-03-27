@@ -73,7 +73,7 @@ githubThreadLoop gts = do
         \but the gist id is not setup"
   githubThreadLoop gts
 
--- FIXME: updateGistText is not implemented
+-- FIXME(#122): updateGistText is not implemented
 updateGistText :: Manager -> T.Text -> T.Text -> IO ()
 updateGistText _ _ _ = return ()
 
