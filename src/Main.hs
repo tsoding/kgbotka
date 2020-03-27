@@ -26,6 +26,7 @@ import qualified Network.HTTP.Client.TLS as TLS
 import System.Environment
 import System.Exit
 import System.IO
+import KGBotka.GithubThread
 
 migrations :: [Migration]
 migrations =
@@ -155,6 +156,13 @@ mainWithArgs (configPath:databasePath:_) = do
               , dtpManager = manager
               }
           , loggingThread "kgbotka.log" $ ReadQueue rawLogQueue
+          , githubThread $
+            GithubThreadParams
+              { gtpSqliteConnection = sqliteConnection
+              , gtpManager = manager
+              , gtpLogQueue = WriteQueue rawLogQueue
+              , gtpConfig = configGithub config
+              }
           ] $ \_ ->
           backdoorThread $
           BackdoorThreadParams
