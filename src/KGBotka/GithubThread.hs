@@ -8,7 +8,6 @@ module KGBotka.GithubThread
 import Control.Concurrent
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Config
@@ -17,6 +16,7 @@ import KGBotka.Log
 import KGBotka.Queue
 import KGBotka.Settings
 import Network.HTTP.Client
+import Text.Printf
 
 data GithubThreadParams = GithubThreadParams
   { gtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -77,6 +77,39 @@ githubThreadLoop gts = do
 updateGistText :: Manager -> T.Text -> T.Text -> IO ()
 updateGistText _ _ _ = return ()
 
--- FIXME(#123): renderAllQueues is not implemented
-renderAllQueues :: M.Map AuthorId [FridayVideo] -> T.Text
-renderAllQueues _ = ""
+renderFridayVideo :: FridayVideo -> T.Text
+renderFridayVideo video =
+  T.pack $
+  printf
+    "|%s|%s|%s|"
+    (show $ fridayVideoSubTime video)
+    (fridayVideoAuthorDisplayName video)
+    (fridayVideoSubText video)
+
+renderQueue :: [FridayVideo] -> T.Text
+renderQueue [] = ""
+renderQueue videos@(FridayVideo {fridayVideoAuthorDisplayName = name}:_) =
+  T.unlines $
+  [ "** " <> name
+  , ""
+  , T.pack $ printf "Video Count: %d" $ length videos
+  , ""
+  , "|Date|Submitter|Video|"
+  , "|-"
+  ] <>
+  map renderFridayVideo videos <>
+  [""]
+
+-- TODO(#130): renderAllQueues does not render thumbnails of the videos
+renderAllQueues :: [[FridayVideo]] -> T.Text
+renderAllQueues allQueues = header <> T.concat (map renderQueue allQueues)
+  where
+    header :: T.Text
+    header =
+      T.unlines
+        [ "* Friday Queue"
+        , ""
+        , "Use ~!friday~ command to put a video here (only for trusted and subs)."
+        , "*Any video can be skipped if the streamer finds it boring.*"
+        , ""
+        ]

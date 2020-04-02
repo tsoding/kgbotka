@@ -82,7 +82,7 @@ fetchQueueByAuthorId dbConn authorId =
          AND authorId = :authorId;|]
     [":authorId" := authorId]
 
-fetchAllQueues :: Connection -> IO (M.Map AuthorId [FridayVideo])
+fetchAllQueues :: Connection -> IO [[FridayVideo]]
 fetchAllQueues dbConn = do
   authorIds <-
     queryNamed
@@ -92,10 +92,7 @@ fetchAllQueues dbConn = do
            WHERE watchedAt is NULL
            GROUP BY authorId;|]
       []
-  M.fromList <$>
-    mapM
-      (\authorId -> (authorId, ) <$> fetchQueueByAuthorId dbConn authorId)
-      authorIds
+  mapM (fetchQueueByAuthorId dbConn) authorIds
 
 queueSlice :: Connection -> IO (M.Map AuthorId FridayVideo)
 queueSlice conn =
