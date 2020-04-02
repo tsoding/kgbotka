@@ -8,7 +8,9 @@ module KGBotka.GithubThread
 import Control.Concurrent
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import Data.Aeson
 import qualified Data.Text as T
+import Data.Text.Encoding
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Config
 import KGBotka.Friday
@@ -64,7 +66,13 @@ githubThreadLoop gts = do
   case fridayGist of
     Just (gistId, gistText) -> do
       logEntry gts $ LogEntry "GITHUB" "Updating Friday Video Queue gist..."
-      updateGistText (gtsManager gts) gistId gistText
+      -- TODO(#132): github thread update friday gist every minute regardless of whether it's even needed
+      updateGistFile (gtsManager gts) (configGithubToken $ gtsConfig gts) $
+        GistFile
+          { gistFileId = gistId
+          , gistFileText = gistText
+          , gistFileName = "Friday.org"
+          }
     Nothing ->
       logEntry gts $
       LogEntry
@@ -73,9 +81,38 @@ githubThreadLoop gts = do
         \but the gist id is not setup"
   githubThreadLoop gts
 
--- FIXME(#122): updateGistText is not implemented
-updateGistText :: Manager -> T.Text -> T.Text -> IO ()
-updateGistText _ _ _ = return ()
+data GistFile = GistFile
+  { gistFileId :: T.Text
+  , gistFileName :: T.Text
+  , gistFileText :: T.Text
+  }
+
+updateGistFile :: Manager -> GithubToken -> GistFile -> IO ()
+updateGistFile manager (GithubToken token) gistFile = do
+  let payload =
+        object
+          [ "files" .=
+            object
+              [ gistFileName gistFile .=
+                object ["content" .= gistFileText gistFile]
+              ]
+          ]
+  request <-
+    parseRequest $
+    T.unpack $ "https://api.github.com/gists/" <> gistFileId gistFile
+  -- TODO(#133): GitHub API errors are not logged properly
+  _ <-
+    httpLbs
+      (request
+         { method = "PATCH"
+         , requestBody = RequestBodyLBS $ encode payload
+         , requestHeaders =
+             ("User-Agent", encodeUtf8 "KGBotka") :
+             ("Authorization", encodeUtf8 $ "token " <> token) :
+             requestHeaders request
+         })
+      manager
+  return ()
 
 renderFridayVideo :: FridayVideo -> T.Text
 renderFridayVideo video =
