@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TupleSections #-}
 
 module KGBotka.Friday
   ( submitVideo
@@ -26,7 +27,7 @@ import Database.SQLite.Simple.ToField
 
 newtype AuthorId =
   AuthorId T.Text
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 instance FromField AuthorId where
   fromField x = AuthorId <$> fromField x
@@ -47,7 +48,7 @@ data FridayVideo = FridayVideo
   , fridayVideoAuthorId :: AuthorId
   , fridayVideoAuthorDisplayName :: T.Text
   , fridayVideoWatchedAt :: Maybe UTCTime
-  }
+  } deriving (Show)
 
 instance FromRow FridayVideo where
   fromRow =
@@ -66,9 +67,35 @@ submitVideo conn subText authorId authorDisplayName =
     , ":authorDisplayName" := authorDisplayName
     ]
 
--- FIXME(#121): allQueues is not implemented
+fetchQueueByAuthorId :: Connection -> AuthorId -> IO [FridayVideo]
+fetchQueueByAuthorId dbConn authorId =
+  queryNamed
+    dbConn
+    [sql|SELECT id,
+                submissionText,
+                submissionTime,
+                authorId,
+                authorDisplayName,
+                watchedAt
+         FROM FridayVideo
+         WHERE watchedAt is NULL
+         AND authorId = :authorId;|]
+    [":authorId" := authorId]
+
 fetchAllQueues :: Connection -> IO (M.Map AuthorId [FridayVideo])
-fetchAllQueues _ = return M.empty
+fetchAllQueues dbConn = do
+  authorIds <-
+    queryNamed
+      dbConn
+      [sql|SELECT authorId
+           FROM FridayVideo
+           WHERE watchedAt is NULL
+           GROUP BY authorId;|]
+      []
+  M.fromList <$>
+    mapM
+      (\authorId -> (authorId, ) <$> fetchQueueByAuthorId dbConn authorId)
+      authorIds
 
 queueSlice :: Connection -> IO (M.Map AuthorId FridayVideo)
 queueSlice conn =
