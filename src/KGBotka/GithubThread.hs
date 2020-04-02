@@ -100,7 +100,7 @@ updateGistFile manager (GithubToken token) gistFile = do
   request <-
     parseRequest $
     T.unpack $ "https://api.github.com/gists/" <> gistFileId gistFile
-  -- TODO: GitHub API errors are not logged properly
+  -- TODO(#133): GitHub API errors are not logged properly
   _ <-
     httpLbs
       (request
