@@ -66,7 +66,7 @@ githubThreadLoop gts = do
   case fridayGist of
     Just (gistId, gistText) -> do
       logEntry gts $ LogEntry "GITHUB" "Updating Friday Video Queue gist..."
-      -- TODO: github thread update friday gist every minute regardless of whether it's even needed
+      -- TODO(#132): github thread update friday gist every minute regardless of whether it's even needed
       updateGistFile (gtsManager gts) (configGithubToken $ gtsConfig gts) $
         GistFile
           { gistFileId = gistId
