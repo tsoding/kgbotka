@@ -93,13 +93,13 @@ updateGistFile manager (GithubToken token) gistFile = do
         object
           [ "files" .=
             object
-              [ (gistFileName gistFile) .=
-                object ["content" .= (gistFileText gistFile)]
+              [ gistFileName gistFile .=
+                object ["content" .= gistFileText gistFile]
               ]
           ]
   request <-
     parseRequest $
-    T.unpack $ "https://api.github.com/gists/" <> (gistFileId gistFile)
+    T.unpack $ "https://api.github.com/gists/" <> gistFileId gistFile
   -- TODO: GitHub API errors are not logged properly
   _ <-
     httpLbs
