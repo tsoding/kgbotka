@@ -12,8 +12,15 @@ data Config = Config
   , configGithub :: !(Maybe ConfigGithub)
   } deriving (Eq)
 
+newtype GithubToken = GithubToken
+  { githubTokenText :: T.Text
+  } deriving (Eq)
+
+instance FromJSON GithubToken where
+  parseJSON v = GithubToken <$> parseJSON v
+
 newtype ConfigGithub = ConfigGithub
-  { configGithubToken :: T.Text
+  { configGithubToken :: GithubToken
   } deriving (Eq)
 
 data ConfigTwitch = ConfigTwitch
