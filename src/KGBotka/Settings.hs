@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+
 module KGBotka.Settings
   ( Settings(..)
   , fetchSettings
@@ -5,12 +8,18 @@ module KGBotka.Settings
 
 import qualified Data.Text as T
 import Database.SQLite.Simple
+import Database.SQLite.Simple.QQ
 
 -- FIXME(#124): Difference between KGBotka.Settings and KGBotka.Config is not clear
 newtype Settings = Settings
   { settingsFridayGithubGistId :: Maybe T.Text
-  }
+  } deriving Show
 
--- FIXME(#125): fetchSettings is not implemented
+deserializeSettings :: [(T.Text, T.Text)] -> Settings
+deserializeSettings settingsMap =
+  Settings
+    {settingsFridayGithubGistId = lookup "fridayGithubGistId" settingsMap}
+
 fetchSettings :: Connection -> IO Settings
-fetchSettings _ = return $ Settings Nothing
+fetchSettings dbConn =
+  deserializeSettings <$> queryNamed dbConn [sql|SELECT * FROM Settings;|] []

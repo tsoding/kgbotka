@@ -120,6 +120,11 @@ migrations =
              message TEXT NOT NULL,
              messageTime DATETIME DEFAULT (datetime('now')) NOT NULL
            )|]
+  , Migration
+      [sql|CREATE TABLE Settings (
+             name TEXT NOT NULL,
+             value TEXT NOT NULL
+           )|]
   ]
 
 withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b
