@@ -48,7 +48,7 @@ data FridayVideo = FridayVideo
   , fridayVideoAuthorId :: AuthorId
   , fridayVideoAuthorDisplayName :: T.Text
   , fridayVideoWatchedAt :: Maybe UTCTime
-  } deriving Show
+  } deriving (Show)
 
 instance FromRow FridayVideo where
   fromRow =

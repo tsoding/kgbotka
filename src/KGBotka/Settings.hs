@@ -13,7 +13,7 @@ import Database.SQLite.Simple.QQ
 -- FIXME(#124): Difference between KGBotka.Settings and KGBotka.Config is not clear
 newtype Settings = Settings
   { settingsFridayGithubGistId :: Maybe T.Text
-  } deriving Show
+  } deriving (Show)
 
 deserializeSettings :: [(T.Text, T.Text)] -> Settings
 deserializeSettings settingsMap =
