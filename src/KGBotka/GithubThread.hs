@@ -6,6 +6,8 @@ module KGBotka.GithubThread
   ) where
 
 import Control.Concurrent
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
 import Data.Aeson
 import qualified Data.Text as T
 import Data.Text.Encoding
@@ -17,8 +19,6 @@ import KGBotka.Queue
 import KGBotka.Settings
 import Network.HTTP.Client
 import Text.Printf
-import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Class
 
 data GithubThreadParams = GithubThreadParams
   { gtpSqliteConnection :: !(MVar Sqlite.Connection)

@@ -172,7 +172,8 @@ eventHandler dts dis (MessageCreate m)
                            }
                    , ecLogQueue = dtsLogQueue dts
                    , ecManager = dtsManager dts
-                   , ecFridayGistUpdateRequired = dtsFridayGistUpdateRequired dts
+                   , ecFridayGistUpdateRequired =
+                       dtsFridayGistUpdateRequired dts
                    }
                case evalResult of
                  Right commandResponse ->
