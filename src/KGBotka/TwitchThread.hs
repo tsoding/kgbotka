@@ -213,7 +213,7 @@ processUserMsgs dbConn tts messages = do
   let botLogin = configTwitchAccount $ ttsConfig tts
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
-    logEntry tts $ LogEntry "TWITCH" $ T.pack $ show msg
+    logEntry tts $ LogEntry "TWITCH" $ T.pack $ show cookedMsg
     case cookedMsg of
       Privmsg userInfo channelId message ->
         case userIdFromRawIrcMsg msg of
