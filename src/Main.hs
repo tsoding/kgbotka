@@ -154,6 +154,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , ttpLogQueue = WriteQueue rawLogQueue
               , ttpManager = manager
               , ttpConfig = configTwitch config
+              , ttpFridayGistUpdateRequired = fridayGistUpdateRequired
               }
           , discordThread $
             DiscordThreadParams
@@ -161,6 +162,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , dtpLogQueue = WriteQueue rawLogQueue
               , dtpSqliteConnection = sqliteConnection
               , dtpManager = manager
+              , dtpFridayGistUpdateRequired = fridayGistUpdateRequired
               }
           , loggingThread "kgbotka.log" $ ReadQueue rawLogQueue
           , githubThread $

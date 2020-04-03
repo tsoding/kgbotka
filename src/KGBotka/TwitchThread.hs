@@ -77,6 +77,7 @@ data TwitchThreadParams = TwitchThreadParams
   , ttpSqliteConnection :: !(MVar Sqlite.Connection)
   , ttpManager :: !HTTP.Manager
   , ttpConfig :: Maybe ConfigTwitch
+  , ttpFridayGistUpdateRequired :: !(MVar ())
   }
 
 instance ProvidesLogging TwitchThreadParams where
@@ -91,6 +92,7 @@ data TwitchThreadState = TwitchThreadState
   , ttsConfig :: ConfigTwitch
   , ttsIncomingQueue :: !(ReadQueue RawIrcMsg)
   , ttsOutgoingQueue :: !(WriteQueue RawIrcMsg)
+  , ttsFridayGistUpdateRequired :: !(MVar ())
   }
 
 instance ProvidesLogging TwitchThreadState where
@@ -182,6 +184,7 @@ twitchThread ttp =
             , ttsConfig = config
             , ttsIncomingQueue = ReadQueue incomingIrcQueue
             , ttsOutgoingQueue = WriteQueue outgoingIrcQueue
+            , ttsFridayGistUpdateRequired = ttpFridayGistUpdateRequired ttp
             }
     Nothing ->
       atomically $
@@ -274,6 +277,8 @@ processUserMsgs dbConn tts messages = do
                                 }
                         , ecLogQueue = logQueue tts
                         , ecManager = manager
+                        , ecFridayGistUpdateRequired =
+                            ttsFridayGistUpdateRequired tts
                         }
                     atomically $
                       case evalResult of
