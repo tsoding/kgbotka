@@ -6,8 +6,6 @@ module KGBotka.GithubThread
   ) where
 
 import Control.Concurrent
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Maybe
 import Data.Aeson
 import qualified Data.Text as T
 import Data.Text.Encoding
@@ -19,12 +17,15 @@ import KGBotka.Queue
 import KGBotka.Settings
 import Network.HTTP.Client
 import Text.Printf
+import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Class
 
 data GithubThreadParams = GithubThreadParams
   { gtpSqliteConnection :: !(MVar Sqlite.Connection)
   , gtpManager :: !Manager
   , gtpLogQueue :: !(WriteQueue LogEntry)
   , gtpConfig :: !(Maybe ConfigGithub)
+  , gtpUpdateRequired :: MVar ()
   }
 
 instance ProvidesLogging GithubThreadParams where
@@ -35,6 +36,7 @@ data GithubThreadState = GithubThreadState
   , gtsManager :: !Manager
   , gtsLogQueue :: !(WriteQueue LogEntry)
   , gtsConfig :: ConfigGithub
+  , gtsUpdateRequired :: MVar ()
   }
 
 instance ProvidesLogging GithubThreadState where
@@ -48,6 +50,7 @@ githubThread gtp@GithubThreadParams {gtpConfig = Just config} =
       , gtsManager = gtpManager gtp
       , gtsLogQueue = gtpLogQueue gtp
       , gtsConfig = config
+      , gtsUpdateRequired = gtpUpdateRequired gtp
       }
 githubThread gtp =
   logEntry gtp $
@@ -56,29 +59,32 @@ githubThread gtp =
 githubThreadLoop :: GithubThreadState -> IO ()
 githubThreadLoop gts = do
   threadDelay $ 60 * 1000 * 1000
-  fridayGist <-
+  takeMVar (gtsUpdateRequired gts)
+  logEntry gts $ LogEntry "GITHUB" "Trying to update Friday Video Queue gist..."
+  maybeFridayGistFile <-
     withMVar (gtsSqliteConnection gts) $ \conn ->
       Sqlite.withTransaction conn $
       runMaybeT $ do
-        gistId <- MaybeT $ settingsFridayGithubGistId <$> fetchSettings conn
+        gistId <- MaybeT (settingsFridayGithubGistId <$> fetchSettings conn)
         gistText <- lift $ renderAllQueues <$> fetchAllQueues conn
-        return (gistId, gistText)
-  case fridayGist of
-    Just (gistId, gistText) -> do
+        return $
+          GistFile
+            { gistFileId = gistId
+            , gistFileText = gistText
+            , gistFileName = "Friday.org"
+            }
+  case maybeFridayGistFile of
+    Just fridayGistFile -> do
       logEntry gts $ LogEntry "GITHUB" "Updating Friday Video Queue gist..."
-      -- TODO(#132): github thread update friday gist every minute regardless of whether it's even needed
-      updateGistFile (gtsManager gts) (configGithubToken $ gtsConfig gts) $
-        GistFile
-          { gistFileId = gistId
-          , gistFileText = gistText
-          , gistFileName = "Friday.org"
-          }
+      updateGistFile
+        (gtsManager gts)
+        (configGithubToken $ gtsConfig gts)
+        fridayGistFile
     Nothing ->
       logEntry gts $
       LogEntry
         "GITHUB"
-        "[WARN] Tried to update Friday Video Queue, \
-        \but the gist id is not setup"
+        "fridayGithubGistId is not set in the settings. Nothing to update."
   githubThreadLoop gts
 
 data GistFile = GistFile
@@ -139,7 +145,7 @@ renderQueue videos@(FridayVideo {fridayVideoAuthorDisplayName = name}:_) =
 
 -- TODO(#130): renderAllQueues does not render thumbnails of the videos
 renderAllQueues :: [[FridayVideo]] -> T.Text
-renderAllQueues allQueues = header <> T.concat (map renderQueue allQueues)
+renderAllQueues allQueues = header <> body
   where
     header :: T.Text
     header =
@@ -150,3 +156,8 @@ renderAllQueues allQueues = header <> T.concat (map renderQueue allQueues)
         , "*Any video can be skipped if the streamer finds it boring.*"
         , ""
         ]
+    body :: T.Text
+    body =
+      case allQueues of
+        [] -> "No videos were submitted"
+        _ -> T.concat (map renderQueue allQueues)

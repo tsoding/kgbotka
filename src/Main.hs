@@ -140,6 +140,7 @@ mainWithArgs (configPath:databasePath:_) = do
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
       sqliteConnection <- newEmptyMVar
+      fridayGistUpdateRequired <- newMVar ()
       -- TODO(#67): there is no supavisah that restarts essential threads on crashing
       Sqlite.withConnection databasePath $ \dbConn -> do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
@@ -168,6 +169,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , gtpManager = manager
               , gtpLogQueue = WriteQueue rawLogQueue
               , gtpConfig = configGithub config
+              , gtpUpdateRequired = fridayGistUpdateRequired
               }
           ] $ \_ ->
           backdoorThread $
