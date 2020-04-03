@@ -11,6 +11,7 @@ module KGBotka.Eval
   ) where
 
 import Control.Applicative
+import Control.Concurrent
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Eval
@@ -72,6 +73,7 @@ data EvalContext = EvalContext
   , ecSqliteConnection :: !Sqlite.Connection
   , ecManager :: !HTTP.Manager
   , ecLogQueue :: !(WriteQueue LogEntry)
+  , ecFridayGistUpdateRequired :: !(MVar ())
   , ecPlatformContext :: !EvalPlatformContext
   }
 
@@ -200,6 +202,11 @@ failIfNotAuthority = do
       | authorId == ownerId -> return ()
     _ -> throwExceptEval $ EvalError "Only for mr strimmer :)"
 
+requireFridayGistUpdate :: Eval ()
+requireFridayGistUpdate = do
+  fridayGistUpdateRequired <- ecFridayGistUpdateRequired <$> getEval
+  void $ liftIO $ tryPutMVar fridayGistUpdateRequired ()
+
 evalExpr :: Expr -> Eval T.Text
 evalExpr (TextExpr t) = return t
 evalExpr (FunCallExpr "or" args) =
@@ -222,6 +229,7 @@ evalExpr (FunCallExpr "nextvideo" _) = do
   fridayVideo <-
     liftExceptT $
     maybeToExceptT (EvalError "Video queue is empty") $ nextVideo dbConn
+  requireFridayGistUpdate
   return $ fridayVideoAsMessage fridayVideo
 -- FIXME(#39): %friday does not inform how many times a video was suggested
 evalExpr (FunCallExpr "friday" args) = do
@@ -241,6 +249,7 @@ evalExpr (FunCallExpr "friday" args) = do
                 , T.pack $ show $ userId $ edcAuthor edc)
       liftIO $
         submitVideo dbConn submissionText (AuthorId authorId) authorDisplayName
+      requireFridayGistUpdate
       return "Added your video to suggestions"
     Left Nothing ->
       throwExceptEval $ EvalError "Your suggestion should contain YouTube link"

@@ -36,6 +36,7 @@ data DiscordThreadParams = DiscordThreadParams
   , dtpLogQueue :: !(WriteQueue LogEntry)
   , dtpSqliteConnection :: !(MVar Sqlite.Connection)
   , dtpManager :: !HTTP.Manager
+  , dtpFridayGistUpdateRequired :: !(MVar ())
   }
 
 data DiscordThreadState = DiscordThreadState
@@ -43,6 +44,7 @@ data DiscordThreadState = DiscordThreadState
   , dtsSqliteConnection :: !(MVar Sqlite.Connection)
   , dtsManager :: !HTTP.Manager
   , dtsCurrentUser :: !(MVar User)
+  , dtsFridayGistUpdateRequired :: !(MVar ())
   }
 
 instance ProvidesLogging DiscordThreadState where
@@ -62,6 +64,7 @@ discordThread dtp =
               , dtsSqliteConnection = dtpSqliteConnection dtp
               , dtsManager = dtpManager dtp
               , dtsCurrentUser = currentUser
+              , dtsFridayGistUpdateRequired = dtpFridayGistUpdateRequired dtp
               }
       userFacingError <-
         runDiscord $
@@ -169,6 +172,8 @@ eventHandler dts dis (MessageCreate m)
                            }
                    , ecLogQueue = dtsLogQueue dts
                    , ecManager = dtsManager dts
+                   , ecFridayGistUpdateRequired =
+                       dtsFridayGistUpdateRequired dts
                    }
                case evalResult of
                  Right commandResponse ->

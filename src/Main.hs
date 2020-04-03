@@ -140,6 +140,7 @@ mainWithArgs (configPath:databasePath:_) = do
       joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
       sqliteConnection <- newEmptyMVar
+      fridayGistUpdateRequired <- newMVar ()
       -- TODO(#67): there is no supavisah that restarts essential threads on crashing
       Sqlite.withConnection databasePath $ \dbConn -> do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn migrations
@@ -153,6 +154,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , ttpLogQueue = WriteQueue rawLogQueue
               , ttpManager = manager
               , ttpConfig = configTwitch config
+              , ttpFridayGistUpdateRequired = fridayGistUpdateRequired
               }
           , discordThread $
             DiscordThreadParams
@@ -160,6 +162,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , dtpLogQueue = WriteQueue rawLogQueue
               , dtpSqliteConnection = sqliteConnection
               , dtpManager = manager
+              , dtpFridayGistUpdateRequired = fridayGistUpdateRequired
               }
           , loggingThread "kgbotka.log" $ ReadQueue rawLogQueue
           , githubThread $
@@ -168,6 +171,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , gtpManager = manager
               , gtpLogQueue = WriteQueue rawLogQueue
               , gtpConfig = configGithub config
+              , gtpUpdateRequired = fridayGistUpdateRequired
               }
           ] $ \_ ->
           backdoorThread $
