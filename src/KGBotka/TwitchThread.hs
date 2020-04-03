@@ -13,10 +13,12 @@ import Control.Monad
 import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
+import Data.Char
 import Data.Foldable
 import Data.List
 import qualified Data.Map as M
 import Data.Maybe
+import Data.Monoid
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
@@ -191,6 +193,12 @@ twitchThread ttp =
       writeQueue (ttpLogQueue ttp) $
       LogEntry "TWITCH" "[ERROR] Twitch configuration not found"
 
+countForbidden :: T.Text -> Int
+countForbidden = T.length . T.filter (not . isAllowed)
+
+isAllowed :: Char -> Bool
+isAllowed = getAny . foldMap (Any .) [isAlpha, isNumber, isSpace, isPunctuation]
+
 processControlMsgs :: TwitchThreadState -> [RawIrcMsg] -> IO ()
 processControlMsgs tts messages = do
   let outgoingQueue = ttsOutgoingQueue tts
@@ -234,62 +242,79 @@ processUserMsgs dbConn tts messages = do
                   badgeRoles
                   message
                 addMarkovSentence dbConn message
-                -- FIXME(#31): Link filtering is not disablable
-                case parseCommandPipe (CallPrefix "$") (PipeSuffix "|") message of
-                  [] ->
-                    when
-                      (T.toUpper (configTwitchAccount $ ttsConfig tts) `T.isInfixOf`
-                       T.toUpper message) $ do
-                      markovResponse <- genMarkovSentence dbConn
-                      atomically $
-                        writeQueue outgoingQueue $
-                        ircPrivmsg (idText channelId) $
-                        twitchCmdEscape $
-                        T.pack $ printf "@%s %s" senderName markovResponse
-                  pipe -> do
-                    evalResult <-
-                      runExceptT $
-                      evalStateT (runEvalT $ evalCommandPipe pipe) $
-                      EvalContext
-                        { ecVars = M.fromList [("sender", senderName)]
-                        , ecSqliteConnection = dbConn
-                        , ecPlatformContext =
-                            Etc
-                              EvalTwitchContext
-                                { etcSenderId = senderId
-                                , etcSenderName = senderName
-                                , etcChannel = TwitchIrcChannel channelId
-                                , etcBadgeRoles = badgeRoles
-                                , etcRoles = roles
-                                , etcClientId =
-                                    configTwitchClientId $ ttsConfig tts
-                                , etcTwitchEmotes =
-                                    do emotesTag <-
-                                         lookupEntryValue "emotes" $
-                                         _msgTags msg
-                                       if not $ T.null emotesTag
-                                         then do
-                                           emoteDesc <-
-                                             listToMaybe $
-                                             T.splitOn "/" emotesTag
-                                           listToMaybe $ T.splitOn ":" emoteDesc
-                                         else Nothing
-                                }
-                        , ecLogQueue = logQueue tts
-                        , ecManager = manager
-                        , ecFridayGistUpdateRequired =
-                            ttsFridayGistUpdateRequired tts
-                        }
-                    atomically $
-                      case evalResult of
-                        Right commandResponse ->
-                          writeQueue outgoingQueue $
-                          ircPrivmsg (idText channelId) $
-                          twitchCmdEscape commandResponse
-                        Left (EvalError userMsg) ->
-                          writeQueue outgoingQueue $
-                          ircPrivmsg (idText channelId) $
-                          twitchCmdEscape userMsg
+                let forbiddenCharLimit = 100
+                if countForbidden message < forbiddenCharLimit
+                  then case parseCommandPipe
+                              (CallPrefix "$")
+                              (PipeSuffix "|")
+                              message of
+                         [] ->
+                           when
+                             (T.toUpper (configTwitchAccount $ ttsConfig tts) `T.isInfixOf`
+                              T.toUpper message) $ do
+                             markovResponse <- genMarkovSentence dbConn
+                             atomically $
+                               writeQueue outgoingQueue $
+                               ircPrivmsg (idText channelId) $
+                               twitchCmdEscape $
+                               T.pack $
+                               printf "@%s %s" senderName markovResponse
+                         pipe -> do
+                           evalResult <-
+                             runExceptT $
+                             evalStateT (runEvalT $ evalCommandPipe pipe) $
+                             EvalContext
+                               { ecVars = M.fromList [("sender", senderName)]
+                               , ecSqliteConnection = dbConn
+                               , ecPlatformContext =
+                                   Etc
+                                     EvalTwitchContext
+                                       { etcSenderId = senderId
+                                       , etcSenderName = senderName
+                                       , etcChannel = TwitchIrcChannel channelId
+                                       , etcBadgeRoles = badgeRoles
+                                       , etcRoles = roles
+                                       , etcClientId =
+                                           configTwitchClientId $ ttsConfig tts
+                                       , etcTwitchEmotes =
+                                           do emotesTag <-
+                                                lookupEntryValue "emotes" $
+                                                _msgTags msg
+                                              if not $ T.null emotesTag
+                                                then do
+                                                  emoteDesc <-
+                                                    listToMaybe $
+                                                    T.splitOn "/" emotesTag
+                                                  listToMaybe $
+                                                    T.splitOn ":" emoteDesc
+                                                else Nothing
+                                       }
+                               , ecLogQueue = logQueue tts
+                               , ecManager = manager
+                               , ecFridayGistUpdateRequired =
+                                   ttsFridayGistUpdateRequired tts
+                               }
+                           atomically $
+                             case evalResult of
+                               Right commandResponse ->
+                                 writeQueue outgoingQueue $
+                                 ircPrivmsg (idText channelId) $
+                                 twitchCmdEscape commandResponse
+                               Left (EvalError userMsg) ->
+                                 writeQueue outgoingQueue $
+                                 ircPrivmsg (idText channelId) $
+                                 twitchCmdEscape userMsg
+                  else atomically $ do
+                         writeQueue outgoingQueue $
+                           ircPrivmsg (idText channelId) $
+                           T.pack $
+                           printf "/timeout %s %d" senderName (30 :: Int)
+                         writeQueue outgoingQueue $
+                           ircPrivmsg (idText channelId) $
+                           T.pack $
+                           printf
+                             "@%s ASCII spam is not allowed. Use !asciify command."
+                             senderName
               else logEntry tts $
                    LogEntry "TWITCH" "WARNING: Bot received its own message"
           Nothing ->
