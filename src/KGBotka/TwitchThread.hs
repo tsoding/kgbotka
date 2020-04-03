@@ -13,10 +13,12 @@ import Control.Monad
 import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
+import Data.Char
 import Data.Foldable
 import Data.List
 import qualified Data.Map as M
 import Data.Maybe
+import Data.Monoid
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
@@ -39,8 +41,6 @@ import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
-import Data.Char
-import Data.Monoid
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
