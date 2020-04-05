@@ -8,5 +8,5 @@ Twitch/Discord Chat Bot that works for KGB ![monkaS](https://cdn.betterttv.net/e
 
 ```console
 $ cabal v2-build
-$ cabal v2-run secret.json database.db
+$ cabal v2-run kgbotka secret.json database.db
 ```
