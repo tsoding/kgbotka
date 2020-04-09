@@ -274,7 +274,7 @@ processUserMsgs dbConn tts messages = do
                                      , ("month", T.pack $ show monthNum)
                                      , ("day", T.pack $ show dayNum)
                                      , ("date", T.pack $ showGregorian day)
-                                     -- TODO: %times var is not available
+                                     -- TODO(#144): %times var is not available
                                      , ("times", "0")
                                      ]
                                , ecSqliteConnection = dbConn
