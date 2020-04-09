@@ -26,7 +26,7 @@ import System.Environment
 import System.Exit
 import System.IO
 
--- TODO: Periodic evaluation
+-- TODO(#143): Periodic evaluation
 withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b
 withForkIOs ios = bracket (traverse forkIO ios) (traverse_ killThread)
 
