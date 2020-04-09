@@ -8,8 +8,8 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.Command
 import KGBotka.Migration
-import System.Environment
 import System.Directory
+import System.Environment
 
 -- TODO(#141): MigrationTool does not convert Friday queue
 -- TODO(#142): MigrationTool does not convert Twitch and Discord logs
