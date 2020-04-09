@@ -3,18 +3,17 @@
 
 module Main where
 
-import System.Environment
+import Data.Foldable
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
-import KGBotka.Migration
 import KGBotka.Command
-import Data.Foldable
+import KGBotka.Migration
+import System.Environment
 
 -- TODO: MigrationTool does not convert Friday queue
 -- TODO: MigrationTool does not convert Twitch and Discord logs
 -- TODO: MigrationTool does not convert Trusted users
 -- TODO: MigrationTool does not convert quote database
-
 -- TODO: populateHyperNerdBuiltinCommands does not support !trust and !untrust commands
 -- TODO: populateHyperNerdBuiltinCommands does not support !updatebttv !updateffz
 populateHyperNerdBuiltinCommands :: Connection -> IO ()
@@ -41,9 +40,7 @@ populateHyperNerdBuiltinCommands dbConn = do
   addCommand dbConn "videoq" "%videoq(%1)"
 
 -- TODO: MigrationTool should rather called ConvertionTool or something like that.
-
 -- TODO: Perform database conversion on CI for testing purposes
-
 -- TODO: convertCommands does not convert the amount of times the command was executed
 convertCommands :: Connection -> IO ()
 convertCommands dbConn = do
@@ -89,13 +86,10 @@ main = do
           executeNamed dbConn [sql|DROP TABLE Migrations|] []
           migrateDatabase dbConn kgbotkaMigrations
           executeNamed dbConn [sql|DROP TABLE EntityId|] []
-
           putStrLn "[INFO] Populating HyperNerd builtin commands..."
           populateHyperNerdBuiltinCommands dbConn
-
           putStrLn "[INFO] Converting commands..."
           convertCommands dbConn
-
           putStrLn "[INFO] Converting aliases..."
           convertAliases dbConn
       putStrLn "OK"

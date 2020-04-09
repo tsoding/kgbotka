@@ -21,6 +21,7 @@ import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
 import Hookup
 import Irc.Commands
@@ -41,7 +42,6 @@ import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
-import Data.Time
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
