@@ -7,3 +7,4 @@ dist/
 *.swp
 *.db-shm
 *.db-wal
+*.db.orig

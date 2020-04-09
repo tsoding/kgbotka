@@ -158,6 +158,7 @@ eventHandler dts dis (MessageCreate m)
                evalResult <-
                  runExceptT $
                  evalStateT (runEvalT $ evalCommandPipe pipe) $
+                 -- TODO(#140): DiscordThread evaluation environment does not have any builtin vars
                  EvalContext
                    { ecVars = M.fromList []
                    , ecSqliteConnection = dbConn

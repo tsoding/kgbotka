@@ -21,6 +21,7 @@ import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
 import Hookup
 import Irc.Commands
@@ -260,11 +261,22 @@ processUserMsgs dbConn tts messages = do
                                T.pack $
                                printf "@%s %s" senderName markovResponse
                          pipe -> do
+                           day <- utctDay <$> getCurrentTime
+                           let (yearNum, monthNum, dayNum) = toGregorian day
                            evalResult <-
                              runExceptT $
                              evalStateT (runEvalT $ evalCommandPipe pipe) $
                              EvalContext
-                               { ecVars = M.fromList [("sender", senderName)]
+                               { ecVars =
+                                   M.fromList
+                                     [ ("sender", senderName)
+                                     , ("year", T.pack $ show yearNum)
+                                     , ("month", T.pack $ show monthNum)
+                                     , ("day", T.pack $ show dayNum)
+                                     , ("date", T.pack $ showGregorian day)
+                                     -- TODO(#144): %times var is not available
+                                     , ("times", "0")
+                                     ]
                                , ecSqliteConnection = dbConn
                                , ecPlatformContext =
                                    Etc
