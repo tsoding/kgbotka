@@ -9,6 +9,7 @@ import Database.SQLite.Simple.QQ
 import KGBotka.Command
 import KGBotka.Migration
 import System.Environment
+import System.Directory
 
 -- TODO(#141): MigrationTool does not convert Friday queue
 -- TODO(#142): MigrationTool does not convert Twitch and Discord logs
@@ -80,6 +81,7 @@ main = do
   -- TODO(#153): make a backup of the database before trying to convert it
   case args of
     dbPath:_ -> do
+      copyFile dbPath (dbPath ++ ".old")
       withConnection dbPath $ \dbConn ->
         withTransaction dbConn $ do
           putStrLn "[INFO] Preparing the migration table..."
