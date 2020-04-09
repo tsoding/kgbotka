@@ -50,6 +50,31 @@ build-type:          Simple
 -- README.
 extra-source-files:  CHANGELOG.md
 
+executable MigrationTool
+  ghc-options:  -threaded -Wall -Werror
+
+  main-is:      MigrationTool.hs
+
+  other-modules:       KGBotka.Migration
+                     , KGBotka.Command
+                     , KGBotka.Http
+                     , KGBotka.TwitchAPI
+
+  build-depends:       base >=4.12 && <4.13
+                     , sqlite-simple >=0.4.16 && <0.5
+                     , text >=1.2.4 && <1.3
+                     , time >=1.8.0 && <1.9
+                     , discord-haskell >= 1.4.0 && < 1.5.0
+                     , http-client >=0.6.4 && <0.7
+                     , http-client-tls >=0.3.5 && <0.4
+                     , aeson >=1.4.6 && <1.5
+                     , irc-core >=2.7 && <2.8
+
+  -- Directories containing source files.
+  hs-source-dirs:      src
+
+  -- Base language which the package is written in.
+  default-language:    Haskell2010
 
 executable kgbotka
   ghc-options: -threaded -Wall -Werror
@@ -119,4 +144,3 @@ executable kgbotka
 
   -- Base language which the package is written in.
   default-language:    Haskell2010
-

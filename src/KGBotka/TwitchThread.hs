@@ -41,6 +41,7 @@ import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
+import Data.Time
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
@@ -260,11 +261,22 @@ processUserMsgs dbConn tts messages = do
                                T.pack $
                                printf "@%s %s" senderName markovResponse
                          pipe -> do
+                           day <- utctDay <$> getCurrentTime
+                           let (yearNum, monthNum, dayNum) = toGregorian day
                            evalResult <-
                              runExceptT $
                              evalStateT (runEvalT $ evalCommandPipe pipe) $
                              EvalContext
-                               { ecVars = M.fromList [("sender", senderName)]
+                               { ecVars =
+                                   M.fromList
+                                     [ ("sender", senderName)
+                                     , ("year", T.pack $ show yearNum)
+                                     , ("month", T.pack $ show monthNum)
+                                     , ("day", T.pack $ show dayNum)
+                                     , ("date", T.pack $ showGregorian day)
+                                     -- TODO: %times var is not available
+                                     , ("times", "0")
+                                     ]
                                , ecSqliteConnection = dbConn
                                , ecPlatformContext =
                                    Etc
