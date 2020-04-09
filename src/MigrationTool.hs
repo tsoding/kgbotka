@@ -77,7 +77,7 @@ convertAliases dbConn = do
 main :: IO ()
 main = do
   args <- getArgs
-  -- TODO: make a backup of the database before trying to convert it
+  -- TODO(#153): make a backup of the database before trying to convert it
   case args of
     dbPath:_ -> do
       withConnection dbPath $ \dbConn ->
