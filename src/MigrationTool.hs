@@ -75,9 +75,7 @@ convertAliases dbConn = do
       []
   -- TODO: convertAliases silently ignores non existing command
   --   It should print a warning or something
-  traverse_
-    (\(name, redirect) -> addCommandName dbConn name redirect)
-    legacyAliases
+  traverse_ (uncurry $ addCommandName dbConn) legacyAliases
 
 main :: IO ()
 main = do
