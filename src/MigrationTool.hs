@@ -40,7 +40,7 @@ populateHyperNerdBuiltinCommands dbConn = do
   addCommand dbConn "videoq" "%videoq(%1)"
 
 -- TODO(#149): MigrationTool should rather called ConvertionTool or something like that.
--- TODO: Perform database conversion on CI for testing purposes
+-- TODO(#150): Perform database conversion on CI for testing purposes
 -- TODO: convertCommands does not convert the amount of times the command was executed
 convertCommands :: Connection -> IO ()
 convertCommands dbConn = do
