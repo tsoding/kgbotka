@@ -70,7 +70,7 @@ convertAliases dbConn = do
            and ep1.propertyName = 'name'
            and ep2.propertyName = 'redirect'|]
       []
-  -- TODO: convertAliases silently ignores non existing command
+  -- TODO(#152): convertAliases silently ignores non existing command
   --   It should print a warning or something
   traverse_ (uncurry $ addCommandName dbConn) legacyAliases
 
