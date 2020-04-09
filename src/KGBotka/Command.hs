@@ -30,6 +30,7 @@ import Database.SQLite.Simple.QQ
 import Database.SQLite.Simple.ToField
 import Discord.Types
 import KGBotka.TwitchAPI
+
 data Command = Command
   { commandId :: Int
   , commandCode :: T.Text
