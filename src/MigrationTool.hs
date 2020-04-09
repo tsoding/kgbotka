@@ -11,7 +11,7 @@ import KGBotka.Migration
 import System.Environment
 
 -- TODO(#141): MigrationTool does not convert Friday queue
--- TODO: MigrationTool does not convert Twitch and Discord logs
+-- TODO(#142): MigrationTool does not convert Twitch and Discord logs
 -- TODO: MigrationTool does not convert Trusted users
 -- TODO: MigrationTool does not convert quote database
 -- TODO: populateHyperNerdBuiltinCommands does not support !trust and !untrust commands
