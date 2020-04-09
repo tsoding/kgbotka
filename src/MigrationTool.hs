@@ -8,6 +8,7 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.Command
 import KGBotka.Migration
+import System.Directory
 import System.Environment
 
 -- TODO(#141): MigrationTool does not convert Friday queue
@@ -80,6 +81,7 @@ main = do
   -- TODO(#153): make a backup of the database before trying to convert it
   case args of
     dbPath:_ -> do
+      copyFile dbPath (dbPath ++ ".old")
       withConnection dbPath $ \dbConn ->
         withTransaction dbConn $ do
           putStrLn "[INFO] Preparing the migration table..."
