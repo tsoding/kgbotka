@@ -12,7 +12,7 @@ import System.Environment
 
 -- TODO(#141): MigrationTool does not convert Friday queue
 -- TODO(#142): MigrationTool does not convert Twitch and Discord logs
--- TODO: MigrationTool does not convert Trusted users
+-- TODO(#145): MigrationTool does not convert Trusted users
 -- TODO: MigrationTool does not convert quote database
 -- TODO: populateHyperNerdBuiltinCommands does not support !trust and !untrust commands
 -- TODO: populateHyperNerdBuiltinCommands does not support !updatebttv !updateffz
