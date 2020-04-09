@@ -41,7 +41,7 @@ populateHyperNerdBuiltinCommands dbConn = do
 
 -- TODO(#149): MigrationTool should rather called ConvertionTool or something like that.
 -- TODO(#150): Perform database conversion on CI for testing purposes
--- TODO: convertCommands does not convert the amount of times the command was executed
+-- TODO(#151): convertCommands does not convert the amount of times the command was executed
 convertCommands :: Connection -> IO ()
 convertCommands dbConn = do
   legacyCommands <-
