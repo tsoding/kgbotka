@@ -97,7 +97,9 @@ eventHandler dts dis (MessageCreate m)
       currentUser <- tryReadMVar $ dtsCurrentUser dts
       catch
         (Sqlite.withTransaction dbConn $ do
-           logEntry dts $ LogEntry "DISCORD" $ messageText m
+           logEntry dts $
+             LogEntry "DISCORD" $
+             T.pack $ printf "%s: %s" (show $ messageAuthor m) (messageText m)
              -- TODO(#109): DiscordThread doesn't cache the guilds
            guild <-
              case messageGuild m of
