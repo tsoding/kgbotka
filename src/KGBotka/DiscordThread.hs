@@ -85,7 +85,6 @@ discordThreadOnStart dts dis = do
     Right user -> putMVar (dtsCurrentUser dts) user
     Left err -> logEntry dts $ LogEntry "DISCORD" $ T.pack $ show err
 
--- TODO(#96): Discord messages are not logged
 eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
 eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
