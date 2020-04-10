@@ -85,8 +85,6 @@ discordThreadOnStart dts dis = do
     Right user -> putMVar (dtsCurrentUser dts) user
     Left err -> logEntry dts $ LogEntry "DISCORD" $ T.pack $ show err
 
--- TODO(#96): Discord messages are not logged
--- TODO(#97): Discord messages do not contribute to Markov chain
 eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
 eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
@@ -97,7 +95,9 @@ eventHandler dts dis (MessageCreate m)
       currentUser <- tryReadMVar $ dtsCurrentUser dts
       catch
         (Sqlite.withTransaction dbConn $ do
-           logEntry dts $ LogEntry "DISCORD" $ messageText m
+           logEntry dts $
+             LogEntry "DISCORD" $
+             T.pack $ printf "%s: %s" (show $ messageAuthor m) (messageText m)
              -- TODO(#109): DiscordThread doesn't cache the guilds
            guild <-
              case messageGuild m of

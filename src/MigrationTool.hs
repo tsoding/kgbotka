@@ -78,7 +78,6 @@ convertAliases dbConn = do
 main :: IO ()
 main = do
   args <- getArgs
-  -- TODO(#153): make a backup of the database before trying to convert it
   case args of
     dbPath:_ -> do
       copyFile dbPath (dbPath ++ ".old")

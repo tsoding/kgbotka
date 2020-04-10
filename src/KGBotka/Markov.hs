@@ -18,7 +18,6 @@ import System.Random
 
 -- TODO(#46): Markov does not split models by twitch channels
 -- TODO(#47): there is no way to retrain the model from the TwitchLog
--- TODO(#48): KGBotka does not response with Markov when mentioned
 data Event
   = Begin
   | Word T.Text

@@ -220,9 +220,7 @@ evalExpr (FunCallExpr "markov" _) = do
   liftIO $ genMarkovSentence dbConn
 evalExpr (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM evalExpr args
--- FIXME(#18): Friday video list is not published on gist
 -- FIXME(#38): %nextvideo does not inform how many times a video was suggested
--- TODO(#101): Video queue is not implemented for Discord
 evalExpr (FunCallExpr "nextvideo" _) = do
   failIfNotAuthority
   dbConn <- ecSqliteConnection <$> getEval
