@@ -86,7 +86,6 @@ discordThreadOnStart dts dis = do
     Left err -> logEntry dts $ LogEntry "DISCORD" $ T.pack $ show err
 
 -- TODO(#96): Discord messages are not logged
--- TODO(#97): Discord messages do not contribute to Markov chain
 eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
 eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
