@@ -475,6 +475,22 @@ functionLookupTable =
       , \case
           [x] -> return $ tan x
           _ -> throwExceptEval $ EvalError "tan expects one argument")
+    , ( "arcsin"
+      , \case
+          [x] -> return $ asin x
+          _ -> throwExceptEval $ EvalError "arcsin expects one argument")
+    , ( "arccos"
+      , \case
+          [x] -> return $ acos x
+          _ -> throwExceptEval $ EvalError "arccos expects one argument")
+    , ( "arctan"
+      , \case
+          [x] -> return $ atan x
+          _ -> throwExceptEval $ EvalError "arctan expects one argument")
+    , ( "exp"
+      , \case
+          [x] -> return $ exp x
+          _ -> throwExceptEval $ EvalError "exp expects one argument")
     , ( "nthroot"
       , \case
           [n, x] -> return $ n ** recip x
