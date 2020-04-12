@@ -85,6 +85,7 @@ executable kgbotka
 
   -- Modules included in this executable, other than Main.
   other-modules:       KGBotka.Migration
+                     , KGBotka.Calc
                      , KGBotka.Command
                      , KGBotka.Parser
                      , KGBotka.Expr

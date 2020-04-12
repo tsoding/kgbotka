@@ -15,11 +15,13 @@ import Control.Applicative
 import Control.Concurrent
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
 import Data.Array
+import Data.Bifunctor (first)
 import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
@@ -30,6 +32,7 @@ import qualified Database.SQLite.Simple as Sqlite
 import Discord.Types
 import KGBotka.Asciify
 import KGBotka.Bttv
+import KGBotka.Calc
 import KGBotka.Command
 import KGBotka.Expr
 import KGBotka.Ffz
@@ -43,6 +46,7 @@ import KGBotka.Roles
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
+import System.Random
 import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
@@ -367,6 +371,20 @@ evalExpr (FunCallExpr "eval" args) = do
     withExceptT (EvalError . T.pack . show) $
     except (snd <$> runParser exprs code)
   evalExprs codeAst
+evalExpr (FunCallExpr "calc" args) = do
+  mathsExpression <- T.concat <$> mapM evalExpr args
+  (rest, parsedExpression) <-
+    exceptEval $
+    first parserStopToEvalError $ runParser parseLine mathsExpression
+  case T.unpack rest of
+    [] -> do
+      value <- evalCalcExpression parsedExpression
+      return $ T.pack $ show value
+    _ -> throwExceptEval $ EvalError "Calc: Incomplete parse PepeHands"
+  where
+    parserStopToEvalError EOF = EvalError "Calc: Unexpected EOF"
+    parserStopToEvalError (SyntaxError msg) =
+      EvalError $ "Syntax error: " <> msg
 evalExpr (FunCallExpr "roles" _) = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
@@ -416,3 +434,57 @@ humanReadableDiffTime t
     secondsInDay = 24 * secondsInHour
     secondsInHour = 60 * secondsInMinute
     secondsInMinute = 60
+
+evalCalcExpression :: CalcExpression -> Eval Double
+evalCalcExpression (BinaryExpression op left right) = do
+  left' <- evalCalcExpression left
+  right' <- evalCalcExpression right
+  return $
+    (case op of
+       Add -> (+)
+       Sub -> (-)
+       Mul -> (*)
+       Div -> (/)
+       Mod ->
+         \a b ->
+           fromIntegral $
+           mod (toInteger (floor a :: Integer)) (toInteger (floor b :: Integer))
+       Pow -> (**))
+      left'
+      right'
+evalCalcExpression (NegativeExpression body) =
+  (* (-1.0)) <$> evalCalcExpression body
+evalCalcExpression (ValueExpression val) = return val
+evalCalcExpression (FunctionApplication functionName args) =
+    case M.lookup functionName functionLookupTable of
+      Just f -> mapM evalCalcExpression args >>= f
+      Nothing -> throwExceptEval $ EvalError $ "undefined is not a function FeelsDankMan"
+
+functionLookupTable :: M.Map T.Text ([Double] -> Eval Double)
+functionLookupTable =
+  M.fromList
+    [ ( "sin"
+      , \case
+          [x] -> return $ sin x
+          _ -> throwExceptEval $ EvalError "sin expects one argument")
+    , ( "cos"
+      , \case
+          [x] -> return $ cos x
+          _ -> throwExceptEval $ EvalError "cos expects one argument")
+    , ( "tan"
+      , \case
+          [x] -> return $ tan x
+          _ -> throwExceptEval $ EvalError "tan expects one argument")
+    , ( "nthroot"
+      , \case
+          [n, x] -> return $ n ** recip x
+          _ -> throwExceptEval $ EvalError "nthroot expects two arguments (radix and radicand)")
+    , ( "sqrt"
+      , \case
+          [x] -> return $ x ** 0.5
+          _ -> throwExceptEval $ EvalError "sqrt expects one argument")
+    , ( "random"
+      , \case
+          [] -> lift randomIO
+          _ -> throwExceptEval $ EvalError "random takes no arguments")
+    ]
