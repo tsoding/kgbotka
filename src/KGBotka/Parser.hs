@@ -4,6 +4,7 @@
 module KGBotka.Parser where
 
 import Control.Applicative
+import Control.Monad
 import qualified Data.Text as T
 import Data.Tuple
 
@@ -38,6 +39,11 @@ instance Alternative Parser where
         (Left _, x) -> x
         (x, _) -> x
 
+ws :: Parser ()
+ws = do
+  void $ takeWhileP $ flip elem (" \t\n\r" :: [Char])
+  return ()
+
 sepBy :: Parser a -> Parser b -> Parser [a]
 sepBy element sep = do
   arg <- element
@@ -63,5 +69,14 @@ notNull message next =
        then syntaxError message
        else return value)
 
+inParens :: Parser a -> Parser a
+inParens p = charP '(' *> p <* charP ')'
+
 syntaxError :: T.Text -> Parser a
 syntaxError message = Parser $ \_ -> Left $ SyntaxError message
+
+eof :: Parser ()
+eof = Parser $ \input ->
+      case T.unpack input of
+        [] -> Right (mempty, ())
+        _ -> Left $ SyntaxError "Expected EOF"
