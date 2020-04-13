@@ -11,11 +11,9 @@ import Control.Monad
 import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
-import Data.List
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
-import Data.Word
 import qualified Database.SQLite.Simple as Sqlite
 import Discord
 import Discord.Requests
@@ -91,8 +89,7 @@ eventHandler dts dis (MessageCreate m)
     void $
     restCall dis (R.CreateReaction (messageChannel m, messageId m) "hearts")
   | not (fromBot m) = do
-    withMVar (dtsSqliteConnection dts) $ \dbConn -> do
-      currentUser <- tryReadMVar $ dtsCurrentUser dts
+    withMVar (dtsSqliteConnection dts) $ \dbConn ->
       catch
         (Sqlite.withTransaction dbConn $ do
            logEntry dts $
