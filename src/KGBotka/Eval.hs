@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module KGBotka.Eval
   ( EvalContext(..)
@@ -312,6 +313,15 @@ evalExpr (FunCallExpr "asciify" args) = do
     Left errorMessage -> do
       logEntryEval $ LogEntry "ASCIIFY" $ T.pack errorMessage
       return ""
+evalExpr (FunCallExpr "tsify" args) = do
+  text <- T.concat <$> mapM evalExpr args
+  return $
+    T.concatMap
+      (\case
+         'c' -> "ts"
+         'C' -> "Ts"
+         x -> T.pack [x])
+      text
 evalExpr (FunCallExpr "help" args) = do
   name <- T.concat <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
