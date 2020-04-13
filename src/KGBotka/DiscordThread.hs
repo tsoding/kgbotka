@@ -140,20 +140,21 @@ eventHandler dts dis (MessageCreate m)
                   (CallPrefix "$")
                   (PipeSuffix "|")
                   (messageText m) of
-             [] ->
-               when
-                 (isJust $
-                  find (\u -> Just (userId u) == (userId <$> currentUser)) $
-                  messageMentions m) $ do
-                 markovResponse <- genMarkovSentence dbConn
-                 void $
-                   restCall dis $
-                   R.CreateMessage (messageChannel m) $
-                   T.pack $
-                   printf
-                     "<@!%d> %s"
-                     ((fromIntegral $ userId $ messageAuthor m) :: Word64)
-                     markovResponse
+             [] -> return ()
+               -- -- TODO(#157): Filter out Discord pings from the Markov training data
+               -- when
+               --   (isJust $
+               --    find (\u -> Just (userId u) == (userId <$> currentUser)) $
+               --    messageMentions m) $ do
+               --   markovResponse <- genMarkovSentence dbConn
+               --   void $
+               --     restCall dis $
+               --     R.CreateMessage (messageChannel m) $
+               --     T.pack $
+               --     printf
+               --       "<@!%d> %s"
+               --       ((fromIntegral $ userId $ messageAuthor m) :: Word64)
+               --       markovResponse
              pipe -> do
                evalResult <-
                  runExceptT $
