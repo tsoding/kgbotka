@@ -11,11 +11,9 @@ import Control.Monad
 import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
-import Data.List
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
-import Data.Word
 import qualified Database.SQLite.Simple as Sqlite
 import Discord
 import Discord.Requests
@@ -91,8 +89,7 @@ eventHandler dts dis (MessageCreate m)
     void $
     restCall dis (R.CreateReaction (messageChannel m, messageId m) "hearts")
   | not (fromBot m) = do
-    withMVar (dtsSqliteConnection dts) $ \dbConn -> do
-      currentUser <- tryReadMVar $ dtsCurrentUser dts
+    withMVar (dtsSqliteConnection dts) $ \dbConn ->
       catch
         (Sqlite.withTransaction dbConn $ do
            logEntry dts $
@@ -140,20 +137,21 @@ eventHandler dts dis (MessageCreate m)
                   (CallPrefix "$")
                   (PipeSuffix "|")
                   (messageText m) of
-             [] ->
-               when
-                 (isJust $
-                  find (\u -> Just (userId u) == (userId <$> currentUser)) $
-                  messageMentions m) $ do
-                 markovResponse <- genMarkovSentence dbConn
-                 void $
-                   restCall dis $
-                   R.CreateMessage (messageChannel m) $
-                   T.pack $
-                   printf
-                     "<@!%d> %s"
-                     ((fromIntegral $ userId $ messageAuthor m) :: Word64)
-                     markovResponse
+             [] -> return ()
+               -- -- TODO(#157): Filter out Discord pings from the Markov training data
+               -- when
+               --   (isJust $
+               --    find (\u -> Just (userId u) == (userId <$> currentUser)) $
+               --    messageMentions m) $ do
+               --   markovResponse <- genMarkovSentence dbConn
+               --   void $
+               --     restCall dis $
+               --     R.CreateMessage (messageChannel m) $
+               --     T.pack $
+               --     printf
+               --       "<@!%d> %s"
+               --       ((fromIntegral $ userId $ messageAuthor m) :: Word64)
+               --       markovResponse
              pipe -> do
                evalResult <-
                  runExceptT $
