@@ -159,7 +159,7 @@ twitchIncomingThread conn queue l = do
 
 data OutMsg
   = OutPrivMsg TwitchIrcChannel
-                    T.Text
+               T.Text
   | OutJoinMsg TwitchIrcChannel
   | OutPartMsg TwitchIrcChannel
   | OutPongMsg [T.Text]
@@ -169,13 +169,12 @@ renderOutMsg (OutPrivMsg (TwitchIrcChannel channel) message) =
   ircPrivmsg (idText channel) message
 renderOutMsg (OutJoinMsg channel) =
   ircJoin (twitchIrcChannelText channel) Nothing
-renderOutMsg (OutPartMsg (TwitchIrcChannel channelId)) =
-  ircPart channelId ""
+renderOutMsg (OutPartMsg (TwitchIrcChannel channelId)) = ircPart channelId ""
 renderOutMsg (OutPongMsg xs) = ircPong xs
 
 twitchLimitFilter :: OutMsg -> OutMsg
 twitchLimitFilter (OutPrivMsg channel message) =
-    OutPrivMsg channel (T.take 500 message)
+  OutPrivMsg channel (T.take 500 message)
 twitchLimitFilter x = x
 
 twitchOutgoingThread :: Connection -> ReadQueue OutMsg -> IO ()
