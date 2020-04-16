@@ -164,4 +164,9 @@ kgbotkaMigrations =
              name TEXT NOT NULL,
              value TEXT NOT NULL
            )|]
+  , Migration
+      [sql|CREATE TABLE JoinedTwitchChannels (
+             name TEXT NOT NULL,
+             UNIQUE (name) ON CONFLICT IGNORE
+           )|]
   ]

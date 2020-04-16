@@ -19,10 +19,10 @@ import Data.List
 import qualified Data.Map as M
 import Data.Maybe
 import Data.Monoid
-import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
+import Database.SQLite.Simple (NamedParam((:=)))
 import Hookup
 import Irc.Commands
 import Irc.Identifier (idText)
@@ -42,6 +42,7 @@ import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
+import KGBotka.Sqlite
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
@@ -76,7 +77,6 @@ userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
 data TwitchThreadParams = TwitchThreadParams
   { ttpLogQueue :: !(WriteQueue LogEntry)
   , ttpReplQueue :: !(ReadQueue ReplCommand)
-  , ttpChannels :: !(TVar (S.Set TwitchIrcChannel))
   , ttpSqliteConnection :: !(MVar Sqlite.Connection)
   , ttpManager :: !HTTP.Manager
   , ttpConfig :: Maybe ConfigTwitch
@@ -89,7 +89,6 @@ instance ProvidesLogging TwitchThreadParams where
 data TwitchThreadState = TwitchThreadState
   { ttsLogQueue :: !(WriteQueue LogEntry)
   , ttsReplQueue :: !(ReadQueue ReplCommand)
-  , ttsChannels :: !(TVar (S.Set TwitchIrcChannel))
   , ttsSqliteConnection :: !(MVar Sqlite.Connection)
   , ttsManager :: !HTTP.Manager
   , ttsConfig :: ConfigTwitch
@@ -164,6 +163,25 @@ twitchOutgoingThread conn queue = do
   sendMsg conn rawMsg
   twitchOutgoingThread conn queue
 
+joinedChannels :: Sqlite.Connection -> IO [TwitchIrcChannel]
+joinedChannels dbConn = do
+  channels <- Sqlite.queryNamed dbConn "SELECT * FROM JoinedTwitchChannels;" []
+  return $ map Sqlite.fromOnly channels
+
+registerChannel :: Sqlite.Connection -> TwitchIrcChannel -> IO ()
+registerChannel dbConn channel =
+  Sqlite.executeNamed
+    dbConn
+    "INSERT INTO JoinedTwitchChannels (name) VALUES (:channel)"
+    [":channel" := channel]
+
+unregisterChannel :: Sqlite.Connection -> TwitchIrcChannel -> IO ()
+unregisterChannel dbConn channel =
+  Sqlite.executeNamed
+    dbConn
+    "DELETE FROM JoinedTwitchChannels WHERE name = :channel"
+    [":channel" := channel]
+
 twitchThread :: TwitchThreadParams -> IO ()
 twitchThread ttp =
   case ttpConfig ttp of
@@ -175,13 +193,18 @@ twitchThread ttp =
           forkIO $
           twitchIncomingThread twitchConn (WriteQueue incomingIrcQueue) ttp
         outgoingIrcQueue <- atomically newTQueue
-        void $forkIO $
-          twitchOutgoingThread twitchConn $ ReadQueue outgoingIrcQueue
+        channelsToJoin <-
+          withLockedTransaction (ttpSqliteConnection ttp) joinedChannels
+        atomically $
+          for_ channelsToJoin $ \channel ->
+            writeQueue (WriteQueue outgoingIrcQueue) $
+            ircJoin (twitchIrcChannelText channel) Nothing
+        void $
+          forkIO $ twitchOutgoingThread twitchConn $ ReadQueue outgoingIrcQueue
         twitchThreadLoop
           TwitchThreadState
             { ttsLogQueue = ttpLogQueue ttp
             , ttsReplQueue = ttpReplQueue ttp
-            , ttsChannels = ttpChannels ttp
             , ttsSqliteConnection = ttpSqliteConnection ttp
             , ttsManager = ttpManager ttp
             , ttsConfig = config
@@ -203,15 +226,16 @@ isAllowed = getAny . foldMap (Any .) [isAlpha, isNumber, isSpace, isPunctuation]
 processControlMsgs :: TwitchThreadState -> [RawIrcMsg] -> IO ()
 processControlMsgs tts messages = do
   let outgoingQueue = ttsOutgoingQueue tts
-  let channels = ttsChannels tts
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
     case cookedMsg of
       Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
       Join _ channelId _ ->
-        atomically $ modifyTVar channels $ S.insert $ TwitchIrcChannel channelId
+        withLockedTransaction (ttsSqliteConnection tts) $ \dbConn ->
+          registerChannel dbConn $ TwitchIrcChannel channelId
       Part _ channelId _ ->
-        atomically $ modifyTVar channels $ S.delete $ TwitchIrcChannel channelId
+        withLockedTransaction (ttsSqliteConnection tts) $ \dbConn ->
+          unregisterChannel dbConn $ TwitchIrcChannel channelId
       _ -> return ()
 
 processUserMsgs ::

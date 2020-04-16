@@ -11,7 +11,6 @@ import Control.Concurrent.STM
 import Control.Exception
 import Data.Aeson
 import Data.Foldable
-import qualified Data.Set as S
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Config
 import KGBotka.DiscordThread
@@ -37,7 +36,6 @@ mainWithArgs (configPath:databasePath:_) = do
     Right config -> do
       replQueue <- atomically newTQueue
       rawLogQueue <- atomically newTQueue
-      joinedChannels <- atomically $ newTVar S.empty
       manager <- TLS.newTlsManager
       sqliteConnection <- newEmptyMVar
       fridayGistUpdateRequired <- newMVar ()
@@ -49,7 +47,6 @@ mainWithArgs (configPath:databasePath:_) = do
           [ twitchThread $
             TwitchThreadParams
               { ttpReplQueue = ReadQueue replQueue
-              , ttpChannels = joinedChannels
               , ttpSqliteConnection = sqliteConnection
               , ttpLogQueue = WriteQueue rawLogQueue
               , ttpManager = manager
@@ -76,8 +73,7 @@ mainWithArgs (configPath:databasePath:_) = do
           ] $ \_ ->
           backdoorThread $
           BackdoorThreadParams
-            { btpChannels = joinedChannels
-            , btpSqliteConnection = sqliteConnection
+            { btpSqliteConnection = sqliteConnection
             , btpCommandQueue = WriteQueue replQueue
             , btpTwitchClientId = configTwitchClientId <$> configTwitch config
             , btpManager = manager

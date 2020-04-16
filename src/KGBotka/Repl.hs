@@ -13,7 +13,6 @@ import Control.Monad
 import Control.Monad.Trans.Except
 import Data.Foldable
 import Data.Maybe
-import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Bttv
@@ -27,10 +26,15 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
+import KGBotka.Sqlite
+
+joinedChannels :: Sqlite.Connection -> IO [TwitchIrcChannel]
+joinedChannels dbConn = do
+  channels <- Sqlite.queryNamed dbConn "SELECT * FROM JoinedTwitchChannels;" []
+  return $ map Sqlite.fromOnly channels
 
 data ReplThreadParams = ReplThreadParams
-  { rtpChannels :: !(TVar (S.Set TwitchIrcChannel))
-  , rtpSqliteConnection :: !(MVar Sqlite.Connection)
+  { rtpSqliteConnection :: !(MVar Sqlite.Connection)
   , rtpCommandQueue :: !(WriteQueue ReplCommand)
   , rtpTwitchClientId :: Maybe T.Text
   , rtpManager :: !HTTP.Manager
@@ -43,8 +47,7 @@ instance ProvidesLogging ReplThreadParams where
   logQueue = rtpLogQueue
 
 data ReplThreadState = ReplThreadState
-  { rtsChannels :: !(TVar (S.Set TwitchIrcChannel))
-  , rtsSqliteConnection :: !(MVar Sqlite.Connection)
+  { rtsSqliteConnection :: !(MVar Sqlite.Connection)
   , rtsCurrentChannel :: !(Maybe TwitchIrcChannel)
   , rtsCommandQueue :: !(WriteQueue ReplCommand)
   , rtsTwitchClientId :: Maybe T.Text
@@ -67,8 +70,7 @@ replThread :: ReplThreadParams -> IO ()
 replThread rtp =
   replThreadLoop
     ReplThreadState
-      { rtsChannels = rtpChannels rtp
-      , rtsSqliteConnection = rtpSqliteConnection rtp
+      { rtsSqliteConnection = rtpSqliteConnection rtp
       , rtsCurrentChannel = Nothing
       , rtsCommandQueue = rtpCommandQueue rtp
       , rtsTwitchClientId = rtpTwitchClientId rtp
@@ -89,8 +91,7 @@ replThreadLoop rts = do
   let withTransactionLogErrors :: (Sqlite.Connection -> IO ()) -> IO ()
       withTransactionLogErrors f =
         catch
-          (withMVar (rtsSqliteConnection rts) $ \dbConn ->
-             Sqlite.withTransaction dbConn (f dbConn))
+          (withLockedTransaction (rtsSqliteConnection rts) f)
           (\e -> hPrint replHandle (e :: Sqlite.SQLError))
   hPutStr replHandle $
     "[" <>
@@ -122,13 +123,12 @@ replThreadLoop rts = do
       replThreadLoop $
         rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
     ("part":_, Just channel) -> do
-      atomically $ do
-        isMember <- S.member channel <$> readTVar (rtsChannels rts)
-        when isMember $ writeQueue (rtsCommandQueue rts) $ PartChannel channel
+      atomically $ do writeQueue (rtsCommandQueue rts) $ PartChannel channel
       replThreadLoop $ rts {rtsCurrentChannel = Nothing}
     ("ls":_, _) -> do
-      traverse_ (hPutStrLn replHandle . T.unpack . twitchIrcChannelText) =<<
-        S.toList <$> readTVarIO (rtsChannels rts)
+      withTransactionLogErrors $ \dbConn ->
+        traverse_ (hPutStrLn replHandle . T.unpack . twitchIrcChannelText) =<<
+        joinedChannels dbConn
       replThreadLoop rts
     ("addcmd":name:args, _) -> do
       withTransactionLogErrors $ \dbConn ->
@@ -207,8 +207,7 @@ replThreadLoop rts = do
     _ -> replThreadLoop rts
 
 data BackdoorThreadParams = BackdoorThreadParams
-  { btpChannels :: !(TVar (S.Set TwitchIrcChannel))
-  , btpSqliteConnection :: !(MVar Sqlite.Connection)
+  { btpSqliteConnection :: !(MVar Sqlite.Connection)
   , btpCommandQueue :: !(WriteQueue ReplCommand)
   , btpTwitchClientId :: Maybe T.Text
   , btpManager :: !HTTP.Manager
@@ -245,8 +244,7 @@ backdoorThread btp = do
       connHandle <- socketToHandle conn ReadWriteMode
       replThread $
         ReplThreadParams
-          { rtpChannels = btpChannels btp
-          , rtpSqliteConnection = btpSqliteConnection btp
+          { rtpSqliteConnection = btpSqliteConnection btp
           , rtpCommandQueue = btpCommandQueue btp
           , rtpManager = btpManager btp
           , rtpHandle = connHandle
