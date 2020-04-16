@@ -123,12 +123,12 @@ replThreadLoop rts = do
       replThreadLoop $
         rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
     ("part":_, Just channel) -> do
-      atomically $ do writeQueue (rtsCommandQueue rts) $ PartChannel channel
+      atomically $ writeQueue (rtsCommandQueue rts) $ PartChannel channel
       replThreadLoop $ rts {rtsCurrentChannel = Nothing}
     ("ls":_, _) -> do
-      withTransactionLogErrors $ \dbConn ->
-        traverse_ (hPutStrLn replHandle . T.unpack . twitchIrcChannelText) =<<
-        joinedChannels dbConn
+      withTransactionLogErrors
+        (traverse_ (hPutStrLn replHandle . T.unpack . twitchIrcChannelText) <=<
+         joinedChannels)
       replThreadLoop rts
     ("addcmd":name:args, _) -> do
       withTransactionLogErrors $ \dbConn ->
