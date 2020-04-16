@@ -93,7 +93,7 @@ data TwitchThreadState = TwitchThreadState
   , ttsManager :: !HTTP.Manager
   , ttsConfig :: ConfigTwitch
   , ttsIncomingQueue :: !(ReadQueue RawIrcMsg)
-  , ttsOutgoingQueue :: !(WriteQueue RawIrcMsg)
+  , ttsOutgoingQueue :: !(WriteQueue OutMsg)
   , ttsFridayGistUpdateRequired :: !(MVar ())
   }
 
@@ -157,10 +157,31 @@ twitchIncomingThread conn queue l = do
   for_ mb $ atomically . writeQueue queue
   twitchIncomingThread conn queue l
 
-twitchOutgoingThread :: Connection -> ReadQueue RawIrcMsg -> IO ()
+data OutMsg
+  = OutPrivMsg TwitchIrcChannel
+                    T.Text
+  | OutJoinMsg TwitchIrcChannel
+  | OutPartMsg TwitchIrcChannel
+  | OutPongMsg [T.Text]
+
+renderOutMsg :: OutMsg -> RawIrcMsg
+renderOutMsg (OutPrivMsg (TwitchIrcChannel channel) message) =
+  ircPrivmsg (idText channel) message
+renderOutMsg (OutJoinMsg channel) =
+  ircJoin (twitchIrcChannelText channel) Nothing
+renderOutMsg (OutPartMsg (TwitchIrcChannel channelId)) =
+  ircPart channelId ""
+renderOutMsg (OutPongMsg xs) = ircPong xs
+
+twitchLimitFilter :: OutMsg -> OutMsg
+twitchLimitFilter (OutPrivMsg channel message) =
+    OutPrivMsg channel (T.take 500 message)
+twitchLimitFilter x = x
+
+twitchOutgoingThread :: Connection -> ReadQueue OutMsg -> IO ()
 twitchOutgoingThread conn queue = do
-  rawMsg <- atomically $ readQueue queue
-  sendMsg conn rawMsg
+  msg <- atomically $ readQueue queue
+  sendMsg conn $ renderOutMsg $ twitchLimitFilter msg
   twitchOutgoingThread conn queue
 
 joinedChannels :: Sqlite.Connection -> IO [TwitchIrcChannel]
@@ -197,8 +218,7 @@ twitchThread ttp =
           withLockedTransaction (ttpSqliteConnection ttp) joinedChannels
         atomically $
           for_ channelsToJoin $ \channel ->
-            writeQueue (WriteQueue outgoingIrcQueue) $
-            ircJoin (twitchIrcChannelText channel) Nothing
+            writeQueue (WriteQueue outgoingIrcQueue) $ OutJoinMsg channel
         void $
           forkIO $ twitchOutgoingThread twitchConn $ ReadQueue outgoingIrcQueue
         twitchThreadLoop
@@ -229,7 +249,7 @@ processControlMsgs tts messages = do
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
     case cookedMsg of
-      Ping xs -> atomically $ writeQueue outgoingQueue (ircPong xs)
+      Ping xs -> atomically $ writeQueue outgoingQueue $ OutPongMsg xs
       Join _ channelId _ ->
         withLockedTransaction (ttsSqliteConnection tts) $ \dbConn ->
           registerChannel dbConn $ TwitchIrcChannel channelId
@@ -255,11 +275,12 @@ processUserMsgs dbConn tts messages = do
             let badgeRoles = badgeRolesFromRawIrcMsg msg
             let displayName = lookupEntryValue "display-name" $ _msgTags msg
             let senderName = idText $ userNick userInfo
+            let channel = TwitchIrcChannel channelId
             if T.toLower senderName /= T.toLower botLogin
               then do
                 logMessage
                   dbConn
-                  (TwitchIrcChannel channelId)
+                  channel
                   senderId
                   senderName
                   displayName
@@ -280,7 +301,7 @@ processUserMsgs dbConn tts messages = do
                              markovResponse <- genMarkovSentence dbConn
                              atomically $
                                writeQueue outgoingQueue $
-                               ircPrivmsg (idText channelId) $
+                               OutPrivMsg channel $
                                twitchCmdEscape $
                                T.pack $
                                printf "@%s %s" senderName markovResponse
@@ -307,7 +328,7 @@ processUserMsgs dbConn tts messages = do
                                      EvalTwitchContext
                                        { etcSenderId = senderId
                                        , etcSenderName = senderName
-                                       , etcChannel = TwitchIrcChannel channelId
+                                       , etcChannel = channel
                                        , etcBadgeRoles = badgeRoles
                                        , etcRoles = roles
                                        , etcClientId =
@@ -334,19 +355,18 @@ processUserMsgs dbConn tts messages = do
                              case evalResult of
                                Right commandResponse ->
                                  writeQueue outgoingQueue $
-                                 ircPrivmsg (idText channelId) $
+                                 OutPrivMsg channel $
                                  twitchCmdEscape commandResponse
                                Left (EvalError userMsg) ->
                                  writeQueue outgoingQueue $
-                                 ircPrivmsg (idText channelId) $
-                                 twitchCmdEscape userMsg
+                                 OutPrivMsg channel $ twitchCmdEscape userMsg
                   else atomically $ do
                          writeQueue outgoingQueue $
-                           ircPrivmsg (idText channelId) $
+                           OutPrivMsg channel $
                            T.pack $
                            printf "/timeout %s %d" senderName (30 :: Int)
                          writeQueue outgoingQueue $
-                           ircPrivmsg (idText channelId) $
+                           OutPrivMsg channel $
                            T.pack $
                            printf
                              "@%s ASCII spam is not allowed. Use !asciify command."
@@ -381,12 +401,11 @@ twitchThreadLoop tts = do
     replCommand <- tryReadQueue replQueue
     case replCommand of
       Just (Say channel msg) ->
-        writeQueue outgoingQueue $ ircPrivmsg (twitchIrcChannelText channel) msg
+        writeQueue outgoingQueue $ OutPrivMsg channel msg
       Just (JoinChannel channel) ->
-        writeQueue outgoingQueue $
-        ircJoin (twitchIrcChannelText channel) Nothing
-      Just (PartChannel (TwitchIrcChannel channelId)) ->
-        writeQueue outgoingQueue $ ircPart channelId ""
+        writeQueue outgoingQueue $ OutJoinMsg channel
+      Just (PartChannel channel) ->
+        writeQueue outgoingQueue $ OutPartMsg channel
       Nothing -> return ()
   twitchThreadLoop tts
 
