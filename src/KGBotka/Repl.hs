@@ -22,11 +22,11 @@ import KGBotka.Http
 import KGBotka.Log
 import KGBotka.Queue
 import KGBotka.Roles
+import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-import KGBotka.Sqlite
 
 joinedChannels :: Sqlite.Connection -> IO [TwitchIrcChannel]
 joinedChannels dbConn = do

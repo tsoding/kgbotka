@@ -37,12 +37,12 @@ import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
+import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
-import KGBotka.Sqlite
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
