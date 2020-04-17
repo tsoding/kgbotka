@@ -31,6 +31,7 @@ import Irc.UserInfo (userNick)
 import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Eval
+import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
 import KGBotka.Markov
 import KGBotka.Queue
@@ -42,7 +43,6 @@ import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
-import KGBotka.JoinedTwitchChannels
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge

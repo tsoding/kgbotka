@@ -19,6 +19,7 @@ import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Ffz
 import KGBotka.Http
+import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
 import KGBotka.Queue
 import KGBotka.Roles
@@ -27,7 +28,6 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-import KGBotka.JoinedTwitchChannels
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
