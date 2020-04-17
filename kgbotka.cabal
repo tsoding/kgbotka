@@ -109,8 +109,10 @@ executable kgbotka
                      , KGBotka.GithubThread
                      , KGBotka.Settings
                      , KGBotka.Sqlite
+                     , KGBotka.JoinedTwitchChannels
                      , Control.Monad.Trans.Extra
                      , Control.Monad.Trans.Eval
+
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:

@@ -27,11 +27,7 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-
-joinedChannels :: Sqlite.Connection -> IO [TwitchIrcChannel]
-joinedChannels dbConn = do
-  channels <- Sqlite.queryNamed dbConn "SELECT * FROM JoinedTwitchChannels;" []
-  return $ map Sqlite.fromOnly channels
+import KGBotka.JoinedTwitchChannels
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
