@@ -22,7 +22,6 @@ import Data.Monoid
 import qualified Data.Text as T
 import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
-import Database.SQLite.Simple (NamedParam((:=)))
 import Hookup
 import Irc.Commands
 import Irc.Identifier (idText)
@@ -32,6 +31,7 @@ import Irc.UserInfo (userNick)
 import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Eval
+import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
 import KGBotka.Markov
 import KGBotka.Queue
@@ -183,25 +183,6 @@ twitchOutgoingThread conn queue = do
   sendMsg conn $ renderOutMsg $ twitchLimitFilter msg
   twitchOutgoingThread conn queue
 
-joinedChannels :: Sqlite.Connection -> IO [TwitchIrcChannel]
-joinedChannels dbConn = do
-  channels <- Sqlite.queryNamed dbConn "SELECT * FROM JoinedTwitchChannels;" []
-  return $ map Sqlite.fromOnly channels
-
-registerChannel :: Sqlite.Connection -> TwitchIrcChannel -> IO ()
-registerChannel dbConn channel =
-  Sqlite.executeNamed
-    dbConn
-    "INSERT INTO JoinedTwitchChannels (name) VALUES (:channel)"
-    [":channel" := channel]
-
-unregisterChannel :: Sqlite.Connection -> TwitchIrcChannel -> IO ()
-unregisterChannel dbConn channel =
-  Sqlite.executeNamed
-    dbConn
-    "DELETE FROM JoinedTwitchChannels WHERE name = :channel"
-    [":channel" := channel]
-
 twitchThread :: TwitchThreadParams -> IO ()
 twitchThread ttp =
   case ttpConfig ttp of
@@ -251,10 +232,10 @@ processControlMsgs tts messages = do
       Ping xs -> atomically $ writeQueue outgoingQueue $ OutPongMsg xs
       Join _ channelId _ ->
         withLockedTransaction (ttsSqliteConnection tts) $ \dbConn ->
-          registerChannel dbConn $ TwitchIrcChannel channelId
+          registerJoinedChannel dbConn $ TwitchIrcChannel channelId
       Part _ channelId _ ->
         withLockedTransaction (ttsSqliteConnection tts) $ \dbConn ->
-          unregisterChannel dbConn $ TwitchIrcChannel channelId
+          unregisterJoinedChannel dbConn $ TwitchIrcChannel channelId
       _ -> return ()
 
 processUserMsgs ::
