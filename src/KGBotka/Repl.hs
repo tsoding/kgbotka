@@ -202,7 +202,7 @@ replThreadLoop rts = do
       replThreadLoop rts
     ("retrain":_, _) -> do
       hPutStrLn replHandle "Retraining Markov model..."
-      -- TODO: retrain REPL command may have a poor performance
+      -- TODO(#168): retrain REPL command may have a poor performance
       --
       --   Blocked by #142 because we need sufficient amount of data
       --   from the legacy bot to test the performance
