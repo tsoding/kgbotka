@@ -23,6 +23,7 @@ import KGBotka.Ffz
 import KGBotka.Http
 import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
+import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.Sqlite
@@ -30,7 +31,6 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-import KGBotka.Markov
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
