@@ -22,6 +22,7 @@ module KGBotka.Command
   ) where
 
 import Data.Char
+import Data.Int
 import Data.Maybe
 import qualified Data.Text as T
 import Data.Time
@@ -31,7 +32,6 @@ import Database.SQLite.Simple.QQ
 import Database.SQLite.Simple.ToField
 import Discord.Types
 import KGBotka.TwitchAPI
-import Data.Int
 
 data Command = Command
   { commandId :: Int

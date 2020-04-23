@@ -4,13 +4,13 @@
 module Main where
 
 import Data.Foldable
+import Data.Functor
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.Command
 import KGBotka.Migration
 import System.Directory
 import System.Environment
-import Data.Functor
 
 -- TODO(#141): MigrationTool does not convert Friday queue
 -- TODO(#142): MigrationTool does not convert Twitch and Discord logs
