@@ -18,6 +18,7 @@ module KGBotka.Command
   , CallPrefix(..)
   , PipeSuffix(..)
   , DiscordUserId(..)
+  , bumpCommandTimes
   ) where
 
 import Data.Char
@@ -35,6 +36,7 @@ data Command = Command
   { commandId :: Int
   , commandCode :: T.Text
   , commandUserCooldown :: Int
+  , commandTimes :: Int
   } deriving (Show)
 
 data CommandLog = CommandLog
@@ -63,14 +65,14 @@ logCommand dbConn userDiscordId userTwitchId commandIdent commandArgs =
     ]
 
 instance FromRow Command where
-  fromRow = Command <$> field <*> field <*> field
+  fromRow = Command <$> field <*> field <*> field <*> field
 
 commandByName :: Connection -> T.Text -> IO (Maybe Command)
 commandByName conn name =
   listToMaybe <$> queryNamed conn queryText [":commandName" := name]
   where
     queryText =
-      [sql|SELECT c.id, c.code, c.user_cooldown_ms
+      [sql|SELECT c.id, c.code, c.user_cooldown_ms, c.times
            FROM Command c
            INNER JOIN CommandName cn ON c.id = cn.commandId
            WHERE cn.name = :commandName;|]
@@ -79,20 +81,27 @@ addCommand :: Connection -> T.Text -> T.Text -> IO ()
 addCommand dbConn name code = do
   executeNamed
     dbConn
-    "INSERT INTO Command (code) VALUES (:commandCode)"
+    [sql|INSERT INTO Command (code) VALUES (:commandCode)|]
     [":commandCode" := code]
   ident <- lastInsertRowId dbConn
   executeNamed
     dbConn
-    "INSERT INTO CommandName (name, commandId) \
-    \VALUES (:commandName, :commandId)"
+    [sql|INSERT INTO CommandName (name, commandId)
+         VALUES (:commandName, :commandId)|]
     [":commandName" := name, ":commandId" := ident]
 
 deleteCommandById :: Connection -> Int -> IO ()
 deleteCommandById dbConn ident =
   executeNamed
     dbConn
-    "DELETE FROM Command WHERE id = :commandId"
+    [sql|DELETE FROM Command WHERE id = :commandId|]
+    [":commandId" := ident]
+
+bumpCommandTimes :: Connection -> Int -> IO ()
+bumpCommandTimes dbConn ident =
+  executeNamed
+    dbConn
+    [sql|UPDATE Command SET times = times + 1 WHERE id = :commandId|]
     [":commandId" := ident]
 
 deleteCommandByName :: Connection -> T.Text -> IO ()
@@ -104,7 +113,7 @@ deleteCommandName :: Connection -> T.Text -> IO ()
 deleteCommandName dbConn name =
   executeNamed
     dbConn
-    "DELETE FROM CommandName WHERE name = :commandName"
+    [sql|DELETE FROM CommandName WHERE name = :commandName|]
     [":commandName" := name]
 
 addCommandName :: Connection -> T.Text -> T.Text -> IO ()
@@ -114,8 +123,8 @@ addCommandName dbConn alias name = do
     Just Command {commandId = ident} ->
       executeNamed
         dbConn
-        "INSERT INTO CommandName (name, commandId)\
-        \VALUES (:commandName, :commandId)"
+        [sql|INSERT INTO CommandName (name, commandId)
+             VALUES (:commandName, :commandId)|]
         [":commandName" := alias, ":commandId" := ident]
     Nothing -> return ()
 
