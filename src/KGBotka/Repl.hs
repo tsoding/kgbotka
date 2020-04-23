@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.Repl
   ( backdoorThread
@@ -15,12 +16,14 @@ import Data.Foldable
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
+import Database.SQLite.Simple.QQ
 import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Ffz
 import KGBotka.Http
 import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
+import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.Sqlite
@@ -196,6 +199,19 @@ replThreadLoop rts = do
               (_, Nothing) ->
                 hPutStrLn replHandle "[ERROR] Such role does not exist"
           Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"
+      replThreadLoop rts
+    ("retrain":_, _) -> do
+      hPutStrLn replHandle "Retraining Markov model..."
+      -- TODO(#168): retrain REPL command may have a poor performance
+      --
+      --   Blocked by #142 because we need sufficient amount of data
+      --   from the legacy bot to test the performance
+      withTransactionLogErrors $ \dbConn -> do
+        Sqlite.executeNamed dbConn [sql|DELETE FROM Markov;|] []
+        traverse_ (addMarkovSentence dbConn . Sqlite.fromOnly) =<<
+          Sqlite.queryNamed dbConn [sql|SELECT message FROM TwitchLog|] []
+        traverse_ (addMarkovSentence dbConn . Sqlite.fromOnly) =<<
+          Sqlite.queryNamed dbConn [sql|SELECT message FROM DiscordLog|] []
       replThreadLoop rts
     (unknown:_, _) -> do
       hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown

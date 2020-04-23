@@ -4,6 +4,7 @@
 module KGBotka.Markov
   ( addMarkovSentence
   , genMarkovSentence
+  , isDiscordPing
   ) where
 
 import Control.Monad.Trans.Class
@@ -11,10 +12,13 @@ import Control.Monad.Trans.Maybe
 import Data.List
 import Data.Maybe
 import qualified Data.Text as T
-import Database.SQLite.Simple
+import qualified Database.SQLite.Simple as Sqlite
+import Database.SQLite.Simple (NamedParam(..))
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import System.Random
+import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
+import Text.Regex.TDFA.String
 
 -- TODO(#46): Markov does not split models by twitch channels
 -- TODO(#47): there is no way to retrain the model from the TwitchLog
@@ -30,33 +34,40 @@ instance ToField Event where
 instance FromField Event where
   fromField = fmap (read . T.unpack) . fromField
 
-addMarkovSentence :: Connection -> T.Text -> IO ()
+isDiscordPing :: T.Text -> Bool
+isDiscordPing text =
+  either (const False) isJust $ do
+    regex <- compile defaultCompOpt defaultExecOpt "<@!?[0-9]+>"
+    execute regex (T.unpack text)
+
+addMarkovSentence :: Sqlite.Connection -> T.Text -> IO ()
 addMarkovSentence conn sentence
   | T.length sentence >= 50 =
     mapM_ (addMarkovPair conn) $
     scanPairs $
     (\xs -> [Begin] <> xs <> [End]) $
-    map Word $ T.words $ T.unwords $ T.words sentence
+    map Word $
+    filter (not . isDiscordPing) $ T.words $ T.unwords $ T.words sentence
   | otherwise = return ()
 
-addMarkovPair :: Connection -> (Event, Event) -> IO ()
+addMarkovPair :: Sqlite.Connection -> (Event, Event) -> IO ()
 addMarkovPair conn (event1, event2) = do
   n <-
-    maybe (0 :: Int) fromOnly . listToMaybe <$>
-    queryNamed
+    maybe (0 :: Int) Sqlite.fromOnly . listToMaybe <$>
+    Sqlite.queryNamed
       conn
       "SELECT n FROM Markov WHERE event1 = :event1 AND event2 = :event2"
       [":event1" := event1, ":event2" := event2]
-  executeNamed
+  Sqlite.executeNamed
     conn
     "INSERT INTO Markov (event1, event2, n) VALUES (:event1, :event2, :n)"
     [":event1" := event1, ":event2" := event2, ":n" := succ n]
 
-nextMarkovEvent :: Connection -> Event -> MaybeT IO Event
+nextMarkovEvent :: Sqlite.Connection -> Event -> MaybeT IO Event
 nextMarkovEvent conn event1 = do
   bs <-
     lift $
-    queryNamed
+    Sqlite.queryNamed
       conn
       "SELECT event2, n FROM Markov WHERE event1 = :event1"
       [":event1" := event1]
@@ -70,7 +81,7 @@ nextMarkovEvent conn event1 = do
     [] -> return End
     (event', _):_ -> return event'
 
-seqMarkovEvents :: Event -> Event -> Connection -> IO [Event]
+seqMarkovEvents :: Event -> Event -> Sqlite.Connection -> IO [Event]
 seqMarkovEvents begin end m
   | begin == end = return [end]
   | otherwise = do
@@ -84,7 +95,7 @@ seqMarkovEvents begin end m
 scanPairs :: [a] -> [(a, a)]
 scanPairs xs = zip xs $ tail xs
 
-genMarkovSentence :: Connection -> IO T.Text
+genMarkovSentence :: Sqlite.Connection -> IO T.Text
 genMarkovSentence dbConn = do
   events <- seqMarkovEvents Begin End dbConn
   return $
