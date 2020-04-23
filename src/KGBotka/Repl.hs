@@ -201,7 +201,7 @@ replThreadLoop rts = do
           Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"
       replThreadLoop rts
     ("retrain":_, _) -> do
-      hPutStrLn replHandle $ "Retraining Markov model..."
+      hPutStrLn replHandle "Retraining Markov model..."
       -- TODO: retrain REPL command may have a poor performance
       --
       --   Blocked by #142 because we need sufficient amount of data
