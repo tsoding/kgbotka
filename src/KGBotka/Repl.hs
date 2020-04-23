@@ -128,7 +128,7 @@ replThreadLoop rts = do
       replThreadLoop rts
     ("addcmd":name:args, _) -> do
       withTransactionLogErrors $ \dbConn ->
-        addCommand dbConn name (T.unwords args)
+        void $ addCommand dbConn name (T.unwords args)
       replThreadLoop rts
     ("addalias":alias:name:_, _) -> do
       withTransactionLogErrors $ \dbConn -> addCommandName dbConn alias name

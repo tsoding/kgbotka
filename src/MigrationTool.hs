@@ -10,6 +10,7 @@ import KGBotka.Command
 import KGBotka.Migration
 import System.Directory
 import System.Environment
+import Data.Functor
 
 -- TODO(#141): MigrationTool does not convert Friday queue
 -- TODO(#142): MigrationTool does not convert Twitch and Discord logs
@@ -19,26 +20,26 @@ import System.Environment
 -- TODO(#148): populateHyperNerdBuiltinCommands does not support !updatebttv !updateffz
 populateHyperNerdBuiltinCommands :: Connection -> IO ()
 populateHyperNerdBuiltinCommands dbConn = do
-  addCommand dbConn "addalias" "%addalias(%1)"
-  addCommand dbConn "addcmd" "%addcmd(%1)"
-  addCommand dbConn "asciify" "%asciify(%1)"
-  addCommand dbConn "calc" "%calc(%1)"
-  addCommand dbConn "cycle" "%cycle(%1)"
-  addCommand dbConn "derussify" "%derussify(%1)"
-  addCommand dbConn "friday" "%friday(%1)"
-  addCommand dbConn "help" "%help(%1)"
-  addCommand dbConn "markov" "%markov(%1)"
-  addCommand dbConn "nextstream" "%nextstream(%1)"
-  addCommand dbConn "nextvideo" "%nextvideo(%1)"
-  addCommand dbConn "omega" "%omega(%1)"
-  addCommand dbConn "russify" "%russify(%1)"
-  addCommand dbConn "showcmd" "%showcmd(%1)"
-  addCommand dbConn "updcmd" "%updcmd(%1)"
-  addCommand dbConn "vanish" "%vanish(%1)"
-  addCommand dbConn "version" "%version(%1)"
-  addCommand dbConn "video" "%video(%1)"
-  addCommand dbConn "videocount" "%videocount(%1)"
-  addCommand dbConn "videoq" "%videoq(%1)"
+  void $ addCommand dbConn "addalias" "%addalias(%1)"
+  void $ addCommand dbConn "addcmd" "%addcmd(%1)"
+  void $ addCommand dbConn "asciify" "%asciify(%1)"
+  void $ addCommand dbConn "calc" "%calc(%1)"
+  void $ addCommand dbConn "cycle" "%cycle(%1)"
+  void $ addCommand dbConn "derussify" "%derussify(%1)"
+  void $ addCommand dbConn "friday" "%friday(%1)"
+  void $ addCommand dbConn "help" "%help(%1)"
+  void $ addCommand dbConn "markov" "%markov(%1)"
+  void $ addCommand dbConn "nextstream" "%nextstream(%1)"
+  void $ addCommand dbConn "nextvideo" "%nextvideo(%1)"
+  void $ addCommand dbConn "omega" "%omega(%1)"
+  void $ addCommand dbConn "russify" "%russify(%1)"
+  void $ addCommand dbConn "showcmd" "%showcmd(%1)"
+  void $ addCommand dbConn "updcmd" "%updcmd(%1)"
+  void $ addCommand dbConn "vanish" "%vanish(%1)"
+  void $ addCommand dbConn "version" "%version(%1)"
+  void $ addCommand dbConn "video" "%video(%1)"
+  void $ addCommand dbConn "videocount" "%videocount(%1)"
+  void $ addCommand dbConn "videoq" "%videoq(%1)"
 
 -- TODO(#149): MigrationTool should rather called ConvertionTool or something like that.
 -- TODO(#150): Perform database conversion on CI for testing purposes
@@ -48,15 +49,25 @@ convertCommands dbConn = do
   legacyCommands <-
     queryNamed
       dbConn
-      [sql|select ep1.propertyText, ep2.propertyText
+      [sql|select ep1.propertyText, ep2.propertyText, ep3.propertyInt
            from EntityProperty ep1
-           inner join EntityProperty ep2
-           on ep1.entityId = ep2.entityId
+           inner join EntityProperty ep2 on ep1.entityId = ep2.entityId
+           inner join EntityProperty ep3 on ep1.entityId = ep3.entityId
            where ep1.entityName = 'CustomCommand'
            and ep1.propertyName = 'name'
-           and ep2.propertyName = 'message'; |]
+           and ep2.propertyName = 'message'
+           and ep3.propertyName = 'times' |]
       []
-  traverse_ (uncurry $ addCommand dbConn) legacyCommands
+  traverse_
+    (\(name, code, times) -> do
+       commandIdent <- addCommand dbConn name code
+       executeNamed
+         dbConn
+         [sql|update Command
+              set times = :times
+              where id = :commandId|]
+         [":times" := (times :: Int), ":commandId" := commandIdent])
+    legacyCommands
 
 convertAliases :: Connection -> IO ()
 convertAliases dbConn = do

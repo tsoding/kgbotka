@@ -31,6 +31,7 @@ import Database.SQLite.Simple.QQ
 import Database.SQLite.Simple.ToField
 import Discord.Types
 import KGBotka.TwitchAPI
+import Data.Int
 
 data Command = Command
   { commandId :: Int
@@ -77,7 +78,7 @@ commandByName conn name =
            INNER JOIN CommandName cn ON c.id = cn.commandId
            WHERE cn.name = :commandName;|]
 
-addCommand :: Connection -> T.Text -> T.Text -> IO ()
+addCommand :: Connection -> T.Text -> T.Text -> IO Int64
 addCommand dbConn name code = do
   executeNamed
     dbConn
@@ -89,6 +90,7 @@ addCommand dbConn name code = do
     [sql|INSERT INTO CommandName (name, commandId)
          VALUES (:commandName, :commandId)|]
     [":commandName" := name, ":commandId" := ident]
+  return ident
 
 deleteCommandById :: Connection -> Int -> IO ()
 deleteCommandById dbConn ident =
