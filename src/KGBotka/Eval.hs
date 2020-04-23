@@ -98,7 +98,11 @@ evalCommandCall (CommandCall name args) = do
   dbConn <- ecSqliteConnection <$> getEval
   command <- liftIO $ commandByName dbConn name
   case command of
-    Just Command {commandId = commandIdent, commandCode = code} -> do
+    Just Command { commandId = commandIdent
+                 , commandCode = code
+                 , commandTimes = times
+                 } -> do
+      modifyEval $ ecVarsModify $ M.insert "times" $ T.pack $ show times
       platformContext <- ecPlatformContext <$> getEval
       case platformContext of
         Etc etc -> do
@@ -128,7 +132,9 @@ evalCommandCall (CommandCall name args) = do
         liftExceptT $
         withExceptT (EvalError . T.pack . show) $
         except (snd <$> runParser exprs code)
-      evalExprs codeAst
+      responseText <- evalExprs codeAst
+      liftIO $ bumpCommandTimes dbConn commandIdent
+      return responseText
     Nothing -> return ""
 
 evalCommandPipe :: [CommandCall] -> Eval T.Text

@@ -169,4 +169,7 @@ kgbotkaMigrations =
              name TEXT NOT NULL,
              UNIQUE (name) ON CONFLICT IGNORE
            )|]
+  , Migration
+      [sql|ALTER TABLE Command
+           ADD COLUMN times INT NOT NULL DEFAULT 0;|]
   ]

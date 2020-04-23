@@ -374,7 +374,7 @@ twitchThreadLoop tts = do
     (\e ->
        atomically $
        writeQueue (ttsLogQueue tts) $
-       LogEntry "SQLITE" $ T.pack $ show (e :: Sqlite.SQLError))
+       LogEntry "SQLITE" $ T.pack $ show (e :: SomeException))
   atomically $ do
     let outgoingQueue = ttsOutgoingQueue tts
     let replQueue = ttsReplQueue tts
