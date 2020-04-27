@@ -458,7 +458,7 @@ evalCalcExpression (ValueExpression val) = return val
 evalCalcExpression (FunctionApplication functionName args) =
     case M.lookup functionName functionLookupTable of
       Just f -> mapM evalCalcExpression args >>= f
-      Nothing -> throwExceptEval $ EvalError $ "undefined is not a function FeelsDankMan"
+      Nothing -> throwExceptEval $ EvalError "undefined is not a function FeelsDankMan"
 
 functionLookupTable :: M.Map T.Text ([Double] -> Eval Double)
 functionLookupTable =
@@ -497,7 +497,7 @@ functionLookupTable =
           _ -> throwExceptEval $ EvalError "nthroot expects two arguments (radix and radicand)")
     , ( "sqrt"
       , \case
-          [x] -> return $ x ** 0.5
+          [x] -> return $ sqrt x
           _ -> throwExceptEval $ EvalError "sqrt expects one argument")
     , ( "random"
       , \case

@@ -83,7 +83,7 @@ parseExponentiation = parseExponentiation' <|> parseAtom
   where
     parseExponentiation' = do
       left <- parseNegation
-      operator <- charToOperator <$> (charP '^')
+      operator <- charToOperator <$> charP '^'
       BinaryExpression operator left <$> parseExponentiation
 
 parseNegation :: Parser CalcExpression
@@ -97,7 +97,7 @@ parseFunctionApplication :: Parser CalcExpression
 parseFunctionApplication = do
   functionName <- notNull "Expected a function name" $ takeWhileP isAlpha
   FunctionApplication functionName <$>
-    (inParens $ sepBy parseExpression (charP ',' <* ws) <|> return [])
+    inParens (sepBy parseExpression (charP ',' <* ws) <|> return [])
 
 parseValue :: Parser CalcExpression
 parseValue = ValueExpression <$> parseNumber

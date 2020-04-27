@@ -40,9 +40,7 @@ instance Alternative Parser where
         (x, _) -> x
 
 ws :: Parser ()
-ws = do
-  void $ takeWhileP $ flip elem (" \t\n\r" :: [Char])
-  return ()
+ws = void $ takeWhileP $ flip elem (" \t\n\r" :: String)
 
 sepBy :: Parser a -> Parser b -> Parser [a]
 sepBy element sep = do
