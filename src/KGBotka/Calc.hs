@@ -30,6 +30,10 @@ charToOperator '/' = Div
 charToOperator '%' = Mod
 charToOperator '^' = Pow
 charToOperator _ =
+    -- TODO: Make charToOperator not throw an exception
+    -- For now it is an unsafe function because it indicates
+    -- that operators were added but the parsers were not
+    -- corrected.
   error
     "charToOperator: No pattern for operator conversion. \
     \Maybe you added a new operator and forgot to add a case to the conversion function."
@@ -62,6 +66,7 @@ parseNumber = parseFloating <|> parseInteger
     parseNumeric = notNull "Expected a numeric value" $ takeWhileP isDigit
     parseInteger :: Parser Double
     parseInteger = read . T.unpack <$> parseNumeric
+    -- TODO: parseFloating does not support exponential number format
     parseFloating :: Parser Double
     parseFloating = do
       integerPart <- parseNumeric
@@ -112,6 +117,7 @@ parseFunctionApplication = do
   FunctionApplication functionName <$>
     inParens (sepBy parseExpression (charP ',' <* ws) <|> return [])
 
+-- TODO: Make calc variables a seperate constructor of CalcExpression
 parseVariable :: Parser CalcExpression
 parseVariable = do
   varName <- notNull "Expected a variable name" $ takeWhileP isAlpha
