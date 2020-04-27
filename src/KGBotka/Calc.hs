@@ -51,14 +51,6 @@ newtype CalcEvalError =
 
 type CalcEval = ExceptT CalcEvalError IO
 
-hasChar :: Char -> Parser Bool
-hasChar c =
-  Parser $ \input ->
-    case T.uncons input of
-      Just (c', rest)
-        | c' == c -> Right (rest, True)
-      _ -> Right (input, False)
-
 parseNumber :: Parser Double
 parseNumber = parseFloating <|> parseInteger
   where
