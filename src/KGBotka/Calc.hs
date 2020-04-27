@@ -1,11 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
+
 module KGBotka.Calc where
 
-import KGBotka.Parser
 import Control.Applicative (Alternative(..))
 import Control.Monad (void)
-import Data.Char (isDigit, isAlpha)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Except (ExceptT(..), throwE)
+import Data.Char (isAlpha, isDigit)
+import qualified Data.Map.Strict as M
 import qualified Data.Text as T
+import KGBotka.Parser
+import System.Random (randomIO)
 
 data Operator
   = Add
@@ -35,11 +41,18 @@ data CalcExpression
   | ValueExpression Double
   deriving (Show)
 
+newtype CalcEvalError =
+  CalcEvalError T.Text
+  deriving (Show)
+
+type CalcEval = ExceptT CalcEvalError IO
+
 hasChar :: Char -> Parser Bool
 hasChar c =
   Parser $ \input ->
     case T.uncons input of
-      Just (c', rest) | c' == c -> Right (rest, True)
+      Just (c', rest)
+        | c' == c -> Right (rest, True)
       _ -> Right (input, False)
 
 parseNumber :: Parser Double
@@ -99,10 +112,101 @@ parseFunctionApplication = do
   FunctionApplication functionName <$>
     inParens (sepBy parseExpression (charP ',' <* ws) <|> return [])
 
+parseVariable :: Parser CalcExpression
+parseVariable = do
+  varName <- notNull "Expected a variable name" $ takeWhileP isAlpha
+  return $ FunctionApplication varName []
+
 parseValue :: Parser CalcExpression
 parseValue = ValueExpression <$> parseNumber
 
 parseAtom :: Parser CalcExpression
 parseAtom =
-  ws *> (parseValue <|> parseFunctionApplication <|> inParens parseExpression) <*
+  ws *>
+  (parseValue <|> parseFunctionApplication <|> parseVariable <|>
+   inParens parseExpression) <*
   ws
+
+evalCalcExpression :: CalcExpression -> CalcEval Double
+evalCalcExpression (BinaryExpression op left right) = do
+  left' <- evalCalcExpression left
+  right' <- evalCalcExpression right
+  return $
+    (case op of
+       Add -> (+)
+       Sub -> (-)
+       Mul -> (*)
+       Div -> (/)
+       Mod ->
+         \a b ->
+           fromIntegral $
+           mod (toInteger (floor a :: Integer)) (toInteger (floor b :: Integer))
+       Pow -> (**))
+      left'
+      right'
+evalCalcExpression (NegativeExpression body) =
+  (* (-1.0)) <$> evalCalcExpression body
+evalCalcExpression (ValueExpression val) = return val
+evalCalcExpression (FunctionApplication functionName args) =
+  case M.lookup functionName functionLookupTable of
+    Just f -> mapM evalCalcExpression args >>= f
+    Nothing -> throwE $ CalcEvalError "undefined is not a function FeelsDankMan"
+
+functionLookupTable :: M.Map T.Text ([Double] -> CalcEval Double)
+functionLookupTable =
+  M.fromList
+    [ ( "pi"
+      , \case
+          [] -> return pi
+          _ -> throwE $ CalcEvalError "pi is not a function")
+    , ( "e"
+      , \case
+          [] -> return $ exp 1
+          _ -> throwE $ CalcEvalError "e is not a function")
+    , ( "sin"
+      , \case
+          [x] -> return $ sin x
+          _ -> throwE $ CalcEvalError "sin expects one argument")
+    , ( "cos"
+      , \case
+          [x] -> return $ cos x
+          _ -> throwE $ CalcEvalError "cos expects one argument")
+    , ( "tan"
+      , \case
+          [x] -> return $ tan x
+          _ -> throwE $ CalcEvalError "tan expects one argument")
+    , ( "arcsin"
+      , \case
+          [x] -> return $ asin x
+          _ -> throwE $ CalcEvalError "arcsin expects one argument")
+    , ( "arccos"
+      , \case
+          [x] -> return $ acos x
+          _ -> throwE $ CalcEvalError "arccos expects one argument")
+    , ( "arctan"
+      , \case
+          [x] -> return $ atan x
+          _ -> throwE $ CalcEvalError "arctan expects one argument")
+    , ( "exp"
+      , \case
+          [x] -> return $ exp x
+          _ -> throwE $ CalcEvalError "exp expects one argument")
+    , ( "ln"
+      , \case
+          [x] -> return $ log x
+          _ -> throwE $ CalcEvalError "ln expects one argument")
+    , ( "nthroot"
+      , \case
+          [n, x] -> return $ x ** recip n
+          _ ->
+            throwE $
+            CalcEvalError "nthroot expects two arguments (radix and radicand)")
+    , ( "sqrt"
+      , \case
+          [x] -> return $ sqrt x
+          _ -> throwE $ CalcEvalError "sqrt expects one argument")
+    , ( "random"
+      , \case
+          [] -> lift randomIO
+          _ -> throwE $ CalcEvalError "random takes no arguments")
+    ]

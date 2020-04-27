@@ -46,41 +46,43 @@ import KGBotka.Roles
 import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
-import System.Random
 import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 
-data EvalTwitchContext = EvalTwitchContext
-  { etcSenderId :: !TwitchUserId
-  , etcSenderName :: !T.Text
+data EvalTwitchContext =
+  EvalTwitchContext
+    { etcSenderId :: !TwitchUserId
+    , etcSenderName :: !T.Text
   -- TODO(#80): evalContextTwitchEmotes should be a list of some kind of emote type
-  , etcTwitchEmotes :: !(Maybe T.Text)
-  , etcChannel :: !TwitchIrcChannel
-  , etcBadgeRoles :: ![TwitchBadgeRole]
-  , etcRoles :: ![TwitchRole]
-  , etcClientId :: !T.Text
-  }
+    , etcTwitchEmotes :: !(Maybe T.Text)
+    , etcChannel :: !TwitchIrcChannel
+    , etcBadgeRoles :: ![TwitchBadgeRole]
+    , etcRoles :: ![TwitchRole]
+    , etcClientId :: !T.Text
+    }
 
-data EvalDiscordContext = EvalDiscordContext
-  { edcAuthor :: !User
-  , edcGuild :: !(Maybe Guild)
-  , edcRoles :: ![Snowflake]
-  }
+data EvalDiscordContext =
+  EvalDiscordContext
+    { edcAuthor :: !User
+    , edcGuild :: !(Maybe Guild)
+    , edcRoles :: ![Snowflake]
+    }
 
 data EvalPlatformContext
   = Etc EvalTwitchContext
   | Edc EvalDiscordContext
 
-data EvalContext = EvalContext
-  { ecVars :: !(M.Map T.Text T.Text)
-  , ecSqliteConnection :: !Sqlite.Connection
-  , ecManager :: !HTTP.Manager
-  , ecLogQueue :: !(WriteQueue LogEntry)
-  , ecFridayGistUpdateRequired :: !(MVar ())
-  , ecPlatformContext :: !EvalPlatformContext
-  }
+data EvalContext =
+  EvalContext
+    { ecVars :: !(M.Map T.Text T.Text)
+    , ecSqliteConnection :: !Sqlite.Connection
+    , ecManager :: !HTTP.Manager
+    , ecLogQueue :: !(WriteQueue LogEntry)
+    , ecFridayGistUpdateRequired :: !(MVar ())
+    , ecPlatformContext :: !EvalPlatformContext
+    }
 
 instance ProvidesLogging EvalContext where
   logQueue = ecLogQueue
@@ -282,8 +284,8 @@ evalExpr (FunCallExpr "asciify" args) = do
         let twitchEmoteUrl =
               let emotes = etcTwitchEmotes etc
                   makeTwitchEmoteUrl emoteName =
-                    "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
-                    "/3.0"
+                    "https://static-cdn.jtvnw.net/emoticons/v1/" <>
+                    emoteName <> "/3.0"
                in makeTwitchEmoteUrl <$> hoistMaybe emotes
         let channel = etcChannel etc
         let bttvEmoteUrl =
@@ -314,8 +316,8 @@ evalExpr (FunCallExpr "asciify" args) = do
                    asciifyUrl
                      dbConn
                      manager
-                     ("https://cdn.discordapp.com/emojis/" <> discordEmoteId <>
-                      ".png"))
+                     ("https://cdn.discordapp.com/emojis/" <>
+                      discordEmoteId <> ".png"))
               _ -> throwExceptEval $ EvalError "No emote found"
           _ -> throwExceptEval $ EvalError "No emote found"
   case image of
@@ -378,13 +380,19 @@ evalExpr (FunCallExpr "calc" args) = do
     first parserStopToEvalError $ runParser parseLine mathsExpression
   case T.unpack rest of
     [] -> do
-      value <- evalCalcExpression parsedExpression
-      return $ T.pack $ show value
+      calcResult <- lift $ runExceptT $ evalCalcExpression parsedExpression
+      calcResultToEval calcResult
     _ -> throwExceptEval $ EvalError "Calc: Incomplete parse PepeHands"
   where
     parserStopToEvalError EOF = EvalError "Calc: Unexpected EOF"
     parserStopToEvalError (SyntaxError msg) =
       EvalError $ "Syntax error: " <> msg
+    calcResultToEval :: Either CalcEvalError Double -> Eval T.Text
+    calcResultToEval calcResult =
+      case calcResult of
+        Left (CalcEvalError e) ->
+          throwExceptEval $ EvalError ("Evaluation error: " <> e)
+        Right e -> return $ T.pack $ show e
 evalExpr (FunCallExpr "roles" _) = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
@@ -434,73 +442,3 @@ humanReadableDiffTime t
     secondsInDay = 24 * secondsInHour
     secondsInHour = 60 * secondsInMinute
     secondsInMinute = 60
-
-evalCalcExpression :: CalcExpression -> Eval Double
-evalCalcExpression (BinaryExpression op left right) = do
-  left' <- evalCalcExpression left
-  right' <- evalCalcExpression right
-  return $
-    (case op of
-       Add -> (+)
-       Sub -> (-)
-       Mul -> (*)
-       Div -> (/)
-       Mod ->
-         \a b ->
-           fromIntegral $
-           mod (toInteger (floor a :: Integer)) (toInteger (floor b :: Integer))
-       Pow -> (**))
-      left'
-      right'
-evalCalcExpression (NegativeExpression body) =
-  (* (-1.0)) <$> evalCalcExpression body
-evalCalcExpression (ValueExpression val) = return val
-evalCalcExpression (FunctionApplication functionName args) =
-    case M.lookup functionName functionLookupTable of
-      Just f -> mapM evalCalcExpression args >>= f
-      Nothing -> throwExceptEval $ EvalError "undefined is not a function FeelsDankMan"
-
-functionLookupTable :: M.Map T.Text ([Double] -> Eval Double)
-functionLookupTable =
-  M.fromList
-    [ ( "sin"
-      , \case
-          [x] -> return $ sin x
-          _ -> throwExceptEval $ EvalError "sin expects one argument")
-    , ( "cos"
-      , \case
-          [x] -> return $ cos x
-          _ -> throwExceptEval $ EvalError "cos expects one argument")
-    , ( "tan"
-      , \case
-          [x] -> return $ tan x
-          _ -> throwExceptEval $ EvalError "tan expects one argument")
-    , ( "arcsin"
-      , \case
-          [x] -> return $ asin x
-          _ -> throwExceptEval $ EvalError "arcsin expects one argument")
-    , ( "arccos"
-      , \case
-          [x] -> return $ acos x
-          _ -> throwExceptEval $ EvalError "arccos expects one argument")
-    , ( "arctan"
-      , \case
-          [x] -> return $ atan x
-          _ -> throwExceptEval $ EvalError "arctan expects one argument")
-    , ( "exp"
-      , \case
-          [x] -> return $ exp x
-          _ -> throwExceptEval $ EvalError "exp expects one argument")
-    , ( "nthroot"
-      , \case
-          [n, x] -> return $ n ** recip x
-          _ -> throwExceptEval $ EvalError "nthroot expects two arguments (radix and radicand)")
-    , ( "sqrt"
-      , \case
-          [x] -> return $ sqrt x
-          _ -> throwExceptEval $ EvalError "sqrt expects one argument")
-    , ( "random"
-      , \case
-          [] -> lift randomIO
-          _ -> throwExceptEval $ EvalError "random takes no arguments")
-    ]
