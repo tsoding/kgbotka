@@ -97,6 +97,11 @@ senderTextOfContext (Etc EvalTwitchContext {etcSenderName = name}) = name
 senderTextOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
   T.pack $ printf "<@!%d>" ((fromIntegral $ userId $ author) :: Word64)
 
+channelNameOfContext :: EvalPlatformContext -> T.Text
+channelNameOfContext (Etc EvalTwitchContext {etcChannel = channel}) =
+  twitchIrcChannelName channel
+channelNameOfContext _ = ""
+
 evalCommandCall :: CommandCall -> Eval T.Text
 evalCommandCall (CommandCall name args) = do
   dbConn <- ecSqliteConnection <$> getEval
@@ -117,6 +122,10 @@ evalCommandCall (CommandCall name args) = do
       modifyEval $ ecVarsModify $ M.insert "month" $ T.pack $ show monthNum
       modifyEval $ ecVarsModify $ M.insert "day" $ T.pack $ show dayNum
       modifyEval $ ecVarsModify $ M.insert "date" $ T.pack $ showGregorian day
+      -- TODO: %tchannel is incosistent with the general variable behaviour
+      --   Usually when variable is not available it throws an error. But %tchannel doesn't!
+      --   It's simply empty on Discord. This kind of inconsistency is not acceptable.
+      modifyEval $ ecVarsModify $ M.insert "tchannel" $ channelNameOfContext platformContext
       case platformContext of
         Etc etc -> do
           let senderId = etcSenderId etc
