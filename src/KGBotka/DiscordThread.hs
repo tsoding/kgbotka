@@ -26,9 +26,9 @@ import KGBotka.Eval
 import KGBotka.Log
 import KGBotka.Markov
 import KGBotka.Queue
+import KGBotka.Settings
 import qualified Network.HTTP.Client as HTTP
 import Text.Printf
-import KGBotka.Settings
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)
@@ -161,7 +161,7 @@ eventHandler dts dis (MessageCreate m)
                  evalStateT (runEvalT $ evalCommandPipe pipe) $
                  -- TODO(#140): DiscordThread evaluation environment does not have any builtin vars
                  EvalContext
-                   { ecVars = M.fromList []
+                   { ecVars = M.empty
                    , ecSqliteConnection = dbConn
                    , ecPlatformContext =
                        Edc

@@ -6,10 +6,10 @@ module KGBotka.Settings
   , fetchSettings
   ) where
 
+import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
-import Data.Maybe
 import KGBotka.Command
 
 -- FIXME(#124): Difference between KGBotka.Settings and KGBotka.Config is not clear

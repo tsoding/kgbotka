@@ -24,7 +24,7 @@ import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
-import Data.Time.Clock
+import Data.Time
 import Data.Word
 import qualified Database.SQLite.Simple as Sqlite
 import Discord.Types
@@ -92,9 +92,13 @@ newtype EvalError =
 
 type Eval = EvalT EvalContext EvalError IO
 
+senderTextOfContext :: EvalPlatformContext -> T.Text
+senderTextOfContext (Etc EvalTwitchContext {etcSenderName = name}) = name
+senderTextOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
+  T.pack $ printf "<@!%d>" ((fromIntegral $ userId $ author) :: Word64)
+
 evalCommandCall :: CommandCall -> Eval T.Text
 evalCommandCall (CommandCall name args) = do
-  modifyEval $ ecVarsModify $ M.insert "1" args
   dbConn <- ecSqliteConnection <$> getEval
   command <- liftIO $ commandByName dbConn name
   case command of
@@ -102,8 +106,17 @@ evalCommandCall (CommandCall name args) = do
                  , commandCode = code
                  , commandTimes = times
                  } -> do
-      modifyEval $ ecVarsModify $ M.insert "times" $ T.pack $ show times
+      day <- liftIO $ utctDay <$> getCurrentTime
+      let (yearNum, monthNum, dayNum) = toGregorian day
       platformContext <- ecPlatformContext <$> getEval
+      modifyEval $ ecVarsModify $ M.insert "1" args
+      modifyEval $ ecVarsModify $ M.insert "times" $ T.pack $ show times
+      modifyEval $
+        ecVarsModify $ M.insert "sender" $ senderTextOfContext platformContext
+      modifyEval $ ecVarsModify $ M.insert "year" $ T.pack $ show yearNum
+      modifyEval $ ecVarsModify $ M.insert "month" $ T.pack $ show monthNum
+      modifyEval $ ecVarsModify $ M.insert "day" $ T.pack $ show dayNum
+      modifyEval $ ecVarsModify $ M.insert "date" $ T.pack $ showGregorian day
       case platformContext of
         Etc etc -> do
           let senderId = etcSenderId etc

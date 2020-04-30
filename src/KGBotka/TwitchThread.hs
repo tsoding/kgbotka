@@ -20,7 +20,6 @@ import qualified Data.Map as M
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Text as T
-import Data.Time
 import qualified Database.SQLite.Simple as Sqlite
 import Hookup
 import Irc.Commands
@@ -37,13 +36,13 @@ import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
+import KGBotka.Settings
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
-import KGBotka.Settings
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
@@ -288,22 +287,11 @@ processUserMsgs dbConn tts messages = do
                             twitchCmdEscape $
                             T.pack $ printf "@%s %s" senderName markovResponse
                       pipe -> do
-                        day <- utctDay <$> getCurrentTime
-                        let (yearNum, monthNum, dayNum) = toGregorian day
                         evalResult <-
                           runExceptT $
                           evalStateT (runEvalT $ evalCommandPipe pipe) $
                           EvalContext
-                            { ecVars =
-                                M.fromList
-                                  [ ("sender", senderName)
-                                  , ("year", T.pack $ show yearNum)
-                                  , ("month", T.pack $ show monthNum)
-                                  , ("day", T.pack $ show dayNum)
-                                  , ("date", T.pack $ showGregorian day)
-                                        -- TODO(#144): %times var is not available
-                                  , ("times", "0")
-                                  ]
+                            { ecVars = M.empty
                             , ecSqliteConnection = dbConn
                             , ecPlatformContext =
                                 Etc
