@@ -4,7 +4,6 @@
 
 module KGBotka.Command
   ( CommandCall(..)
-  , parseCommandCall
   , parseCommandPipe
   , Command(..)
   , commandByName
@@ -137,6 +136,7 @@ data CommandCall = CommandCall
 
 newtype CallPrefix =
   CallPrefix T.Text
+  deriving (Show)
 
 newtype PipeSuffix =
   PipeSuffix T.Text
