@@ -42,7 +42,7 @@ data DiscordThreadState = DiscordThreadState
   { dtsLogQueue :: !(WriteQueue LogEntry)
   , dtsSqliteConnection :: !(MVar Sqlite.Connection)
   , dtsManager :: !HTTP.Manager
-  -- TODO: replace dtsCurrentUser :: !(MVar User) with !(Maybe User)
+  -- TODO(#173): replace dtsCurrentUser :: !(MVar User) with !(Maybe User)
   , dtsCurrentUser :: !(MVar User)
   , dtsFridayGistUpdateRequired :: !(MVar ())
   }
