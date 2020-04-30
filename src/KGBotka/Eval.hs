@@ -125,7 +125,9 @@ evalCommandCall (CommandCall name args) = do
       -- TODO: %tchannel is incosistent with the general variable behaviour
       --   Usually when variable is not available it throws an error. But %tchannel doesn't!
       --   It's simply empty on Discord. This kind of inconsistency is not acceptable.
-      modifyEval $ ecVarsModify $ M.insert "tchannel" $ channelNameOfContext platformContext
+      modifyEval $
+        ecVarsModify $
+        M.insert "tchannel" $ channelNameOfContext platformContext
       case platformContext of
         Etc etc -> do
           let senderId = etcSenderId etc
