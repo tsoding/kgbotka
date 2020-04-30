@@ -43,6 +43,7 @@ import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
+import KGBotka.Settings
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
@@ -270,76 +271,77 @@ processUserMsgs dbConn tts messages = do
                 addMarkovSentence dbConn message
                 let forbiddenCharLimit = 100
                 if countForbidden message < forbiddenCharLimit
-                  then case parseCommandPipe
-                              (CallPrefix "$")
-                              (PipeSuffix "|")
-                              message of
-                         [] ->
-                           when
-                             (T.toUpper (configTwitchAccount $ ttsConfig tts) `T.isInfixOf`
-                              T.toUpper message) $ do
-                             markovResponse <- genMarkovSentence dbConn
-                             atomically $
-                               writeQueue outgoingQueue $
-                               OutPrivMsg channel $
-                               twitchCmdEscape $
-                               T.pack $
-                               printf "@%s %s" senderName markovResponse
-                         pipe -> do
-                           day <- utctDay <$> getCurrentTime
-                           let (yearNum, monthNum, dayNum) = toGregorian day
-                           evalResult <-
-                             runExceptT $
-                             evalStateT (runEvalT $ evalCommandPipe pipe) $
-                             EvalContext
-                               { ecVars =
-                                   M.fromList
-                                     [ ("sender", senderName)
-                                     , ("year", T.pack $ show yearNum)
-                                     , ("month", T.pack $ show monthNum)
-                                     , ("day", T.pack $ show dayNum)
-                                     , ("date", T.pack $ showGregorian day)
-                                     -- TODO(#144): %times var is not available
-                                     , ("times", "0")
-                                     ]
-                               , ecSqliteConnection = dbConn
-                               , ecPlatformContext =
-                                   Etc
-                                     EvalTwitchContext
-                                       { etcSenderId = senderId
-                                       , etcSenderName = senderName
-                                       , etcChannel = channel
-                                       , etcBadgeRoles = badgeRoles
-                                       , etcRoles = roles
-                                       , etcClientId =
-                                           configTwitchClientId $ ttsConfig tts
-                                       , etcTwitchEmotes =
-                                           do emotesTag <-
-                                                lookupEntryValue "emotes" $
-                                                _msgTags msg
-                                              if not $ T.null emotesTag
-                                                then do
-                                                  emoteDesc <-
-                                                    listToMaybe $
-                                                    T.splitOn "/" emotesTag
-                                                  listToMaybe $
-                                                    T.splitOn ":" emoteDesc
-                                                else Nothing
-                                       }
-                               , ecLogQueue = logQueue tts
-                               , ecManager = manager
-                               , ecFridayGistUpdateRequired =
-                                   ttsFridayGistUpdateRequired tts
-                               }
-                           atomically $
-                             case evalResult of
-                               Right commandResponse ->
-                                 writeQueue outgoingQueue $
-                                 OutPrivMsg channel $
-                                 twitchCmdEscape commandResponse
-                               Left (EvalError userMsg) ->
-                                 writeQueue outgoingQueue $
-                                 OutPrivMsg channel $ twitchCmdEscape userMsg
+                  then do
+                    settings <- fetchSettings dbConn
+                    case parseCommandPipe
+                           (settingsCallPrefix settings)
+                           (PipeSuffix "|")
+                           message of
+                      [] ->
+                        when
+                          (T.toUpper (configTwitchAccount $ ttsConfig tts) `T.isInfixOf`
+                           T.toUpper message) $ do
+                          markovResponse <- genMarkovSentence dbConn
+                          atomically $
+                            writeQueue outgoingQueue $
+                            OutPrivMsg channel $
+                            twitchCmdEscape $
+                            T.pack $ printf "@%s %s" senderName markovResponse
+                      pipe -> do
+                        day <- utctDay <$> getCurrentTime
+                        let (yearNum, monthNum, dayNum) = toGregorian day
+                        evalResult <-
+                          runExceptT $
+                          evalStateT (runEvalT $ evalCommandPipe pipe) $
+                          EvalContext
+                            { ecVars =
+                                M.fromList
+                                  [ ("sender", senderName)
+                                  , ("year", T.pack $ show yearNum)
+                                  , ("month", T.pack $ show monthNum)
+                                  , ("day", T.pack $ show dayNum)
+                                  , ("date", T.pack $ showGregorian day)
+                                        -- TODO(#144): %times var is not available
+                                  , ("times", "0")
+                                  ]
+                            , ecSqliteConnection = dbConn
+                            , ecPlatformContext =
+                                Etc
+                                  EvalTwitchContext
+                                    { etcSenderId = senderId
+                                    , etcSenderName = senderName
+                                    , etcChannel = channel
+                                    , etcBadgeRoles = badgeRoles
+                                    , etcRoles = roles
+                                    , etcClientId =
+                                        configTwitchClientId $ ttsConfig tts
+                                    , etcTwitchEmotes =
+                                        do emotesTag <-
+                                             lookupEntryValue "emotes" $
+                                             _msgTags msg
+                                           if not $ T.null emotesTag
+                                             then do
+                                               emoteDesc <-
+                                                 listToMaybe $
+                                                 T.splitOn "/" emotesTag
+                                               listToMaybe $
+                                                 T.splitOn ":" emoteDesc
+                                             else Nothing
+                                    }
+                            , ecLogQueue = logQueue tts
+                            , ecManager = manager
+                            , ecFridayGistUpdateRequired =
+                                ttsFridayGistUpdateRequired tts
+                            }
+                        atomically $
+                          case evalResult of
+                            Right commandResponse ->
+                              writeQueue outgoingQueue $
+                              OutPrivMsg channel $
+                              twitchCmdEscape commandResponse
+                            Left (EvalError userMsg) ->
+                              writeQueue outgoingQueue $
+                              OutPrivMsg channel $ twitchCmdEscape userMsg
                   else atomically $ do
                          writeQueue outgoingQueue $
                            OutPrivMsg channel $

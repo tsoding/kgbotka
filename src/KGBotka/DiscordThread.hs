@@ -28,6 +28,7 @@ import KGBotka.Markov
 import KGBotka.Queue
 import qualified Network.HTTP.Client as HTTP
 import Text.Printf
+import KGBotka.Settings
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)
@@ -41,6 +42,7 @@ data DiscordThreadState = DiscordThreadState
   { dtsLogQueue :: !(WriteQueue LogEntry)
   , dtsSqliteConnection :: !(MVar Sqlite.Connection)
   , dtsManager :: !HTTP.Manager
+  -- TODO: replace dtsCurrentUser :: !(MVar User) with !(Maybe User)
   , dtsCurrentUser :: !(MVar User)
   , dtsFridayGistUpdateRequired :: !(MVar ())
   }
@@ -133,8 +135,9 @@ eventHandler dts dis (MessageCreate m)
              (userId $ messageAuthor m) $
              messageText m
            addMarkovSentence dbConn $ messageText m
+           settings <- fetchSettings dbConn
            case parseCommandPipe
-                  (CallPrefix "$")
+                  (settingsCallPrefix settings)
                   (PipeSuffix "|")
                   (messageText m) of
              [] -> return ()
