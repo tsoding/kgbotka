@@ -95,7 +95,7 @@ type Eval = EvalT EvalContext EvalError IO
 senderTextOfContext :: EvalPlatformContext -> T.Text
 senderTextOfContext (Etc EvalTwitchContext {etcSenderName = name}) = name
 senderTextOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
-  T.pack $ printf "<@!%d>" ((fromIntegral $ userId $ author) :: Word64)
+  T.pack $ printf "<@!%d>" ((fromIntegral $ userId author) :: Word64)
 
 channelNameOfContext :: EvalPlatformContext -> T.Text
 channelNameOfContext (Etc EvalTwitchContext {etcChannel = channel}) =
