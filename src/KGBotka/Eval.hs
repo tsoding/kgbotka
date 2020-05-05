@@ -378,11 +378,11 @@ evalExpr (FunCallExpr "calc" args) = do
   (rest, parsedExpression) <-
     exceptEval $
     first parserStopToEvalError $ runParser parseLine mathsExpression
-  case T.unpack rest of
-    [] -> do
+  if T.null rest
+    then do
       calcResult <- lift $ runExceptT $ evalCalcExpression parsedExpression
       calcResultToEval calcResult
-    _ -> throwExceptEval $ EvalError "Calc: Incomplete parse PepeHands"
+    else throwExceptEval $ EvalError "Calc: Incomplete parse PepeHands"
   where
     parserStopToEvalError EOF = EvalError "Calc: Unexpected EOF"
     parserStopToEvalError (SyntaxError msg) =
