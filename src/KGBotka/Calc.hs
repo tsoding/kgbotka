@@ -22,22 +22,6 @@ data Operator
   | Pow
   deriving (Show, Eq)
 
-charToOperator :: Char -> Operator
-charToOperator '+' = Add
-charToOperator '-' = Sub
-charToOperator '*' = Mul
-charToOperator '/' = Div
-charToOperator '%' = Mod
-charToOperator '^' = Pow
-charToOperator _ =
-    -- TODO: Make charToOperator not throw an exception
-    -- For now it is an unsafe function because it indicates
-    -- that operators were added but the parsers were not
-    -- corrected.
-  error
-    "charToOperator: No pattern for operator conversion. \
-    \Maybe you added a new operator and forgot to add a case to the conversion function."
-
 data CalcExpression
   = BinaryExpression Operator CalcExpression CalcExpression
   | NegativeExpression CalcExpression
@@ -77,7 +61,7 @@ parseAdditive = parseAdditive' <|> parseMultiplicative
   where
     parseAdditive' = do
       left <- parseMultiplicative
-      operator <- charToOperator <$> (charP '+' <|> charP '-')
+      operator <- (Add <$ charP '+') <|> (Sub <$ charP '-')
       BinaryExpression operator left <$> parseAdditive
 
 parseMultiplicative :: Parser CalcExpression
@@ -85,7 +69,8 @@ parseMultiplicative = parseMultiplicative' <|> parseExponentiation
   where
     parseMultiplicative' = do
       left <- parseExponentiation
-      operator <- charToOperator <$> (charP '*' <|> charP '/' <|> charP '%')
+      operator <-
+        (Mul <$ charP '*') <|> (Div <$ charP '/') <|> (Mod <$ charP '%')
       BinaryExpression operator left <$> parseMultiplicative
 
 parseExponentiation :: Parser CalcExpression
@@ -93,7 +78,7 @@ parseExponentiation = parseExponentiation' <|> parseAtom
   where
     parseExponentiation' = do
       left <- parseNegation
-      operator <- charToOperator <$> charP '^'
+      operator <- Pow <$ charP '^'
       BinaryExpression operator left <$> parseExponentiation
 
 parseNegation :: Parser CalcExpression
