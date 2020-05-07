@@ -42,7 +42,7 @@ parseNumber = parseFloating <|> parseInteger
     parseNumeric = notNull "Expected a numeric value" $ takeWhileP isDigit
     parseInteger :: Parser Double
     parseInteger = read . T.unpack <$> parseNumeric
-    -- TODO: parseFloating does not support exponential number format
+    -- TODO(#177): parseFloating does not support exponential number format
     parseFloating :: Parser Double
     parseFloating = do
       integerPart <- parseNumeric
