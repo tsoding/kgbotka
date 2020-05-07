@@ -15,11 +15,13 @@ import Control.Applicative
 import Control.Concurrent
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
 import Data.Array
+import Data.Bifunctor (first)
 import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
@@ -30,6 +32,7 @@ import qualified Database.SQLite.Simple as Sqlite
 import Discord.Types
 import KGBotka.Asciify
 import KGBotka.Bttv
+import KGBotka.Calc
 import KGBotka.Command
 import KGBotka.Expr
 import KGBotka.Ffz
@@ -48,35 +51,38 @@ import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 
-data EvalTwitchContext = EvalTwitchContext
-  { etcSenderId :: !TwitchUserId
-  , etcSenderName :: !T.Text
+data EvalTwitchContext =
+  EvalTwitchContext
+    { etcSenderId :: !TwitchUserId
+    , etcSenderName :: !T.Text
   -- TODO(#80): evalContextTwitchEmotes should be a list of some kind of emote type
-  , etcTwitchEmotes :: !(Maybe T.Text)
-  , etcChannel :: !TwitchIrcChannel
-  , etcBadgeRoles :: ![TwitchBadgeRole]
-  , etcRoles :: ![TwitchRole]
-  , etcClientId :: !T.Text
-  }
+    , etcTwitchEmotes :: !(Maybe T.Text)
+    , etcChannel :: !TwitchIrcChannel
+    , etcBadgeRoles :: ![TwitchBadgeRole]
+    , etcRoles :: ![TwitchRole]
+    , etcClientId :: !T.Text
+    }
 
-data EvalDiscordContext = EvalDiscordContext
-  { edcAuthor :: !User
-  , edcGuild :: !(Maybe Guild)
-  , edcRoles :: ![Snowflake]
-  }
+data EvalDiscordContext =
+  EvalDiscordContext
+    { edcAuthor :: !User
+    , edcGuild :: !(Maybe Guild)
+    , edcRoles :: ![Snowflake]
+    }
 
 data EvalPlatformContext
   = Etc EvalTwitchContext
   | Edc EvalDiscordContext
 
-data EvalContext = EvalContext
-  { ecVars :: !(M.Map T.Text T.Text)
-  , ecSqliteConnection :: !Sqlite.Connection
-  , ecManager :: !HTTP.Manager
-  , ecLogQueue :: !(WriteQueue LogEntry)
-  , ecFridayGistUpdateRequired :: !(MVar ())
-  , ecPlatformContext :: !EvalPlatformContext
-  }
+data EvalContext =
+  EvalContext
+    { ecVars :: !(M.Map T.Text T.Text)
+    , ecSqliteConnection :: !Sqlite.Connection
+    , ecManager :: !HTTP.Manager
+    , ecLogQueue :: !(WriteQueue LogEntry)
+    , ecFridayGistUpdateRequired :: !(MVar ())
+    , ecPlatformContext :: !EvalPlatformContext
+    }
 
 instance ProvidesLogging EvalContext where
   logQueue = ecLogQueue
@@ -302,8 +308,8 @@ evalExpr (FunCallExpr "asciify" args) = do
         let twitchEmoteUrl =
               let emotes = etcTwitchEmotes etc
                   makeTwitchEmoteUrl emoteName =
-                    "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
-                    "/3.0"
+                    "https://static-cdn.jtvnw.net/emoticons/v1/" <>
+                    emoteName <> "/3.0"
                in makeTwitchEmoteUrl <$> hoistMaybe emotes
         let channel = etcChannel etc
         let bttvEmoteUrl =
@@ -334,8 +340,8 @@ evalExpr (FunCallExpr "asciify" args) = do
                    asciifyUrl
                      dbConn
                      manager
-                     ("https://cdn.discordapp.com/emojis/" <> discordEmoteId <>
-                      ".png"))
+                     ("https://cdn.discordapp.com/emojis/" <>
+                      discordEmoteId <> ".png"))
               _ -> throwExceptEval $ EvalError "No emote found"
           _ -> throwExceptEval $ EvalError "No emote found"
   case image of
@@ -391,6 +397,28 @@ evalExpr (FunCallExpr "eval" args) = do
     withExceptT (EvalError . T.pack . show) $
     except (snd <$> runParser exprs code)
   evalExprs codeAst
+evalExpr (FunCallExpr "calc" args) = do
+  mathsExpression <- T.concat <$> mapM evalExpr args
+  (rest, parsedExpression) <-
+    exceptEval $
+    first parserStopToEvalError $ runParser parseLine mathsExpression
+  if T.null rest
+    then do
+      calcResult <- lift $ runExceptT $ evalCalcExpression parsedExpression
+      calcResultToEval calcResult
+    else throwExceptEval $ EvalError "Calc: Incomplete parse PepeHands"
+  where
+    parserStopToEvalError EOF = EvalError "Calc: Unexpected EOF"
+    parserStopToEvalError (SyntaxError msg) =
+      EvalError $ "Syntax error: " <> msg
+    -- TODO: There might be a better way to do the job of calcResultToEval
+    -- instead of unwrapping the ExceptT
+    calcResultToEval :: Either CalcEvalError Double -> Eval T.Text
+    calcResultToEval calcResult =
+      case calcResult of
+        Left (CalcEvalError e) ->
+          throwExceptEval $ EvalError ("Evaluation error: " <> e)
+        Right e -> return $ T.pack $ show e
 evalExpr (FunCallExpr "roles" _) = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
