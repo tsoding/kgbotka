@@ -144,6 +144,7 @@ withTransactionLogErrors dbConn lqueue f =
          LogEntry "MARKOV" $ T.pack $ show (e :: Sqlite.SQLError)
        return Nothing)
 
+-- TODO: there is no way to know the progress of thread retraining
 retrainThread :: MarkovThreadParams -> IO ()
 retrainThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
                                      , mtpLogQueue = lqueue
