@@ -172,4 +172,18 @@ kgbotkaMigrations =
   , Migration
       [sql|ALTER TABLE Command
            ADD COLUMN times INT NOT NULL DEFAULT 0;|]
+  , Migration [sql|ALTER TABLE TwitchLog RENAME TO TwitchLogOld;|]
+  , Migration
+      [sql|CREATE TABLE TwitchLog (
+             id INTEGER PRIMARY KEY,
+             channel TEXT NOT NULL,
+             senderTwitchId TEXT,
+             senderTwitchName TEXT NOT NULL,
+             senderTwitchDisplayName TEXT,
+             senderTwitchRoles TEXT NOT NULL,
+             senderTwitchBadgeRoles TEXT NOT NULL,
+             message TEXT NOT NULL,
+             messageTime DATETIME DEFAULT (datetime('now')) NOT NULL);|]
+  , Migration [sql|INSERT INTO TwitchLog (id, channel, senderTwitchId, senderTwitchName, senderTwitchDisplayName, senderTwitchRoles, senderTwitchBadgeRoles, message, messageTime) SELECT id, channel, senderTwitchId, senderTwitchName, senderTwitchDisplayName, senderTwitchRoles, senderTwitchBadgeRoles, message, messageTime FROM TwitchLogOld;|]
+  , Migration [sql|DROP TABLE TwitchLogOld;|]
   ]
