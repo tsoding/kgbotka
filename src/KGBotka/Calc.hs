@@ -94,7 +94,7 @@ parseFunctionApplication = do
   FunctionApplication functionName <$>
     inParens (sepBy parseExpression (charP ',' <* ws) <|> return [])
 
--- TODO: Make calc variables a seperate constructor of CalcExpression
+-- TODO(#178): Make calc variables a seperate constructor of CalcExpression
 parseVariable :: Parser CalcExpression
 parseVariable = do
   varName <- notNull "Expected a variable name" $ takeWhileP isAlpha
