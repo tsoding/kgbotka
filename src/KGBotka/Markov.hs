@@ -1,10 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.Markov
-  ( addMarkovSentence
-  , genMarkovSentence
+  ( genMarkovSentence
   , isDiscordPing
+  , MarkovCommand(..)
+  , MarkovThreadParams(..)
+  , markovThread
   ) where
 
 import Control.Monad.Trans.Class
@@ -16,9 +19,18 @@ import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple (NamedParam(..))
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
+import Database.SQLite.Simple.QQ
 import System.Random
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
+import Control.Concurrent
+import KGBotka.Queue
+import KGBotka.Log
+import Control.Concurrent.STM
+import Control.Exception
+import KGBotka.Sqlite
+import Data.Foldable
+import Data.Functor
 
 -- TODO(#46): Markov does not split models by twitch channels
 -- TODO(#47): there is no way to retrain the model from the TwitchLog
@@ -106,3 +118,77 @@ genMarkovSentence dbConn = do
          End -> Nothing
          Word x -> Just x)
       events
+
+data MarkovCommand
+  = NewSentence T.Text
+  | Retrain
+
+data MarkovThreadParams = MarkovThreadParams
+  { mtpSqliteConnection :: !(MVar Sqlite.Connection)
+  , mtpLogQueue :: !(WriteQueue LogEntry)
+  , mtpCmdQueue :: !(ReadQueue MarkovCommand)
+  , mtpPageSize :: Int
+  , mtpCurrentPage :: Int
+  }
+
+withTransactionLogErrors ::
+     MVar Sqlite.Connection
+  -> WriteQueue LogEntry
+  -> (Sqlite.Connection -> IO a)
+  -> IO (Maybe a)
+withTransactionLogErrors dbConn lqueue f =
+  catch
+    (withLockedTransaction dbConn $ \conn -> Just <$> f conn)
+    (\e -> do
+       logEntry lqueue $
+         LogEntry "MARKOV" $ T.pack $ show (e :: Sqlite.SQLError)
+       return Nothing)
+
+retrainThread :: MarkovThreadParams -> IO ()
+retrainThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
+                                     , mtpLogQueue = lqueue
+                                     , mtpPageSize = pageSize
+                                     , mtpCurrentPage = currentPage
+                                     } = do
+  cmd <- atomically $ tryReadQueue $ mtpCmdQueue mtp
+  case cmd of
+    Just Retrain -> do
+      void $
+        withTransactionLogErrors dbConn lqueue $ \conn ->
+          Sqlite.executeNamed conn [sql|DELETE FROM Markov;|] []
+      retrainThread $ mtp {mtpCurrentPage = 0}
+    _ -> return ()
+  messageCount <-
+    withTransactionLogErrors dbConn lqueue $ \conn -> do
+      messages <-
+        Sqlite.queryNamed
+          conn
+          [sql| select message from TwitchLog
+                order by id limit :pageSize
+                offset :pageSize * :currentPage |]
+          [":pageSize" := pageSize, ":currentPage" := currentPage]
+      traverse_ (addMarkovSentence conn . Sqlite.fromOnly) messages
+      return $ length messages
+  case messageCount of
+    Just x
+      | x > 0 -> retrainThread $ mtp {mtpCurrentPage = currentPage + 1}
+    Just _ -> markovThread mtp
+    Nothing -> retrainThread mtp
+
+markovThread :: MarkovThreadParams -> IO ()
+markovThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
+                                    , mtpLogQueue = lqueue
+                                    , mtpCmdQueue = cmdQueue
+                                    } = do
+  cmd <- atomically $ readQueue $ cmdQueue
+  case cmd of
+    NewSentence text -> do
+      void $
+        withTransactionLogErrors dbConn lqueue $ \conn ->
+          addMarkovSentence conn text
+      markovThread mtp
+    Retrain -> do
+      void $
+        withTransactionLogErrors dbConn lqueue $ \conn ->
+          Sqlite.executeNamed conn [sql|DELETE FROM Markov;|] []
+      retrainThread $ mtp {mtpCurrentPage = 0}
