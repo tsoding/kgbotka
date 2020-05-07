@@ -411,7 +411,7 @@ evalExpr (FunCallExpr "calc" args) = do
     parserStopToEvalError EOF = EvalError "Calc: Unexpected EOF"
     parserStopToEvalError (SyntaxError msg) =
       EvalError $ "Syntax error: " <> msg
-    -- TODO: There might be a better way to do the job of calcResultToEval
+    -- TODO(#179): There might be a better way to do the job of calcResultToEval
     -- instead of unwrapping the ExceptT
     calcResultToEval :: Either CalcEvalError Double -> Eval T.Text
     calcResultToEval calcResult =
