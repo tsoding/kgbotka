@@ -86,7 +86,7 @@ convertAliases dbConn = do
   --   It should print a warning or something
   traverse_ (uncurry $ addCommandName dbConn) legacyAliases
 
--- TODO: MigrationTool does not convert Discord logs
+-- TODO(#180): MigrationTool does not convert Discord logs
 convertTwitchLogs :: Connection -> IO ()
 convertTwitchLogs dbConn =
   executeNamed
