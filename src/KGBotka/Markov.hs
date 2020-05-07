@@ -128,7 +128,7 @@ data MarkovThreadParams = MarkovThreadParams
   , mtpLogQueue :: !(WriteQueue LogEntry)
   , mtpCmdQueue :: !(ReadQueue MarkovCommand)
   , mtpPageSize :: Int
-  , mtpCurrentPage :: Int
+  , mtpCurrentPage :: MVar Int
   }
 
 withTransactionLogErrors ::
@@ -159,6 +159,7 @@ retrainThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
           Sqlite.executeNamed conn [sql|DELETE FROM Markov;|] []
       retrainThread $ mtp {mtpCurrentPage = 0}
     _ -> return ()
+  -- TODO(#183): Markov retraining does not use Discord logs
   messageCount <-
     withTransactionLogErrors dbConn lqueue $ \conn -> do
       messages <-
