@@ -138,7 +138,7 @@ withTransactionLogErrors ::
   -> IO (Maybe a)
 withTransactionLogErrors dbConn lqueue f =
   catch
-    (withLockedTransaction dbConn $ \conn -> Just <$> f conn)
+    (withLockedTransaction dbConn $ fmap Just . f)
     (\e -> do
        logEntry lqueue $
          LogEntry "MARKOV" $ T.pack $ show (e :: Sqlite.SQLError)
@@ -182,7 +182,7 @@ markovThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
                                     , mtpLogQueue = lqueue
                                     , mtpCmdQueue = cmdQueue
                                     } = do
-  cmd <- atomically $ readQueue $ cmdQueue
+  cmd <- atomically $ readQueue cmdQueue
   case cmd of
     NewSentence text -> do
       void $

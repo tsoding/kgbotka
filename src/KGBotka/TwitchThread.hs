@@ -79,9 +79,9 @@ data TwitchThreadParams = TwitchThreadParams
   , ttpReplQueue :: !(ReadQueue ReplCommand)
   , ttpSqliteConnection :: !(MVar Sqlite.Connection)
   , ttpManager :: !HTTP.Manager
-  , ttpConfig :: Maybe ConfigTwitch
+  , ttpConfig :: !(Maybe ConfigTwitch)
   , ttpFridayGistUpdateRequired :: !(MVar ())
-  , ttpMarkovQueue :: (WriteQueue MarkovCommand)
+  , ttpMarkovQueue :: !(WriteQueue MarkovCommand)
   }
 
 instance ProvidesLogging TwitchThreadParams where
