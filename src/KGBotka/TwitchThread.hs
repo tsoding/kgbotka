@@ -146,9 +146,7 @@ readIrcLine conn l = do
          e -> throwIO e)
   case (parseRawIrcMsg . asUtf8) =<< mb of
     Just msg -> return (Just msg)
-    Nothing -> do
-      logEntry l $ LogEntry "TWITCH" "Server sent invalid message!"
-      return Nothing
+    Nothing -> return Nothing
 
 twitchIncomingThread ::
      ProvidesLogging l => Connection -> WriteQueue RawIrcMsg -> l -> IO ()
