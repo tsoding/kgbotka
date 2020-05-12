@@ -12,9 +12,11 @@ import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Control.Monad.Trans.Except
+import qualified Data.ByteString as BS
 import Data.Foldable
 import Data.Maybe
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple.QQ
 import KGBotka.Bttv
@@ -97,7 +99,7 @@ replThreadLoop rts = do
     T.unpack (twitchIrcChannelText $ fromMaybe "#" $ rtsCurrentChannel rts) <>
     "]> "
   hFlush (rtsHandle rts)
-  inputLine <- T.pack <$> hGetLine replHandle
+  inputLine <- TE.decodeUtf8 <$> BS.hGetLine replHandle
   atomically $
     writeQueue (rtsLogQueue rts) $
     LogEntry "BACKDOOR" $ T.pack (show $ rtsConnAddr rts) <> ": " <> inputLine
