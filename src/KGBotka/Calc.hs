@@ -23,9 +23,12 @@ data Operator
   deriving (Show, Eq)
 
 data CalcExpression
-  = BinaryExpression Operator CalcExpression CalcExpression
+  = BinaryExpression Operator
+                     CalcExpression
+                     CalcExpression
   | NegativeExpression CalcExpression
-  | FunctionApplication T.Text [CalcExpression]
+  | FunctionApplication T.Text
+                        [CalcExpression]
   | ValueExpression Double
   deriving (Show)
 

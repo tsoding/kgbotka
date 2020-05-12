@@ -270,7 +270,8 @@ processUserMsgs dbConn tts messages = do
                   roles
                   badgeRoles
                   message
-                atomically $ writeQueue (ttsMarkovQueue tts) $ NewSentence message
+                atomically $
+                  writeQueue (ttsMarkovQueue tts) $ NewSentence message
                 let forbiddenCharLimit = 100
                 if countForbidden message < forbiddenCharLimit
                   then do

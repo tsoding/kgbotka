@@ -6,6 +6,7 @@ module KGBotka.DiscordThread
   ) where
 
 import Control.Concurrent
+import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Control.Monad.Trans.Eval
@@ -29,7 +30,6 @@ import KGBotka.Queue
 import KGBotka.Settings
 import qualified Network.HTTP.Client as HTTP
 import Text.Printf
-import Control.Concurrent.STM
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)

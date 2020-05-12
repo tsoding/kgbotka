@@ -10,27 +10,26 @@ module KGBotka.Markov
   , markovThread
   ) where
 
+import Control.Concurrent
+import Control.Concurrent.STM
+import Control.Exception
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import Data.List
+import Data.Foldable
+import Data.Functor
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple (NamedParam(..))
 import Database.SQLite.Simple.FromField
-import Database.SQLite.Simple.ToField
 import Database.SQLite.Simple.QQ
+import Database.SQLite.Simple.ToField
+import KGBotka.Log
+import KGBotka.Queue
+import KGBotka.Sqlite
 import System.Random
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Control.Concurrent
-import KGBotka.Queue
-import KGBotka.Log
-import Control.Concurrent.STM
-import Control.Exception
-import KGBotka.Sqlite
-import Data.Foldable
-import Data.Functor
 
 -- TODO(#46): Markov does not split models by twitch channels
 -- TODO(#47): there is no way to retrain the model from the TwitchLog
