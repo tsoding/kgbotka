@@ -128,7 +128,7 @@ data MarkovThreadParams = MarkovThreadParams
   , mtpLogQueue :: !(WriteQueue LogEntry)
   , mtpCmdQueue :: !(ReadQueue MarkovCommand)
   , mtpPageSize :: Int
-  , mtpCurrentPage :: MVar Int
+  , mtpCurrentPage :: Int
   }
 
 withTransactionLogErrors ::
