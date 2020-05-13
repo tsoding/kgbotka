@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.Repl
   ( backdoorThread
@@ -18,7 +17,6 @@ import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Database.SQLite.Simple as Sqlite
-import Database.SQLite.Simple.QQ
 import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Ffz
@@ -42,6 +40,7 @@ data ReplThreadParams = ReplThreadParams
   , rtpHandle :: !Handle
   , rtpLogQueue :: !(WriteQueue LogEntry)
   , rtpConnAddr :: !SockAddr
+  , rtpMarkovQueue :: !(WriteQueue MarkovCommand)
   }
 
 instance ProvidesLogging ReplThreadParams where
@@ -56,6 +55,7 @@ data ReplThreadState = ReplThreadState
   , rtsHandle :: !Handle
   , rtsLogQueue :: !(WriteQueue LogEntry)
   , rtsConnAddr :: !SockAddr
+  , rtsMarkovQueue :: !(WriteQueue MarkovCommand)
   }
 
 instance ProvidesHttpManager ReplThreadState where
@@ -79,6 +79,7 @@ replThread rtp =
       , rtsHandle = rtpHandle rtp
       , rtsLogQueue = rtpLogQueue rtp
       , rtsConnAddr = rtpConnAddr rtp
+      , rtsMarkovQueue = rtpMarkovQueue rtp
       }
 
 -- TODO(#60): there is no shutdown command that shuts down the whole bot
@@ -203,17 +204,8 @@ replThreadLoop rts = do
           Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"
       replThreadLoop rts
     ("retrain":_, _) -> do
-      hPutStrLn replHandle "Retraining Markov model..."
-      -- TODO(#168): retrain REPL command may have a poor performance
-      --
-      --   Blocked by #142 because we need sufficient amount of data
-      --   from the legacy bot to test the performance
-      withTransactionLogErrors $ \dbConn -> do
-        Sqlite.executeNamed dbConn [sql|DELETE FROM Markov;|] []
-        traverse_ (addMarkovSentence dbConn . Sqlite.fromOnly) =<<
-          Sqlite.queryNamed dbConn [sql|SELECT message FROM TwitchLog|] []
-        traverse_ (addMarkovSentence dbConn . Sqlite.fromOnly) =<<
-          Sqlite.queryNamed dbConn [sql|SELECT message FROM DiscordLog|] []
+      hPutStrLn replHandle "Scheduled Markov retraining..."
+      atomically $ writeQueue (rtsMarkovQueue rts) Retrain
       replThreadLoop rts
     (unknown:_, _) -> do
       hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
@@ -227,6 +219,7 @@ data BackdoorThreadParams = BackdoorThreadParams
   , btpManager :: !HTTP.Manager
   , btpLogQueue :: !(WriteQueue LogEntry)
   , btpPort :: Int
+  , btpMarkovQueue :: !(WriteQueue MarkovCommand)
   }
 
 instance ProvidesLogging BackdoorThreadParams where
@@ -265,5 +258,6 @@ backdoorThread btp = do
           , rtpLogQueue = btpLogQueue btp
           , rtpConnAddr = addr
           , rtpTwitchClientId = btpTwitchClientId btp
+          , rtpMarkovQueue = btpMarkovQueue btp
           }
 -- TODO(#82): there is no REPL mechanism to update command cooldown

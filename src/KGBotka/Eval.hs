@@ -51,38 +51,35 @@ import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
 
-data EvalTwitchContext =
-  EvalTwitchContext
-    { etcSenderId :: !TwitchUserId
-    , etcSenderName :: !T.Text
+data EvalTwitchContext = EvalTwitchContext
+  { etcSenderId :: !TwitchUserId
+  , etcSenderName :: !T.Text
   -- TODO(#80): evalContextTwitchEmotes should be a list of some kind of emote type
-    , etcTwitchEmotes :: !(Maybe T.Text)
-    , etcChannel :: !TwitchIrcChannel
-    , etcBadgeRoles :: ![TwitchBadgeRole]
-    , etcRoles :: ![TwitchRole]
-    , etcClientId :: !T.Text
-    }
+  , etcTwitchEmotes :: !(Maybe T.Text)
+  , etcChannel :: !TwitchIrcChannel
+  , etcBadgeRoles :: ![TwitchBadgeRole]
+  , etcRoles :: ![TwitchRole]
+  , etcClientId :: !T.Text
+  }
 
-data EvalDiscordContext =
-  EvalDiscordContext
-    { edcAuthor :: !User
-    , edcGuild :: !(Maybe Guild)
-    , edcRoles :: ![Snowflake]
-    }
+data EvalDiscordContext = EvalDiscordContext
+  { edcAuthor :: !User
+  , edcGuild :: !(Maybe Guild)
+  , edcRoles :: ![Snowflake]
+  }
 
 data EvalPlatformContext
   = Etc EvalTwitchContext
   | Edc EvalDiscordContext
 
-data EvalContext =
-  EvalContext
-    { ecVars :: !(M.Map T.Text T.Text)
-    , ecSqliteConnection :: !Sqlite.Connection
-    , ecManager :: !HTTP.Manager
-    , ecLogQueue :: !(WriteQueue LogEntry)
-    , ecFridayGistUpdateRequired :: !(MVar ())
-    , ecPlatformContext :: !EvalPlatformContext
-    }
+data EvalContext = EvalContext
+  { ecVars :: !(M.Map T.Text T.Text)
+  , ecSqliteConnection :: !Sqlite.Connection
+  , ecManager :: !HTTP.Manager
+  , ecLogQueue :: !(WriteQueue LogEntry)
+  , ecFridayGistUpdateRequired :: !(MVar ())
+  , ecPlatformContext :: !EvalPlatformContext
+  }
 
 instance ProvidesLogging EvalContext where
   logQueue = ecLogQueue
@@ -308,8 +305,8 @@ evalExpr (FunCallExpr "asciify" args) = do
         let twitchEmoteUrl =
               let emotes = etcTwitchEmotes etc
                   makeTwitchEmoteUrl emoteName =
-                    "https://static-cdn.jtvnw.net/emoticons/v1/" <>
-                    emoteName <> "/3.0"
+                    "https://static-cdn.jtvnw.net/emoticons/v1/" <> emoteName <>
+                    "/3.0"
                in makeTwitchEmoteUrl <$> hoistMaybe emotes
         let channel = etcChannel etc
         let bttvEmoteUrl =
@@ -340,8 +337,8 @@ evalExpr (FunCallExpr "asciify" args) = do
                    asciifyUrl
                      dbConn
                      manager
-                     ("https://cdn.discordapp.com/emojis/" <>
-                      discordEmoteId <> ".png"))
+                     ("https://cdn.discordapp.com/emojis/" <> discordEmoteId <>
+                      ".png"))
               _ -> throwExceptEval $ EvalError "No emote found"
           _ -> throwExceptEval $ EvalError "No emote found"
   case image of

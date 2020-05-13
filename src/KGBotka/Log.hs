@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module KGBotka.Log
   ( loggingThread
@@ -41,6 +42,9 @@ loggingThread logFilePath messageQueue = withFile logFilePath AppendMode loop
 
 class ProvidesLogging l where
   logQueue :: l -> WriteQueue LogEntry
+
+instance ProvidesLogging (WriteQueue LogEntry) where
+  logQueue = id
 
 logEntry :: ProvidesLogging l => l -> LogEntry -> IO ()
 logEntry (logQueue -> queue) = atomically . writeQueue queue

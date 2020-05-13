@@ -79,8 +79,9 @@ data TwitchThreadParams = TwitchThreadParams
   , ttpReplQueue :: !(ReadQueue ReplCommand)
   , ttpSqliteConnection :: !(MVar Sqlite.Connection)
   , ttpManager :: !HTTP.Manager
-  , ttpConfig :: Maybe ConfigTwitch
+  , ttpConfig :: !(Maybe ConfigTwitch)
   , ttpFridayGistUpdateRequired :: !(MVar ())
+  , ttpMarkovQueue :: !(WriteQueue MarkovCommand)
   }
 
 instance ProvidesLogging TwitchThreadParams where
@@ -95,6 +96,7 @@ data TwitchThreadState = TwitchThreadState
   , ttsIncomingQueue :: !(ReadQueue RawIrcMsg)
   , ttsOutgoingQueue :: !(WriteQueue OutMsg)
   , ttsFridayGistUpdateRequired :: !(MVar ())
+  , ttsMarkovQueue :: !(WriteQueue MarkovCommand)
   }
 
 instance ProvidesLogging TwitchThreadState where
@@ -209,6 +211,7 @@ twitchThread ttp =
             , ttsIncomingQueue = ReadQueue incomingIrcQueue
             , ttsOutgoingQueue = WriteQueue outgoingIrcQueue
             , ttsFridayGistUpdateRequired = ttpFridayGistUpdateRequired ttp
+            , ttsMarkovQueue = ttpMarkovQueue ttp
             }
     Nothing ->
       atomically $
@@ -265,7 +268,8 @@ processUserMsgs dbConn tts messages = do
                   roles
                   badgeRoles
                   message
-                addMarkovSentence dbConn message
+                atomically $
+                  writeQueue (ttsMarkovQueue tts) $ NewSentence message
                 let forbiddenCharLimit = 100
                 if countForbidden message < forbiddenCharLimit
                   then do

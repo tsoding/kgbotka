@@ -16,6 +16,7 @@ import KGBotka.Config
 import KGBotka.DiscordThread
 import KGBotka.GithubThread
 import KGBotka.Log
+import KGBotka.Markov
 import KGBotka.Migration
 import KGBotka.Queue
 import KGBotka.Repl
@@ -36,6 +37,7 @@ mainWithArgs (configPath:databasePath:_) = do
     Right config -> do
       replQueue <- atomically newTQueue
       rawLogQueue <- atomically newTQueue
+      markovCmdQueue <- atomically newTQueue
       manager <- TLS.newTlsManager
       sqliteConnection <- newEmptyMVar
       fridayGistUpdateRequired <- newMVar ()
@@ -52,6 +54,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , ttpManager = manager
               , ttpConfig = configTwitch config
               , ttpFridayGistUpdateRequired = fridayGistUpdateRequired
+              , ttpMarkovQueue = WriteQueue markovCmdQueue
               }
           , discordThread $
             DiscordThreadParams
@@ -60,6 +63,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , dtpSqliteConnection = sqliteConnection
               , dtpManager = manager
               , dtpFridayGistUpdateRequired = fridayGistUpdateRequired
+              , dtpMarkovQueue = WriteQueue markovCmdQueue
               }
           , loggingThread "kgbotka.log" $ ReadQueue rawLogQueue
           , githubThread $
@@ -70,6 +74,14 @@ mainWithArgs (configPath:databasePath:_) = do
               , gtpConfig = configGithub config
               , gtpUpdateRequired = fridayGistUpdateRequired
               }
+          , markovThread $
+            MarkovThreadParams
+              { mtpSqliteConnection = sqliteConnection
+              , mtpLogQueue = WriteQueue rawLogQueue
+              , mtpCmdQueue = ReadQueue markovCmdQueue
+              , mtpPageSize = 1000
+              , mtpCurrentPage = 0
+              }
           ] $ \_ ->
           backdoorThread $
           BackdoorThreadParams
@@ -79,6 +91,7 @@ mainWithArgs (configPath:databasePath:_) = do
             , btpManager = manager
             , btpLogQueue = WriteQueue rawLogQueue
             , btpPort = 6969 -- TODO(#63): backdoor port is hardcoded
+            , btpMarkovQueue = WriteQueue markovCmdQueue
             }
       putStrLn "Done"
     Left errorMessage -> error errorMessage

@@ -184,6 +184,7 @@ kgbotkaMigrations =
              senderTwitchBadgeRoles TEXT NOT NULL,
              message TEXT NOT NULL,
              messageTime DATETIME DEFAULT (datetime('now')) NOT NULL);|]
-  , Migration [sql|INSERT INTO TwitchLog (id, channel, senderTwitchId, senderTwitchName, senderTwitchDisplayName, senderTwitchRoles, senderTwitchBadgeRoles, message, messageTime) SELECT id, channel, senderTwitchId, senderTwitchName, senderTwitchDisplayName, senderTwitchRoles, senderTwitchBadgeRoles, message, messageTime FROM TwitchLogOld;|]
+  , Migration
+      [sql|INSERT INTO TwitchLog (id, channel, senderTwitchId, senderTwitchName, senderTwitchDisplayName, senderTwitchRoles, senderTwitchBadgeRoles, message, messageTime) SELECT id, channel, senderTwitchId, senderTwitchName, senderTwitchDisplayName, senderTwitchRoles, senderTwitchBadgeRoles, message, messageTime FROM TwitchLogOld;|]
   , Migration [sql|DROP TABLE TwitchLogOld;|]
   ]

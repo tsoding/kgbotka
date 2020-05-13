@@ -6,6 +6,7 @@ module KGBotka.DiscordThread
   ) where
 
 import Control.Concurrent
+import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Control.Monad.Trans.Eval
@@ -36,6 +37,7 @@ data DiscordThreadParams = DiscordThreadParams
   , dtpSqliteConnection :: !(MVar Sqlite.Connection)
   , dtpManager :: !HTTP.Manager
   , dtpFridayGistUpdateRequired :: !(MVar ())
+  , dtpMarkovQueue :: !(WriteQueue MarkovCommand)
   }
 
 data DiscordThreadState = DiscordThreadState
@@ -45,6 +47,7 @@ data DiscordThreadState = DiscordThreadState
   -- TODO(#173): replace dtsCurrentUser :: !(MVar User) with !(Maybe User)
   , dtsCurrentUser :: !(MVar User)
   , dtsFridayGistUpdateRequired :: !(MVar ())
+  , dtsMarkovQueue :: !(WriteQueue MarkovCommand)
   }
 
 instance ProvidesLogging DiscordThreadState where
@@ -65,6 +68,7 @@ discordThread dtp =
               , dtsManager = dtpManager dtp
               , dtsCurrentUser = currentUser
               , dtsFridayGistUpdateRequired = dtpFridayGistUpdateRequired dtp
+              , dtsMarkovQueue = dtpMarkovQueue dtp
               }
       userFacingError <-
         runDiscord $
@@ -134,7 +138,8 @@ eventHandler dts dis (MessageCreate m)
              (messageChannel m)
              (userId $ messageAuthor m) $
              messageText m
-           addMarkovSentence dbConn $ messageText m
+           atomically $
+             writeQueue (dtsMarkovQueue dts) $ NewSentence $ messageText m
            settings <- fetchSettings dbConn
            case parseCommandPipe
                   (settingsCallPrefix settings)

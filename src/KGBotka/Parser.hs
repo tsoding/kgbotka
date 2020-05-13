@@ -74,7 +74,8 @@ syntaxError :: T.Text -> Parser a
 syntaxError message = Parser $ \_ -> Left $ SyntaxError message
 
 eof :: Parser ()
-eof = Parser $ \input ->
-      case T.unpack input of
-        [] -> Right (mempty, ())
-        _ -> Left $ SyntaxError "Expected EOF"
+eof =
+  Parser $ \input ->
+    case T.unpack input of
+      [] -> Right (mempty, ())
+      _ -> Left $ SyntaxError "Expected EOF"
