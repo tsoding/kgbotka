@@ -223,7 +223,7 @@ replThreadLoop rts = do
         Just progress ->
           withTransactionLogErrors $ \dbConn -> do
             n <-
-              fromMaybe (0 :: Int) . fmap Sqlite.fromOnly . listToMaybe <$>
+              maybe (0 :: Int) Sqlite.fromOnly . listToMaybe <$>
               Sqlite.queryNamed dbConn [sql|SELECT count(*) FROM TwitchLog|] []
             hPutStrLn replHandle $ printf "Current progress: %d/%d" progress n
         Nothing ->
