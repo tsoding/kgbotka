@@ -208,8 +208,12 @@ replThreadLoop rts = do
           Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"
       replThreadLoop rts
     ("retrain":_, _) -> do
-      hPutStrLn replHandle "Scheduled Markov retraining..."
       atomically $ writeQueue (rtsMarkovQueue rts) Retrain
+      hPutStrLn replHandle "Scheduled Markov retraining..."
+      replThreadLoop rts
+    ("retrain-stop":_, _) -> do
+      atomically $ writeQueue (rtsMarkovQueue rts) StopRetrain
+      hPutStrLn replHandle "Retraining process has been stopped..."
       replThreadLoop rts
     ("retrain-pogress":_, _) -> do
       withMVar (rtsCurrentRetrainPage rts) $ \case

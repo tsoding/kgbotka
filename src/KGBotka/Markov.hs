@@ -121,6 +121,7 @@ genMarkovSentence dbConn = do
 data MarkovCommand
   = NewSentence T.Text
   | Retrain
+  | StopRetrain
 
 data MarkovThreadParams = MarkovThreadParams
   { mtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -160,6 +161,7 @@ markovThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
             withTransactionLogErrors dbConn lqueue $ \conn ->
               Sqlite.executeNamed conn [sql|DELETE FROM Markov;|] []
           return $ Just 0
+        Just StopRetrain -> return Nothing
         _
           -- TODO(#183): Markov retraining does not use Discord logs
          -> do
@@ -192,5 +194,6 @@ markovThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
             withTransactionLogErrors dbConn lqueue $ \conn ->
               Sqlite.executeNamed conn [sql|DELETE FROM Markov;|] []
           return $ Just 0
+        Just StopRetrain -> return Nothing
         Nothing -> return Nothing
   markovThread mtp
