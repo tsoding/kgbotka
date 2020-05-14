@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module KGBotka.Repl
   ( backdoorThread
@@ -41,6 +42,7 @@ data ReplThreadParams = ReplThreadParams
   , rtpLogQueue :: !(WriteQueue LogEntry)
   , rtpConnAddr :: !SockAddr
   , rtpMarkovQueue :: !(WriteQueue MarkovCommand)
+  , rtpCurrentRetrainPage :: !(MVar (Maybe Int))
   }
 
 instance ProvidesLogging ReplThreadParams where
@@ -56,6 +58,7 @@ data ReplThreadState = ReplThreadState
   , rtsLogQueue :: !(WriteQueue LogEntry)
   , rtsConnAddr :: !SockAddr
   , rtsMarkovQueue :: !(WriteQueue MarkovCommand)
+  , rtsCurrentRetrainPage :: !(MVar (Maybe Int))
   }
 
 instance ProvidesHttpManager ReplThreadState where
@@ -80,6 +83,7 @@ replThread rtp =
       , rtsLogQueue = rtpLogQueue rtp
       , rtsConnAddr = rtpConnAddr rtp
       , rtsMarkovQueue = rtpMarkovQueue rtp
+      , rtsCurrentRetrainPage = rtpCurrentRetrainPage rtp
       }
 
 -- TODO(#60): there is no shutdown command that shuts down the whole bot
@@ -207,6 +211,13 @@ replThreadLoop rts = do
       hPutStrLn replHandle "Scheduled Markov retraining..."
       atomically $ writeQueue (rtsMarkovQueue rts) Retrain
       replThreadLoop rts
+    ("retrain-pogress":_, _) -> do
+      withMVar (rtsCurrentRetrainPage rts) $ \case
+        Just page -> do
+          hPutStrLn replHandle $ "Current page: " <> show page
+        Nothing ->
+          hPutStrLn replHandle "There is no Markov retraining in place."
+      replThreadLoop rts
     (unknown:_, _) -> do
       hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
       replThreadLoop rts
@@ -218,8 +229,9 @@ data BackdoorThreadParams = BackdoorThreadParams
   , btpTwitchClientId :: Maybe T.Text
   , btpManager :: !HTTP.Manager
   , btpLogQueue :: !(WriteQueue LogEntry)
-  , btpPort :: Int
+  , btpPort :: !Int
   , btpMarkovQueue :: !(WriteQueue MarkovCommand)
+  , btpCurrentRetrainPage :: !(MVar (Maybe Int))
   }
 
 instance ProvidesLogging BackdoorThreadParams where
@@ -259,5 +271,6 @@ backdoorThread btp = do
           , rtpConnAddr = addr
           , rtpTwitchClientId = btpTwitchClientId btp
           , rtpMarkovQueue = btpMarkovQueue btp
+          , rtpCurrentRetrainPage = btpCurrentRetrainPage btp
           }
 -- TODO(#82): there is no REPL mechanism to update command cooldown

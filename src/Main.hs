@@ -41,6 +41,7 @@ mainWithArgs (configPath:databasePath:_) = do
       manager <- TLS.newTlsManager
       sqliteConnection <- newEmptyMVar
       fridayGistUpdateRequired <- newMVar ()
+      currentRetrainPage <- newMVar Nothing
       -- TODO(#67): there is no supavisah that restarts essential threads on crashing
       Sqlite.withConnection databasePath $ \dbConn -> do
         Sqlite.withTransaction dbConn $ migrateDatabase dbConn kgbotkaMigrations
@@ -80,7 +81,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , mtpLogQueue = WriteQueue rawLogQueue
               , mtpCmdQueue = ReadQueue markovCmdQueue
               , mtpPageSize = 1000
-              , mtpCurrentPage = 0
+              , mtpCurrentPage = currentRetrainPage
               }
           ] $ \_ ->
           backdoorThread $
@@ -92,6 +93,7 @@ mainWithArgs (configPath:databasePath:_) = do
             , btpLogQueue = WriteQueue rawLogQueue
             , btpPort = 6969 -- TODO(#63): backdoor port is hardcoded
             , btpMarkovQueue = WriteQueue markovCmdQueue
+            , btpCurrentRetrainPage = currentRetrainPage
             }
       putStrLn "Done"
     Left errorMessage -> error errorMessage
