@@ -121,13 +121,14 @@ genMarkovSentence dbConn = do
 data MarkovCommand
   = NewSentence T.Text
   | Retrain
+  | StopRetrain
 
 data MarkovThreadParams = MarkovThreadParams
   { mtpSqliteConnection :: !(MVar Sqlite.Connection)
   , mtpLogQueue :: !(WriteQueue LogEntry)
   , mtpCmdQueue :: !(ReadQueue MarkovCommand)
-  , mtpPageSize :: Int
-  , mtpCurrentPage :: Int
+  , mtpPageSize :: !Int
+  , mtpRetrainProgress :: !(MVar (Maybe Int))
   }
 
 withTransactionLogErrors ::
@@ -143,53 +144,56 @@ withTransactionLogErrors dbConn lqueue f =
          LogEntry "MARKOV" $ T.pack $ show (e :: Sqlite.SQLError)
        return Nothing)
 
--- TODO(#182): there is no way to know the progress of thread retraining
-retrainThread :: MarkovThreadParams -> IO ()
-retrainThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
-                                     , mtpLogQueue = lqueue
-                                     , mtpPageSize = pageSize
-                                     , mtpCurrentPage = currentPage
-                                     } = do
-  cmd <- atomically $ tryReadQueue $ mtpCmdQueue mtp
-  case cmd of
-    Just Retrain -> do
-      void $
-        withTransactionLogErrors dbConn lqueue $ \conn ->
-          Sqlite.executeNamed conn [sql|DELETE FROM Markov;|] []
-      retrainThread $ mtp {mtpCurrentPage = 0}
-    _ -> return ()
-  -- TODO(#183): Markov retraining does not use Discord logs
-  messageCount <-
-    withTransactionLogErrors dbConn lqueue $ \conn -> do
-      messages <-
-        Sqlite.queryNamed
-          conn
-          [sql| select message from TwitchLog
-                order by id limit :pageSize
-                offset :pageSize * :currentPage |]
-          [":pageSize" := pageSize, ":currentPage" := currentPage]
-      traverse_ (addMarkovSentence conn . Sqlite.fromOnly) messages
-      return $ length messages
-  case messageCount of
-    Just x
-      | x > 0 -> retrainThread $ mtp {mtpCurrentPage = currentPage + 1}
-    Just _ -> markovThread mtp
-    Nothing -> retrainThread mtp
 
 markovThread :: MarkovThreadParams -> IO ()
 markovThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
                                     , mtpLogQueue = lqueue
                                     , mtpCmdQueue = cmdQueue
+                                    , mtpRetrainProgress = retrainProgress
+                                    , mtpPageSize = pageSize
                                     } = do
-  cmd <- atomically $ readQueue cmdQueue
-  case cmd of
-    NewSentence text -> do
-      void $
-        withTransactionLogErrors dbConn lqueue $ \conn ->
-          addMarkovSentence conn text
-      markovThread mtp
-    Retrain -> do
-      void $
-        withTransactionLogErrors dbConn lqueue $ \conn ->
-          Sqlite.executeNamed conn [sql|DELETE FROM Markov;|] []
-      retrainThread $ mtp {mtpCurrentPage = 0}
+  modifyMVar_ retrainProgress $ \case
+    Just progress -> do
+      cmd <- atomically $ tryReadQueue cmdQueue
+      case cmd of
+        Just Retrain -> do
+          void $
+            withTransactionLogErrors dbConn lqueue $ \conn ->
+              Sqlite.executeNamed conn [sql|DELETE FROM Markov;|] []
+          return $ Just 0
+        Just StopRetrain -> return Nothing
+        _
+          -- TODO(#183): Markov retraining does not use Discord logs
+         -> do
+          processed <-
+            withTransactionLogErrors dbConn lqueue $ \conn -> do
+              messages <-
+                Sqlite.queryNamed
+                  conn
+                  [sql| select message from TwitchLog
+                      order by id limit :pageSize
+                      offset :progress |]
+                  [":pageSize" := pageSize, ":progress" := progress]
+              traverse_ (addMarkovSentence conn . Sqlite.fromOnly) messages
+              return $ length messages
+          case processed of
+            Just x
+              | x > 0 -> return $ Just $ progress + x
+            Just _ -> return Nothing
+            Nothing -> return $ Just progress
+    Nothing -> do
+      cmd <- atomically $ tryReadQueue cmdQueue
+      case cmd of
+        Just (NewSentence text) -> do
+          void $
+            withTransactionLogErrors dbConn lqueue $ \conn ->
+              addMarkovSentence conn text
+          return Nothing
+        Just Retrain -> do
+          void $
+            withTransactionLogErrors dbConn lqueue $ \conn ->
+              Sqlite.executeNamed conn [sql|DELETE FROM Markov;|] []
+          return $ Just 0
+        Just StopRetrain -> return Nothing
+        Nothing -> return Nothing
+  markovThread mtp

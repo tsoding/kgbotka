@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.Repl
   ( backdoorThread
@@ -17,6 +19,7 @@ import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Database.SQLite.Simple as Sqlite
+import Database.SQLite.Simple.QQ
 import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Ffz
@@ -31,6 +34,7 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
+import Text.Printf
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -41,6 +45,7 @@ data ReplThreadParams = ReplThreadParams
   , rtpLogQueue :: !(WriteQueue LogEntry)
   , rtpConnAddr :: !SockAddr
   , rtpMarkovQueue :: !(WriteQueue MarkovCommand)
+  , rtpRetrainProgress :: !(MVar (Maybe Int))
   }
 
 instance ProvidesLogging ReplThreadParams where
@@ -56,6 +61,7 @@ data ReplThreadState = ReplThreadState
   , rtsLogQueue :: !(WriteQueue LogEntry)
   , rtsConnAddr :: !SockAddr
   , rtsMarkovQueue :: !(WriteQueue MarkovCommand)
+  , rtsRetrainProgress :: !(MVar (Maybe Int))
   }
 
 instance ProvidesHttpManager ReplThreadState where
@@ -80,6 +86,7 @@ replThread rtp =
       , rtsLogQueue = rtpLogQueue rtp
       , rtsConnAddr = rtpConnAddr rtp
       , rtsMarkovQueue = rtpMarkovQueue rtp
+      , rtsRetrainProgress = rtpRetrainProgress rtp
       }
 
 -- TODO(#60): there is no shutdown command that shuts down the whole bot
@@ -204,8 +211,23 @@ replThreadLoop rts = do
           Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"
       replThreadLoop rts
     ("retrain":_, _) -> do
-      hPutStrLn replHandle "Scheduled Markov retraining..."
       atomically $ writeQueue (rtsMarkovQueue rts) Retrain
+      hPutStrLn replHandle "Scheduled Markov retraining..."
+      replThreadLoop rts
+    ("retrain-stop":_, _) -> do
+      atomically $ writeQueue (rtsMarkovQueue rts) StopRetrain
+      hPutStrLn replHandle "Retraining process has been stopped..."
+      replThreadLoop rts
+    ("retrain-pogress":_, _) -> do
+      withMVar (rtsRetrainProgress rts) $ \case
+        Just progress ->
+          withTransactionLogErrors $ \dbConn -> do
+            n <-
+              maybe (0 :: Int) Sqlite.fromOnly . listToMaybe <$>
+              Sqlite.queryNamed dbConn [sql|SELECT count(*) FROM TwitchLog|] []
+            hPutStrLn replHandle $ printf "Current progress: %d/%d" progress n
+        Nothing ->
+          hPutStrLn replHandle "There is no Markov retraining in place."
       replThreadLoop rts
     (unknown:_, _) -> do
       hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
@@ -218,8 +240,9 @@ data BackdoorThreadParams = BackdoorThreadParams
   , btpTwitchClientId :: Maybe T.Text
   , btpManager :: !HTTP.Manager
   , btpLogQueue :: !(WriteQueue LogEntry)
-  , btpPort :: Int
+  , btpPort :: !Int
   , btpMarkovQueue :: !(WriteQueue MarkovCommand)
+  , btpRetrainProgress :: !(MVar (Maybe Int))
   }
 
 instance ProvidesLogging BackdoorThreadParams where
@@ -259,5 +282,6 @@ backdoorThread btp = do
           , rtpConnAddr = addr
           , rtpTwitchClientId = btpTwitchClientId btp
           , rtpMarkovQueue = btpMarkovQueue btp
+          , rtpRetrainProgress = btpRetrainProgress btp
           }
 -- TODO(#82): there is no REPL mechanism to update command cooldown
