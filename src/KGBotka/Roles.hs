@@ -23,6 +23,7 @@ data TwitchBadgeRole
   | TwitchVip
   | TwitchBroadcaster
   | TwitchMod
+  | TwitchFounder
   deriving (Eq, Show)
 
 data TwitchRole = TwitchRole
