@@ -128,7 +128,7 @@ data MarkovThreadParams = MarkovThreadParams
   , mtpLogQueue :: !(WriteQueue LogEntry)
   , mtpCmdQueue :: !(ReadQueue MarkovCommand)
   , mtpPageSize :: !Int
-  , mtpCurrentPage :: !(MVar (Maybe Int))
+  , mtpRetrainProgress :: !(MVar (Maybe Int))
   }
 
 withTransactionLogErrors ::
@@ -149,11 +149,11 @@ markovThread :: MarkovThreadParams -> IO ()
 markovThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
                                     , mtpLogQueue = lqueue
                                     , mtpCmdQueue = cmdQueue
-                                    , mtpCurrentPage = currentPage
+                                    , mtpRetrainProgress = retrainProgress
                                     , mtpPageSize = pageSize
                                     } = do
-  modifyMVar_ currentPage $ \case
-    Just page -> do
+  modifyMVar_ retrainProgress $ \case
+    Just progress -> do
       cmd <- atomically $ tryReadQueue cmdQueue
       case cmd of
         Just Retrain -> do
@@ -165,22 +165,22 @@ markovThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
         _
           -- TODO(#183): Markov retraining does not use Discord logs
          -> do
-          messageCount <-
+          processed <-
             withTransactionLogErrors dbConn lqueue $ \conn -> do
               messages <-
                 Sqlite.queryNamed
                   conn
                   [sql| select message from TwitchLog
                       order by id limit :pageSize
-                      offset :pageSize * :page |]
-                  [":pageSize" := pageSize, ":page" := page]
+                      offset :progress |]
+                  [":pageSize" := pageSize, ":progress" := progress]
               traverse_ (addMarkovSentence conn . Sqlite.fromOnly) messages
               return $ length messages
-          case messageCount of
+          case processed of
             Just x
-              | x > 0 -> return $ Just $ page + 1
+              | x > 0 -> return $ Just $ progress + x
             Just _ -> return Nothing
-            Nothing -> return $ Just page
+            Nothing -> return $ Just progress
     Nothing -> do
       cmd <- atomically $ tryReadQueue cmdQueue
       case cmd of

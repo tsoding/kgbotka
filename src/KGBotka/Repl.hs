@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.Repl
   ( backdoorThread
@@ -18,6 +19,7 @@ import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Database.SQLite.Simple as Sqlite
+import Database.SQLite.Simple.QQ
 import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Ffz
@@ -32,6 +34,7 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
+import Text.Printf
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -42,7 +45,7 @@ data ReplThreadParams = ReplThreadParams
   , rtpLogQueue :: !(WriteQueue LogEntry)
   , rtpConnAddr :: !SockAddr
   , rtpMarkovQueue :: !(WriteQueue MarkovCommand)
-  , rtpCurrentRetrainPage :: !(MVar (Maybe Int))
+  , rtpRetrainProgress :: !(MVar (Maybe Int))
   }
 
 instance ProvidesLogging ReplThreadParams where
@@ -58,7 +61,7 @@ data ReplThreadState = ReplThreadState
   , rtsLogQueue :: !(WriteQueue LogEntry)
   , rtsConnAddr :: !SockAddr
   , rtsMarkovQueue :: !(WriteQueue MarkovCommand)
-  , rtsCurrentRetrainPage :: !(MVar (Maybe Int))
+  , rtsRetrainProgress :: !(MVar (Maybe Int))
   }
 
 instance ProvidesHttpManager ReplThreadState where
@@ -83,7 +86,7 @@ replThread rtp =
       , rtsLogQueue = rtpLogQueue rtp
       , rtsConnAddr = rtpConnAddr rtp
       , rtsMarkovQueue = rtpMarkovQueue rtp
-      , rtsCurrentRetrainPage = rtpCurrentRetrainPage rtp
+      , rtsRetrainProgress = rtpRetrainProgress rtp
       }
 
 -- TODO(#60): there is no shutdown command that shuts down the whole bot
@@ -216,9 +219,13 @@ replThreadLoop rts = do
       hPutStrLn replHandle "Retraining process has been stopped..."
       replThreadLoop rts
     ("retrain-pogress":_, _) -> do
-      withMVar (rtsCurrentRetrainPage rts) $ \case
-        Just page -> do
-          hPutStrLn replHandle $ "Current page: " <> show page
+      withMVar (rtsRetrainProgress rts) $ \case
+        Just progress ->
+          withTransactionLogErrors $ \dbConn -> do
+            n <-
+              fromMaybe (0 :: Int) . fmap Sqlite.fromOnly . listToMaybe <$>
+              Sqlite.queryNamed dbConn [sql|SELECT count(*) FROM TwitchLog|] []
+            hPutStrLn replHandle $ printf "Current progress: %d/%d" progress n
         Nothing ->
           hPutStrLn replHandle "There is no Markov retraining in place."
       replThreadLoop rts
@@ -235,7 +242,7 @@ data BackdoorThreadParams = BackdoorThreadParams
   , btpLogQueue :: !(WriteQueue LogEntry)
   , btpPort :: !Int
   , btpMarkovQueue :: !(WriteQueue MarkovCommand)
-  , btpCurrentRetrainPage :: !(MVar (Maybe Int))
+  , btpRetrainProgress :: !(MVar (Maybe Int))
   }
 
 instance ProvidesLogging BackdoorThreadParams where
@@ -275,6 +282,6 @@ backdoorThread btp = do
           , rtpConnAddr = addr
           , rtpTwitchClientId = btpTwitchClientId btp
           , rtpMarkovQueue = btpMarkovQueue btp
-          , rtpCurrentRetrainPage = btpCurrentRetrainPage btp
+          , rtpRetrainProgress = btpRetrainProgress btp
           }
 -- TODO(#82): there is no REPL mechanism to update command cooldown
