@@ -172,45 +172,6 @@ ecVarsModify ::
      (M.Map T.Text T.Text -> M.Map T.Text T.Text) -> EvalContext -> EvalContext
 ecVarsModify f context = context {ecVars = f $ ecVars context}
 
-ytLinkRegex :: Either String Regex
-ytLinkRegex =
-  compile
-    defaultCompOpt
-    defaultExecOpt
-    "https?:\\/\\/(www\\.)?youtu(be\\.com\\/watch\\?v=|\\.be\\/)([a-zA-Z0-9_-]+)"
-
-mapLeft :: (a -> c) -> Either a b -> Either c b
-mapLeft f (Left x) = Left (f x)
-mapLeft _ (Right x) = Right x
-
--- | Extracts YouTube Video ID from the string
--- Results:
--- - `Right ytId` - extracted successfully
--- - `Left (Just failReason)` - extraction failed because of
---    the application's fault. The reason explained in `failReason`.
---    `failReason` should be logged and later investigated by the devs.
---    `failReason` should not be shown to the users.
--- - `Left Nothing` - extraction failed because of the user's fault.
---    Tell the user that their message does not contain any YouTube
---    links.
-ytLinkId :: T.Text -> Either (Maybe String) T.Text
-ytLinkId text = do
-  regex <- mapLeft Just ytLinkRegex
-  result <- mapLeft Just $ execute regex (T.unpack text)
-  case result of
-    Just matches ->
-      case map (T.pack . flip Regex.extract (T.unpack text)) $ elems matches of
-        [_, _, _, ytId] -> Right ytId
-        _ ->
-          Left $
-          Just
-            "Matches were not captured correctly. \
-            \Most likely somebody changed the YouTube \
-            \link regular expression (`ytLinkRegex`) and didn't \
-            \update `ytLinkId` function to extract capture \
-            \groups correctly. ( =_=)"
-    Nothing -> Left Nothing
-
 failIfNotTrusted :: Eval ()
 failIfNotTrusted = do
   platformContext <- ecPlatformContext <$> getEval
