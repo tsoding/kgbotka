@@ -124,10 +124,14 @@ renderFridayVideo :: FridayVideo -> T.Text
 renderFridayVideo video =
   T.pack $
   printf
-    "|%s|%s|%s|"
+    "|%s|%s|%s|%s|"
     (show $ fridayVideoSubTime video)
     (fridayVideoAuthorDisplayName video)
     (fridayVideoSubText video)
+    (either
+       (const "")
+       (\ytId -> "[[https://img.youtube.com/vi/" <> ytId <> "/default.jpg]]") $
+     ytLinkId $ fridayVideoSubText video)
 
 renderQueue :: [FridayVideo] -> T.Text
 renderQueue [] = ""
@@ -137,7 +141,7 @@ renderQueue videos@(FridayVideo {fridayVideoAuthorDisplayName = name}:_) =
   , ""
   , T.pack $ printf "Video Count: %d" $ length videos
   , ""
-  , "|Date|Submitter|Video|"
+  , "|Date|Submitter|Video|Thumbnail|"
   , "|-"
   ] <>
   map renderFridayVideo videos <>
