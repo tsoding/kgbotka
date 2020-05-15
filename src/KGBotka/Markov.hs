@@ -152,6 +152,7 @@ markovThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
                                     , mtpRetrainProgress = retrainProgress
                                     , mtpPageSize = pageSize
                                     } = do
+  threadDelay 10000 -- to prevent busy looping
   modifyMVar_ retrainProgress $ \case
     Just progress -> do
       cmd <- atomically $ tryReadQueue cmdQueue
