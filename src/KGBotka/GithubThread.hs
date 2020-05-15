@@ -128,8 +128,9 @@ renderFridayVideo video =
     (show $ fridayVideoSubTime video)
     (fridayVideoAuthorDisplayName video)
     (fridayVideoSubText video)
-    (either (const "") id $
-     fmap (\ytId -> "[[https://img.youtube.com/vi/" <> ytId <> "/default.jpg]]") $
+    (either
+       (const "")
+       (\ytId -> "[[https://img.youtube.com/vi/" <> ytId <> "/default.jpg]]") $
      ytLinkId $ fridayVideoSubText video)
 
 renderQueue :: [FridayVideo] -> T.Text
