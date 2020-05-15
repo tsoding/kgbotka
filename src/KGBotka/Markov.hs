@@ -144,7 +144,6 @@ withTransactionLogErrors dbConn lqueue f =
          LogEntry "MARKOV" $ T.pack $ show (e :: Sqlite.SQLError)
        return Nothing)
 
-
 markovThread :: MarkovThreadParams -> IO ()
 markovThread mtp@MarkovThreadParams { mtpSqliteConnection = dbConn
                                     , mtpLogQueue = lqueue

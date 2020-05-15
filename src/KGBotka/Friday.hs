@@ -16,6 +16,7 @@ import Control.Applicative
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
+import Data.Array
 import qualified Data.Map as M
 import Data.Maybe
 import Data.String
@@ -27,7 +28,6 @@ import Database.SQLite.Simple.QQ
 import Database.SQLite.Simple.ToField
 import qualified Text.Regex.Base.RegexLike as Regex
 import qualified Text.Regex.TDFA.String as Regex
-import Data.Array
 
 newtype AuthorId =
   AuthorId T.Text

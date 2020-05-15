@@ -50,7 +50,7 @@ roleOfBadge badge
   | "vip" `T.isPrefixOf` badge = Just TwitchVip
   | "broadcaster" `T.isPrefixOf` badge = Just TwitchBroadcaster
   | "moderator" `T.isPrefixOf` badge = Just TwitchMod
-  | "founder"  `T.isPrefixOf` badge = Just TwitchFounder
+  | "founder" `T.isPrefixOf` badge = Just TwitchFounder
   | otherwise = Nothing
 
 badgeRolesFromRawIrcMsg :: RawIrcMsg -> [TwitchBadgeRole]
