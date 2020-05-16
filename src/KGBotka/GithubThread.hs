@@ -110,7 +110,6 @@ updateGistFile logger manager (GithubToken token) gistFile = do
   request <-
     parseRequest $
     T.unpack $ "https://api.github.com/gists/" <> gistFileId gistFile
-  -- TODO(#133): GitHub API errors are not logged properly
   catch
     (void $
      httpLbs

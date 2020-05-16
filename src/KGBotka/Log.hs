@@ -33,7 +33,6 @@ loggingThread logFilePath messageQueue = withFile logFilePath AppendMode loop
       hFlush logHandle
       loop logHandle
 
--- TODO: ProvidesLogging -> CanLogEntries
 class ProvidesLogging l where
   logEntry :: l -> LogEntry -> IO ()
 
