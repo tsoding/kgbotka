@@ -29,6 +29,7 @@ fromCache dbConn url =
 fromUrl :: HTTP.Manager -> T.Text -> ExceptT String IO T.Text
 fromUrl manager url = do
   request <- HTTP.parseRequest $ T.unpack url
+  -- TODO: Consider writting a wrapper around HTTP.httpLbs that catches all of the exceptions and provides more typesafe interface
   response <- lift $ HTTP.httpLbs request manager
   fmap T.unwords $
     except $ braillizeByteString $ BS.toStrict $ HTTP.responseBody response

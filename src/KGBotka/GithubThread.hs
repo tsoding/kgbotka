@@ -19,6 +19,8 @@ import KGBotka.Queue
 import KGBotka.Settings
 import Network.HTTP.Client
 import Text.Printf
+import Control.Exception
+import Data.Functor
 
 data GithubThreadParams = GithubThreadParams
   { gtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -77,6 +79,7 @@ githubThreadLoop gts = do
     Just fridayGistFile -> do
       logEntry gts $ LogEntry "GITHUB" "Updating Friday Video Queue gist..."
       updateGistFile
+        gts
         (gtsManager gts)
         (configGithubToken $ gtsConfig gts)
         fridayGistFile
@@ -93,8 +96,9 @@ data GistFile = GistFile
   , gistFileText :: T.Text
   }
 
-updateGistFile :: Manager -> GithubToken -> GistFile -> IO ()
-updateGistFile manager (GithubToken token) gistFile = do
+updateGistFile ::
+     ProvidesLogging log => log -> Manager -> GithubToken -> GistFile -> IO ()
+updateGistFile logger manager (GithubToken token) gistFile = do
   let payload =
         object
           [ "files" .=
@@ -107,17 +111,20 @@ updateGistFile manager (GithubToken token) gistFile = do
     parseRequest $
     T.unpack $ "https://api.github.com/gists/" <> gistFileId gistFile
   -- TODO(#133): GitHub API errors are not logged properly
-  _ <-
-    httpLbs
-      (request
-         { method = "PATCH"
-         , requestBody = RequestBodyLBS $ encode payload
-         , requestHeaders =
-             ("User-Agent", encodeUtf8 "KGBotka") :
-             ("Authorization", encodeUtf8 $ "token " <> token) :
-             requestHeaders request
-         })
-      manager
+  catch
+    (void $
+     httpLbs
+       (request
+          { method = "PATCH"
+          , requestBody = RequestBodyLBS $ encode payload
+          , requestHeaders =
+              ("User-Agent", encodeUtf8 "KGBotka") :
+              ("Authorization", encodeUtf8 $ "token " <> token) :
+              requestHeaders request
+          })
+       manager)
+    (\e ->
+       logEntry logger $ LogEntry "GITHUB" $ T.pack $ show (e :: SomeException))
   return ()
 
 renderFridayVideo :: FridayVideo -> T.Text
