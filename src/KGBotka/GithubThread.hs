@@ -6,9 +6,11 @@ module KGBotka.GithubThread
   ) where
 
 import Control.Concurrent
+import Control.Exception
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Data.Aeson
+import Data.Functor
 import qualified Data.Text as T
 import Data.Text.Encoding
 import qualified Database.SQLite.Simple as Sqlite
@@ -29,7 +31,7 @@ data GithubThreadParams = GithubThreadParams
   }
 
 instance ProvidesLogging GithubThreadParams where
-  logQueue = gtpLogQueue
+  logEntry gtp = logEntry $ gtpLogQueue gtp
 
 data GithubThreadState = GithubThreadState
   { gtsSqliteConnection :: !(MVar Sqlite.Connection)
@@ -40,7 +42,7 @@ data GithubThreadState = GithubThreadState
   }
 
 instance ProvidesLogging GithubThreadState where
-  logQueue = gtsLogQueue
+  logEntry gts = logEntry $ gtsLogQueue gts
 
 githubThread :: GithubThreadParams -> IO ()
 githubThread gtp@GithubThreadParams {gtpConfig = Just config} =
@@ -77,6 +79,7 @@ githubThreadLoop gts = do
     Just fridayGistFile -> do
       logEntry gts $ LogEntry "GITHUB" "Updating Friday Video Queue gist..."
       updateGistFile
+        gts
         (gtsManager gts)
         (configGithubToken $ gtsConfig gts)
         fridayGistFile
@@ -93,8 +96,9 @@ data GistFile = GistFile
   , gistFileText :: T.Text
   }
 
-updateGistFile :: Manager -> GithubToken -> GistFile -> IO ()
-updateGistFile manager (GithubToken token) gistFile = do
+updateGistFile ::
+     ProvidesLogging log => log -> Manager -> GithubToken -> GistFile -> IO ()
+updateGistFile logger manager (GithubToken token) gistFile = do
   let payload =
         object
           [ "files" .=
@@ -106,18 +110,20 @@ updateGistFile manager (GithubToken token) gistFile = do
   request <-
     parseRequest $
     T.unpack $ "https://api.github.com/gists/" <> gistFileId gistFile
-  -- TODO(#133): GitHub API errors are not logged properly
-  _ <-
-    httpLbs
-      (request
-         { method = "PATCH"
-         , requestBody = RequestBodyLBS $ encode payload
-         , requestHeaders =
-             ("User-Agent", encodeUtf8 "KGBotka") :
-             ("Authorization", encodeUtf8 $ "token " <> token) :
-             requestHeaders request
-         })
-      manager
+  catch
+    (void $
+     httpLbs
+       (request
+          { method = "PATCH"
+          , requestBody = RequestBodyLBS $ encode payload
+          , requestHeaders =
+              ("User-Agent", encodeUtf8 "KGBotka") :
+              ("Authorization", encodeUtf8 $ "token " <> token) :
+              requestHeaders request
+          })
+       manager)
+    (\e ->
+       logEntry logger $ LogEntry "GITHUB" $ T.pack $ show (e :: SomeException))
   return ()
 
 renderFridayVideo :: FridayVideo -> T.Text

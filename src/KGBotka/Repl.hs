@@ -49,7 +49,7 @@ data ReplThreadParams = ReplThreadParams
   }
 
 instance ProvidesLogging ReplThreadParams where
-  logQueue = rtpLogQueue
+  logEntry rtp = logEntry $ rtpLogQueue rtp
 
 data ReplThreadState = ReplThreadState
   { rtsSqliteConnection :: !(MVar Sqlite.Connection)
@@ -246,7 +246,7 @@ data BackdoorThreadParams = BackdoorThreadParams
   }
 
 instance ProvidesLogging BackdoorThreadParams where
-  logQueue = btpLogQueue
+  logEntry btp = logEntry $ btpLogQueue btp
 
 backdoorThread :: BackdoorThreadParams -> IO ()
 backdoorThread btp = do

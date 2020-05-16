@@ -86,7 +86,7 @@ data TwitchThreadParams = TwitchThreadParams
   }
 
 instance ProvidesLogging TwitchThreadParams where
-  logQueue = ttpLogQueue
+  logEntry ttp = logEntry $ ttpLogQueue ttp
 
 data TwitchThreadState = TwitchThreadState
   { ttsLogQueue :: !(WriteQueue LogEntry)
@@ -101,7 +101,7 @@ data TwitchThreadState = TwitchThreadState
   }
 
 instance ProvidesLogging TwitchThreadState where
-  logQueue = ttsLogQueue
+  logEntry tts = logEntry $ ttsLogQueue tts
 
 withConnection :: ConnectionParams -> (Connection -> IO a) -> IO a
 withConnection params = bracket (connect params) close
@@ -319,7 +319,7 @@ processUserMsgs dbConn tts messages = do
                                                  T.splitOn ":" emoteDesc
                                              else Nothing
                                     }
-                            , ecLogQueue = logQueue tts
+                            , ecLogQueue = ttsLogQueue tts
                             , ecManager = manager
                             , ecFridayGistUpdateRequired =
                                 ttsFridayGistUpdateRequired tts
