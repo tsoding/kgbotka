@@ -51,10 +51,10 @@ data DiscordThreadState = DiscordThreadState
   }
 
 instance ProvidesLogging DiscordThreadState where
-  logQueue = dtsLogQueue
+  logEntry dts = logEntry $ dtsLogQueue dts
 
 instance ProvidesLogging DiscordThreadParams where
-  logQueue = dtpLogQueue
+  logEntry dtp = logEntry $ dtpLogQueue dtp
 
 discordThread :: DiscordThreadParams -> IO ()
 discordThread dtp =

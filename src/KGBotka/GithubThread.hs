@@ -31,7 +31,7 @@ data GithubThreadParams = GithubThreadParams
   }
 
 instance ProvidesLogging GithubThreadParams where
-  logQueue = gtpLogQueue
+  logEntry gtp = logEntry $ gtpLogQueue gtp
 
 data GithubThreadState = GithubThreadState
   { gtsSqliteConnection :: !(MVar Sqlite.Connection)
@@ -42,7 +42,7 @@ data GithubThreadState = GithubThreadState
   }
 
 instance ProvidesLogging GithubThreadState where
-  logQueue = gtsLogQueue
+  logEntry gts = logEntry $ gtsLogQueue gts
 
 githubThread :: GithubThreadParams -> IO ()
 githubThread gtp@GithubThreadParams {gtpConfig = Just config} =

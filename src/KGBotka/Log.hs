@@ -5,7 +5,6 @@ module KGBotka.Log
   ( loggingThread
   , LogEntry(..)
   , ProvidesLogging(..)
-  , logEntry
   ) where
 
 import Control.Concurrent
@@ -41,10 +40,7 @@ loggingThread logFilePath messageQueue = withFile logFilePath AppendMode loop
       loop logHandle
 
 class ProvidesLogging l where
-  logQueue :: l -> WriteQueue LogEntry
+  logEntry :: l -> LogEntry -> IO ()
 
 instance ProvidesLogging (WriteQueue LogEntry) where
-  logQueue = id
-
-logEntry :: ProvidesLogging l => l -> LogEntry -> IO ()
-logEntry (logQueue -> queue) = atomically . writeQueue queue
+  logEntry logging = atomically . writeQueue logging

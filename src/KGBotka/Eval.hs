@@ -82,7 +82,7 @@ data EvalContext = EvalContext
   }
 
 instance ProvidesLogging EvalContext where
-  logQueue = ecLogQueue
+  logEntry ec = logEntry $ ecLogQueue ec
 
 logEntryEval :: LogEntry -> Eval ()
 logEntryEval entry = do
