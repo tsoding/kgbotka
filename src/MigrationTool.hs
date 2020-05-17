@@ -116,7 +116,7 @@ convertTwitchLogs dbConn =
            and ep4.propertyText like 'TwitchChannel "%"'; |]
     []
 
--- TODO: document limitations of convertDiscordLogs
+-- TODO(#196): document limitations of convertDiscordLogs
 --   - guildId is not converted (not available)
 --   - senderDiscordId is not converted (not available)
 convertDiscordLogs :: Connection -> IO ()
