@@ -136,7 +136,8 @@ eventHandler dts dis (MessageCreate m)
              dbConn
              (messageGuild m)
              (messageChannel m)
-             (userId $ messageAuthor m) $
+             (userId $ messageAuthor m)
+             (userName $ messageAuthor m) $
              messageText m
            atomically $
              writeQueue (dtsMarkovQueue dts) $ NewSentence $ messageText m
