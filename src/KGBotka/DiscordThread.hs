@@ -147,7 +147,6 @@ eventHandler dts dis (MessageCreate m)
                   (PipeSuffix "|")
                   (messageText m) of
              [] -> return ()
-               -- -- TODO(#157): Filter out Discord pings from the Markov training data
                -- when
                --   (isJust $
                --    find (\u -> Just (userId u) == (userId <$> currentUser)) $
