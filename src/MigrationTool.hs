@@ -86,7 +86,7 @@ convertAliases dbConn = do
   --   It should print a warning or something
   traverse_ (uncurry $ addCommandName dbConn) legacyAliases
 
--- TODO: document limitations of convertTwitchLogs
+-- TODO(#195): document limitations of convertTwitchLogs
 --   Roles are not converted
 convertTwitchLogs :: Connection -> IO ()
 convertTwitchLogs dbConn =
