@@ -153,7 +153,6 @@ renderQueue videos@(FridayVideo {fridayVideoAuthorDisplayName = name}:_) =
   map renderFridayVideo videos <>
   [""]
 
--- TODO(#130): renderAllQueues does not render thumbnails of the videos
 renderAllQueues :: [[FridayVideo]] -> T.Text
 renderAllQueues allQueues = header <> body
   where

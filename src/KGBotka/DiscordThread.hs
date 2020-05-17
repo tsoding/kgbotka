@@ -136,7 +136,8 @@ eventHandler dts dis (MessageCreate m)
              dbConn
              (messageGuild m)
              (messageChannel m)
-             (userId $ messageAuthor m) $
+             (userId $ messageAuthor m)
+             (userName $ messageAuthor m) $
              messageText m
            atomically $
              writeQueue (dtsMarkovQueue dts) $ NewSentence $ messageText m
@@ -146,7 +147,6 @@ eventHandler dts dis (MessageCreate m)
                   (PipeSuffix "|")
                   (messageText m) of
              [] -> return ()
-               -- -- TODO(#157): Filter out Discord pings from the Markov training data
                -- when
                --   (isJust $
                --    find (\u -> Just (userId u) == (userId <$> currentUser)) $
@@ -164,7 +164,6 @@ eventHandler dts dis (MessageCreate m)
                evalResult <-
                  runExceptT $
                  evalStateT (runEvalT $ evalCommandPipe pipe) $
-                 -- TODO(#140): DiscordThread evaluation environment does not have any builtin vars
                  EvalContext
                    { ecVars = M.empty
                    , ecSqliteConnection = dbConn

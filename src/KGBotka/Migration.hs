@@ -187,4 +187,18 @@ kgbotkaMigrations =
   , Migration
       [sql|INSERT INTO TwitchLog (id, channel, senderTwitchId, senderTwitchName, senderTwitchDisplayName, senderTwitchRoles, senderTwitchBadgeRoles, message, messageTime) SELECT id, channel, senderTwitchId, senderTwitchName, senderTwitchDisplayName, senderTwitchRoles, senderTwitchBadgeRoles, message, messageTime FROM TwitchLogOld;|]
   , Migration [sql|DROP TABLE TwitchLogOld;|]
+  , Migration [sql|ALTER TABLE DiscordLog RENAME TO DiscordLogOld;|]
+  , Migration
+      [sql|CREATE TABLE DiscordLog (
+             id INTEGER PRIMARY KEY,
+             guildId TEXT,
+             channelId TEXT NOT NULL,
+             senderDiscordId TEXT,
+             senderDiscordDisplayName TEXT,
+             message TEXT NOT NULL,
+             messageTime DATETIME DEFAULT (datetime('now')) NOT NULL
+           );|]
+  , Migration
+      [sql|INSERT INTO DiscordLog (id, guildId, channelId, senderDiscordId, senderDiscordDisplayName, message, messageTime) SELECT id, guildId, channelId, senderDiscordId, NULL, message, messageTime FROM DiscordLogOld;|]
+  , Migration [sql|DROP TABLE DiscordLogOld;|]
   ]

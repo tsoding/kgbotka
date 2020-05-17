@@ -13,7 +13,6 @@ import System.Directory
 import System.Environment
 
 -- TODO(#141): MigrationTool does not convert Friday queue
--- TODO(#142): MigrationTool does not convert Twitch and Discord logs
 -- TODO(#145): MigrationTool does not convert Trusted users
 -- TODO(#146): MigrationTool does not convert quote database
 -- TODO(#147): populateHyperNerdBuiltinCommands does not support !trust and !untrust commands
@@ -43,7 +42,6 @@ populateHyperNerdBuiltinCommands dbConn = do
 
 -- TODO(#149): MigrationTool should rather called ConvertionTool or something like that.
 -- TODO(#150): Perform database conversion on CI for testing purposes
--- TODO(#151): convertCommands does not convert the amount of times the command was executed
 convertCommands :: Connection -> IO ()
 convertCommands dbConn = do
   legacyCommands <-
@@ -86,7 +84,8 @@ convertAliases dbConn = do
   --   It should print a warning or something
   traverse_ (uncurry $ addCommandName dbConn) legacyAliases
 
--- TODO(#180): MigrationTool does not convert Discord logs
+-- TODO(#195): document limitations of convertTwitchLogs
+--   Roles are not converted
 convertTwitchLogs :: Connection -> IO ()
 convertTwitchLogs dbConn =
   executeNamed
@@ -115,6 +114,37 @@ convertTwitchLogs dbConn =
            and ep4.propertyText like 'TwitchChannel "%"'; |]
     []
 
+-- TODO(#196): document limitations of convertDiscordLogs
+--   - guildId is not converted (not available)
+--   - senderDiscordId is not converted (not available)
+convertDiscordLogs :: Connection -> IO ()
+convertDiscordLogs dbConn =
+  executeNamed
+    dbConn
+    [sql|insert into DiscordLog (guildId,
+                                 channelId,
+                                 senderDiscordId,
+                                 senderDiscordDisplayName,
+                                 message,
+                                 messageTime)
+         select NULL,
+                substr(ep4.propertyText, 16),
+                NULL,
+                ep1.propertyText,
+                ep3.propertyText,
+                ep2.propertyUTCTime
+         from EntityProperty ep1
+         inner join EntityProperty ep2 on ep1.entityId = ep2.entityId
+         inner join EntityProperty ep3 on ep1.entityId = ep3.entityId
+         inner join EntityProperty ep4 on ep1.entityId = ep4.entityId
+         where ep1.entityName = 'LogRecord'
+           and ep1.propertyName = 'user'
+           and ep2.propertyName = 'timestamp'
+           and ep3.propertyName = 'msg'
+           and ep4.propertyName = 'channel'
+           and ep4.propertyText like 'DiscordChannel %'; |]
+    []
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -135,5 +165,7 @@ main = do
           convertAliases dbConn
           putStrLn "[INFO] Converting Twitch logs..."
           convertTwitchLogs dbConn
+          putStrLn "[INFO] Converting Discord logs..."
+          convertDiscordLogs dbConn
       putStrLn "OK"
     _ -> error "Usage: MigrationTool <dbPath>"
