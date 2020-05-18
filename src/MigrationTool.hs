@@ -12,7 +12,6 @@ import KGBotka.Migration
 import System.Directory
 import System.Environment
 
--- TODO(#141): MigrationTool does not convert Friday queue
 -- TODO(#145): MigrationTool does not convert Trusted users
 -- TODO(#146): MigrationTool does not convert quote database
 -- TODO(#147): populateHyperNerdBuiltinCommands does not support !trust and !untrust commands
