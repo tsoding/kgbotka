@@ -40,6 +40,8 @@ populateHyperNerdBuiltinCommands dbConn = do
   void $ addCommand dbConn "videocount" "%videocount(%1)"
   void $ addCommand dbConn "videoq" "%videoq(%1)"
 
+-- TODO: go through all of the conversion queries and check the baseline amount of entities
+
 -- TODO(#149): MigrationTool should rather called ConvertionTool or something like that.
 -- TODO(#150): Perform database conversion on CI for testing purposes
 convertCommands :: Connection -> IO ()
@@ -145,6 +147,44 @@ convertDiscordLogs dbConn =
            and ep4.propertyText like 'DiscordChannel %'; |]
     []
 
+-- TODO: document limitations of convertFridayVideos
+--   Special authorIds
+convertFridayVideos :: Connection -> IO ()
+convertFridayVideos dbConn =
+  executeNamed
+    dbConn
+    [sql|insert into FridayVideo (submissionText,
+                                  submissionTime,
+                                  authorId,
+                                  authorDisplayName,
+                                  watchedAt)
+         select subText.propertyText,
+                subDate.propertyUTCTime,
+                'Converted ' || author.propertyText,
+                author.propertyText,
+                watchedAt.propertyUTCTime
+         from (select entityId, entityName
+               from EntityProperty videos
+               where entityName = 'FridayVideo'
+               group by entityId) videos
+         left join EntityProperty author
+              on (author.entityId = videos.entityId and
+                  author.entityName = videos.entityName and
+                  author.propertyName = 'author')
+         left join EntityProperty subDate
+              on (subDate.entityId = videos.entityId and
+                  subDate.entityName = videos.entityName and
+                  subDate.propertyName = 'date')
+         left join EntityProperty subText
+              on (subText.entityId = videos.entityId and
+                  subText.entityName = videos.entityName and
+                  subText.propertyName = 'name')
+         left join EntityProperty watchedAt
+              on (watchedAt.entityId = videos.entityId and
+                  watchedAt.entityName = videos.entityName and
+                  watchedAt.propertyName = 'watchedAt'); |]
+    []
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -167,5 +207,7 @@ main = do
           convertTwitchLogs dbConn
           putStrLn "[INFO] Converting Discord logs..."
           convertDiscordLogs dbConn
+          putStrLn "[INFO] Converting Friday videos..."
+          convertFridayVideos dbConn
       putStrLn "OK"
     _ -> error "Usage: MigrationTool <dbPath>"
