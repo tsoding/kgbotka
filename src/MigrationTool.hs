@@ -147,7 +147,7 @@ convertDiscordLogs dbConn =
            and ep4.propertyText like 'DiscordChannel %'; |]
     []
 
--- TODO: document limitations of convertFridayVideos
+-- TODO(#200): document limitations of convertFridayVideos
 --   Special authorIds
 convertFridayVideos :: Connection -> IO ()
 convertFridayVideos dbConn =
