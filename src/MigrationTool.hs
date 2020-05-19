@@ -48,14 +48,24 @@ convertCommands dbConn = do
   legacyCommands <-
     queryNamed
       dbConn
-      [sql|select ep1.propertyText, ep2.propertyText, ep3.propertyInt
-           from EntityProperty ep1
-           inner join EntityProperty ep2 on ep1.entityId = ep2.entityId
-           inner join EntityProperty ep3 on ep1.entityId = ep3.entityId
-           where ep1.entityName = 'CustomCommand'
-           and ep1.propertyName = 'name'
-           and ep2.propertyName = 'message'
-           and ep3.propertyName = 'times' |]
+      [sql|select name.propertyText,
+                  message.propertyText,
+                  times.propertyInt
+           from (select entityId, entityName from EntityProperty
+                 where entityName = 'CustomCommand'
+                 group by entityId) commands
+           left join EntityProperty name
+                  on (commands.entityId = name.entityId and
+                      commands.entityName = name.entityName and
+                      name.propertyName = 'name')
+           left join EntityProperty message
+                  on (commands.entityId = message.entityId and
+                      commands.entityName = message.entityName and
+                      message.propertyName = 'message')
+           left join EntityProperty times
+                  on (commands.entityId = times.entityId and
+                      commands.entityName = times.entityName and
+                      times.propertyName = 'times');|]
       []
   traverse_
     (\(name, code, times) -> do
