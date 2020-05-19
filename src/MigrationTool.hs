@@ -101,7 +101,7 @@ convertAliases dbConn = do
 
 -- TODO(#195): document limitations of convertTwitchLogs
 --   Roles are not converted
--- TODO: convertTwitchLogs uses old conversion style
+-- TODO(#202): convertTwitchLogs uses old conversion style
 convertTwitchLogs :: Connection -> IO ()
 convertTwitchLogs dbConn =
   executeNamed
