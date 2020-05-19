@@ -100,8 +100,8 @@ convertAliases dbConn = do
   traverse_ (uncurry $ addCommandName dbConn) legacyAliases
 
 -- TODO(#195): document limitations of convertTwitchLogs
---   Roles are not converted
--- TODO(#202): convertTwitchLogs uses old conversion style
+--   Roles are not converted (not available)
+--   Messages without timestamps are ignored
 convertTwitchLogs :: Connection -> IO ()
 convertTwitchLogs dbConn =
   executeNamed
@@ -112,22 +112,39 @@ convertTwitchLogs dbConn =
                                 senderTwitchBadgeRoles,
                                 message,
                                 messageTime)
-         select substr(ep4.propertyText, 16, length(ep4.propertyText) - 16),
-                ep1.propertyText,
+         select substr(channel.propertyText,
+                       16,
+                       length(channel.propertyText) - 16),
+                user.propertyText,
                 '[]',
                 '[]',
-                ep3.propertyText,
-                ep2.propertyUTCTime
-         from EntityProperty ep1
-         inner join EntityProperty ep2 on ep1.entityId = ep2.entityId
-         inner join EntityProperty ep3 on ep1.entityId = ep3.entityId
-         inner join EntityProperty ep4 on ep1.entityId = ep4.entityId
-         where ep1.entityName = 'LogRecord'
-           and ep1.propertyName = 'user'
-           and ep2.propertyName = 'timestamp'
-           and ep3.propertyName = 'msg'
-           and ep4.propertyName = 'channel'
-           and ep4.propertyText like 'TwitchChannel "%"'; |]
+                msg.propertyText,
+                timestamp.propertyUTCTime
+         from (select * from EntityProperty
+               where entityName = 'LogRecord'
+               group by entityId) record
+         left join EntityProperty user
+                on (record.entityId = user.entityId and
+                    record.entityName = user.entityName and
+                    user.propertyName = 'user')
+         left join EntityProperty timestamp
+                on (record.entityId = timestamp.entityId and
+                    record.entityName = timestamp.entityName and
+                    timestamp.propertyName = 'timestamp')
+         left join EntityProperty msg
+                on (record.entityId = msg.entityId and
+                    record.entityName = msg.entityName and
+                    msg.propertyName = 'msg')
+         left join EntityProperty channel
+                on (record.entityId = channel.entityId and
+                    record.entityName = channel.entityName and
+                    channel.propertyName = 'channel')
+         where channel.propertyText like 'TwitchChannel "%"'
+               -- NOTE: At some very brief moment of time HyperNerd
+               -- was not saving timestamps. That was very long time
+               -- ago and very brief, so if such messages occur, we can
+               -- simply neglect them
+           and timestamp.propertyUTCTime is not NULL;|]
     []
 
 -- TODO(#196): document limitations of convertDiscordLogs
