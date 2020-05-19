@@ -83,13 +83,18 @@ convertAliases dbConn = do
   legacyAliases <-
     queryNamed
       dbConn
-      [sql|select ep1.propertyText, ep2.propertyText
-           from EntityProperty ep1
-           inner join EntityProperty ep2
-           on ep1.entityId = ep2.entityId
-           where ep1.entityName = 'Alias'
-           and ep1.propertyName = 'name'
-           and ep2.propertyName = 'redirect'|]
+      [sql|select name.propertyText, redirect.propertyText
+           from (select entityId, entityName from EntityProperty
+                 where entityName = 'Alias'
+                 group by entityId) alias
+           left join EntityProperty name
+                  on (alias.entityId = name.entityId and
+                      alias.entityName = name.entityName and
+                      name.propertyName = 'name')
+           left join EntityProperty redirect
+                  on (alias.entityId = redirect.entityId and
+                      alias.entityName = redirect.entityName and
+                      redirect.propertyName = 'redirect');|]
       []
   -- TODO(#152): convertAliases silently ignores non existing command
   --   It should print a warning or something
