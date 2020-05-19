@@ -40,7 +40,6 @@ populateHyperNerdBuiltinCommands dbConn = do
   void $ addCommand dbConn "videoq" "%videoq(%1)"
 
 -- TODO(#199): go through all of the conversion queries and check the baseline amount of entities
-
 -- TODO(#149): MigrationTool should rather called ConvertionTool or something like that.
 -- TODO(#150): Perform database conversion on CI for testing purposes
 convertCommands :: Connection -> IO ()
@@ -48,14 +47,24 @@ convertCommands dbConn = do
   legacyCommands <-
     queryNamed
       dbConn
-      [sql|select ep1.propertyText, ep2.propertyText, ep3.propertyInt
-           from EntityProperty ep1
-           inner join EntityProperty ep2 on ep1.entityId = ep2.entityId
-           inner join EntityProperty ep3 on ep1.entityId = ep3.entityId
-           where ep1.entityName = 'CustomCommand'
-           and ep1.propertyName = 'name'
-           and ep2.propertyName = 'message'
-           and ep3.propertyName = 'times' |]
+      [sql|select name.propertyText,
+                  message.propertyText,
+                  times.propertyInt
+           from (select entityId, entityName from EntityProperty
+                 where entityName = 'CustomCommand'
+                 group by entityId) commands
+           left join EntityProperty name
+                  on (commands.entityId = name.entityId and
+                      commands.entityName = name.entityName and
+                      name.propertyName = 'name')
+           left join EntityProperty message
+                  on (commands.entityId = message.entityId and
+                      commands.entityName = message.entityName and
+                      message.propertyName = 'message')
+           left join EntityProperty times
+                  on (commands.entityId = times.entityId and
+                      commands.entityName = times.entityName and
+                      times.propertyName = 'times');|]
       []
   traverse_
     (\(name, code, times) -> do
@@ -73,13 +82,18 @@ convertAliases dbConn = do
   legacyAliases <-
     queryNamed
       dbConn
-      [sql|select ep1.propertyText, ep2.propertyText
-           from EntityProperty ep1
-           inner join EntityProperty ep2
-           on ep1.entityId = ep2.entityId
-           where ep1.entityName = 'Alias'
-           and ep1.propertyName = 'name'
-           and ep2.propertyName = 'redirect'|]
+      [sql|select name.propertyText, redirect.propertyText
+           from (select entityId, entityName from EntityProperty
+                 where entityName = 'Alias'
+                 group by entityId) alias
+           left join EntityProperty name
+                  on (alias.entityId = name.entityId and
+                      alias.entityName = name.entityName and
+                      name.propertyName = 'name')
+           left join EntityProperty redirect
+                  on (alias.entityId = redirect.entityId and
+                      alias.entityName = redirect.entityName and
+                      redirect.propertyName = 'redirect');|]
       []
   -- TODO(#152): convertAliases silently ignores non existing command
   --   It should print a warning or something
@@ -87,6 +101,7 @@ convertAliases dbConn = do
 
 -- TODO(#195): document limitations of convertTwitchLogs
 --   Roles are not converted
+-- TODO(#202): convertTwitchLogs uses old conversion style
 convertTwitchLogs :: Connection -> IO ()
 convertTwitchLogs dbConn =
   executeNamed
@@ -118,6 +133,7 @@ convertTwitchLogs dbConn =
 -- TODO(#196): document limitations of convertDiscordLogs
 --   - guildId is not converted (not available)
 --   - senderDiscordId is not converted (not available)
+-- TODO(#203): convertDiscordLogs uses old conversion style
 convertDiscordLogs :: Connection -> IO ()
 convertDiscordLogs dbConn =
   executeNamed
