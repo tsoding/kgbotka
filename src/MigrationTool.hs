@@ -102,6 +102,7 @@ convertAliases dbConn = do
 
 -- TODO(#195): document limitations of convertTwitchLogs
 --   Roles are not converted
+-- TODO: convertTwitchLogs uses old conversion style
 convertTwitchLogs :: Connection -> IO ()
 convertTwitchLogs dbConn =
   executeNamed
@@ -133,6 +134,7 @@ convertTwitchLogs dbConn =
 -- TODO(#196): document limitations of convertDiscordLogs
 --   - guildId is not converted (not available)
 --   - senderDiscordId is not converted (not available)
+-- TODO: convertDiscordLogs uses old conversion style
 convertDiscordLogs :: Connection -> IO ()
 convertDiscordLogs dbConn =
   executeNamed
