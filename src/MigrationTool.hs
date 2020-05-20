@@ -162,21 +162,31 @@ convertDiscordLogs dbConn =
                                  message,
                                  messageTime)
          select NULL,
-                substr(ep4.propertyText, 16),
+                substr(channel.propertyText, 16),
                 NULL,
-                ep1.propertyText,
-                ep3.propertyText,
-                ep2.propertyUTCTime
-         from EntityProperty ep1
-         inner join EntityProperty ep2 on ep1.entityId = ep2.entityId
-         inner join EntityProperty ep3 on ep1.entityId = ep3.entityId
-         inner join EntityProperty ep4 on ep1.entityId = ep4.entityId
-         where ep1.entityName = 'LogRecord'
-           and ep1.propertyName = 'user'
-           and ep2.propertyName = 'timestamp'
-           and ep3.propertyName = 'msg'
-           and ep4.propertyName = 'channel'
-           and ep4.propertyText like 'DiscordChannel %'; |]
+                user.propertyText,
+                msg.propertyText,
+                timestamp.propertyUTCTime
+         from (select * from EntityProperty
+               where entityName = 'LogRecord'
+               group by entityId) record
+         left join EntityProperty user
+                on (record.entityId = user.entityId and
+                    record.entityName = user.entityName and
+                    user.propertyName = 'user')
+         left join EntityProperty timestamp
+                on (record.entityId = timestamp.entityId and
+                    record.entityName = timestamp.entityName and
+                    timestamp.propertyName = 'timestamp')
+         left join EntityProperty msg
+                on (record.entityId = msg.entityId and
+                    record.entityName = msg.entityName and
+                    msg.propertyName = 'msg')
+         left join EntityProperty channel
+                on (record.entityId = channel.entityId and
+                    record.entityName = channel.entityName and
+                    channel.propertyName = 'channel')
+         where channel.propertyText like 'DiscordChannel %'; |]
     []
 
 -- TODO(#200): document limitations of convertFridayVideos
