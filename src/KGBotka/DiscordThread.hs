@@ -90,6 +90,14 @@ discordThreadOnStart dts dis = do
     Left err -> logEntry dts $ LogEntry "DISCORD" $ T.pack $ show err
 
 eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
+eventHandler dts _ (MessageReactionAdd _) = do
+  logEntry dts $ LogEntry "DISCORD" "------------------------------"
+  logEntry dts $ LogEntry "DISCORD" "REACTION HAS BEEN ADDED"
+  logEntry dts $ LogEntry "DISCORD" "------------------------------"
+eventHandler dts _ (MessageReactionRemove _) = do
+  logEntry dts $ LogEntry "DISCORD" "------------------------------"
+  logEntry dts $ LogEntry "DISCORD" "REACTION HAS BEEN REMOVED"
+  logEntry dts $ LogEntry "DISCORD" "------------------------------"
 eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
     void $
