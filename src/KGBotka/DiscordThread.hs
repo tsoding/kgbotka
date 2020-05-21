@@ -98,15 +98,13 @@ discordThreadOnStart dts dis = do
 getRoleByMessageAndEmoji ::
      Sqlite.Connection -> MessageId -> T.Text -> IO (Maybe RoleId)
 getRoleByMessageAndEmoji dbConn msgId emoId =
-  (fmap (Snowflake . Sqlite.fromOnly)) . listToMaybe <$>
+  fmap (Snowflake . Sqlite.fromOnly) . listToMaybe <$>
   Sqlite.queryNamed
     dbConn
     [sql|SELECT roleId FROM RoleEmojiAssoc
          WHERE msgId = :msgId
          AND emojiId = :emoId |]
-    [ ":msgId" := (fromIntegral msgId :: Word64)
-    , ":emoId" := emoId
-    ]
+    [":msgId" := (fromIntegral msgId :: Word64), ":emoId" := emoId]
 
 -- TODO: Reaction Role assignment mechanism doesn't have a convenient interface
 eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
@@ -123,9 +121,9 @@ eventHandler dts dis (MessageReactionAdd reactionInfo) = do
          logEntry dts $ LogEntry "DISCORD" $ T.pack $ show (e :: SomeException)
          return Nothing)
   case (maybeRole, reactionGuildId reactionInfo) of
-    (Just rId, Just gId) -> do
+    (Just rId, Just gId) ->
       void $restCall dis $
-        AddGuildMemberRole gId (reactionUserId reactionInfo) rId
+      AddGuildMemberRole gId (reactionUserId reactionInfo) rId
     _ -> return ()
 eventHandler dts dis (MessageReactionRemove reactionInfo) = do
   maybeRole <-
@@ -140,10 +138,9 @@ eventHandler dts dis (MessageReactionRemove reactionInfo) = do
          logEntry dts $ LogEntry "DISCORD" $ T.pack $ show (e :: SomeException)
          return Nothing)
   case (maybeRole, reactionGuildId reactionInfo) of
-    (Just rId, Just gId) -> do
+    (Just rId, Just gId) ->
       void $
-        restCall dis $
-        RemoveGuildMemberRole gId (reactionUserId reactionInfo) rId
+      restCall dis $ RemoveGuildMemberRole gId (reactionUserId reactionInfo) rId
     _ -> return ()
 eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
