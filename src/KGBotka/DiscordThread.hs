@@ -106,7 +106,7 @@ getRoleByMessageAndEmoji dbConn msgId emoId =
          AND emojiId = :emoId |]
     [":msgId" := (fromIntegral msgId :: Word64), ":emoId" := emoId]
 
--- TODO: Reaction Role assignment mechanism doesn't have a convenient interface
+-- TODO(#207): Reaction Role assignment mechanism doesn't have a convenient interface
 eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
 eventHandler dts dis (MessageReactionAdd reactionInfo) = do
   maybeRole <-
