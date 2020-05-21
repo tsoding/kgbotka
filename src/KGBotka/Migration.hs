@@ -208,4 +208,6 @@ kgbotkaMigrations =
              msgId INTEGER NOT NULL,
              UNIQUE(emojiId, msgId)
            );|]
+  , Migration
+      [sql|ALTER TABLE Command ADD COLUMN argsRegex TEXT NOT NULL DEFAULT '(.*)';|]
   ]

@@ -139,6 +139,7 @@ replThreadLoop rts = do
         (traverse_ (hPutStrLn replHandle . T.unpack . twitchIrcChannelText) <=<
          joinedChannels)
       replThreadLoop rts
+    -- TODO(#212): addcmd in REPL should accept the argsRegex
     ("addcmd":name:args, _) -> do
       withTransactionLogErrors $ \dbConn ->
         void $ addCommand dbConn name (T.unwords args)
