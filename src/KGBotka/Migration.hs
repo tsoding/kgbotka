@@ -201,10 +201,11 @@ kgbotkaMigrations =
   , Migration
       [sql|INSERT INTO DiscordLog (id, guildId, channelId, senderDiscordId, senderDiscordDisplayName, message, messageTime) SELECT id, guildId, channelId, senderDiscordId, NULL, message, messageTime FROM DiscordLogOld;|]
   , Migration [sql|DROP TABLE DiscordLogOld;|]
-  , Migration [sql|CREATE TABLE RoleEmojiAssoc (
-                     emojiId TEXT NOT NULL,
-                     roleId INTEGER NOT NULL,
-                     msgId INTEGER NOT NULL,
-                     UNIQUE(emojiId, msgId)
-                   );|]
+  , Migration
+      [sql|CREATE TABLE RoleEmojiAssoc (
+             emojiId TEXT NOT NULL,
+             roleId INTEGER NOT NULL,
+             msgId INTEGER NOT NULL,
+             UNIQUE(emojiId, msgId)
+           );|]
   ]
