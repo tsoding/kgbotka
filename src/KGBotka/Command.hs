@@ -37,7 +37,8 @@ data Command = Command
   , commandCode :: T.Text
   , commandUserCooldown :: Int
   , commandTimes :: Int
-  } deriving (Show)
+  , commandArgsRegex :: T.Text
+  }
 
 data CommandLog = CommandLog
   { commandLogUserTwitchId :: TwitchUserId
@@ -65,14 +66,14 @@ logCommand dbConn userDiscordId userTwitchId commandIdent commandArgs =
     ]
 
 instance FromRow Command where
-  fromRow = Command <$> field <*> field <*> field <*> field
+  fromRow = Command <$> field <*> field <*> field <*> field <*> field
 
 commandByName :: Connection -> T.Text -> IO (Maybe Command)
 commandByName conn name =
   listToMaybe <$> queryNamed conn queryText [":commandName" := name]
   where
     queryText =
-      [sql|SELECT c.id, c.code, c.user_cooldown_ms, c.times
+      [sql|SELECT c.id, c.code, c.user_cooldown_ms, c.times, c.argsRegex
            FROM Command c
            INNER JOIN CommandName cn ON c.id = cn.commandId
            WHERE cn.name = :commandName;|]
