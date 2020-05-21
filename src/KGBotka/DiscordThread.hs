@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.DiscordThread
   ( DiscordThreadParams(..)
   , discordThread
+  , getRoleByMessageAndEmoji
   ) where
 
 import Control.Concurrent
@@ -16,6 +18,8 @@ import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
+import Database.SQLite.Simple (NamedParam(..))
+import Database.SQLite.Simple.QQ
 import Discord
 import Discord.Requests
 import qualified Discord.Requests as R
@@ -30,6 +34,8 @@ import KGBotka.Queue
 import KGBotka.Settings
 import qualified Network.HTTP.Client as HTTP
 import Text.Printf
+import Data.Word
+import KGBotka.Sqlite
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)
@@ -89,15 +95,56 @@ discordThreadOnStart dts dis = do
     Right user -> putMVar (dtsCurrentUser dts) user
     Left err -> logEntry dts $ LogEntry "DISCORD" $ T.pack $ show err
 
+getRoleByMessageAndEmoji ::
+     Sqlite.Connection -> MessageId -> T.Text -> IO (Maybe RoleId)
+getRoleByMessageAndEmoji dbConn msgId emoId =
+  (fmap (Snowflake . Sqlite.fromOnly)) . listToMaybe <$>
+  Sqlite.queryNamed
+    dbConn
+    [sql|SELECT roleId FROM RoleEmojiAssoc
+         WHERE msgId = :msgId
+         AND emojiId = :emoId |]
+    [ ":msgId" := (fromIntegral msgId :: Word64)
+    , ":emoId" := emoId
+    ]
+
+-- TODO: Reaction Role assignment mechanism doesn't have a convenient interface
 eventHandler :: DiscordThreadState -> DiscordHandle -> Event -> IO ()
-eventHandler dts _ (MessageReactionAdd _) = do
-  logEntry dts $ LogEntry "DISCORD" "------------------------------"
-  logEntry dts $ LogEntry "DISCORD" "REACTION HAS BEEN ADDED"
-  logEntry dts $ LogEntry "DISCORD" "------------------------------"
-eventHandler dts _ (MessageReactionRemove _) = do
-  logEntry dts $ LogEntry "DISCORD" "------------------------------"
-  logEntry dts $ LogEntry "DISCORD" "REACTION HAS BEEN REMOVED"
-  logEntry dts $ LogEntry "DISCORD" "------------------------------"
+eventHandler dts dis (MessageReactionAdd reactionInfo) = do
+  maybeRole <-
+    catch
+      (withLockedTransaction (dtsSqliteConnection dts) $ \dbConn ->
+         getRoleByMessageAndEmoji
+           dbConn
+           (reactionMessageId reactionInfo)
+           (maybe (emojiName $ reactionEmoji reactionInfo) (T.pack . show) $
+            emojiId $ reactionEmoji reactionInfo))
+      (\e -> do
+         logEntry dts $ LogEntry "DISCORD" $ T.pack $ show (e :: SomeException)
+         return Nothing)
+  case (maybeRole, reactionGuildId reactionInfo) of
+    (Just rId, Just gId) -> do
+      void $restCall dis $
+        AddGuildMemberRole gId (reactionUserId reactionInfo) rId
+    _ -> return ()
+eventHandler dts dis (MessageReactionRemove reactionInfo) = do
+  maybeRole <-
+    catch
+      (withLockedTransaction (dtsSqliteConnection dts) $ \dbConn ->
+         getRoleByMessageAndEmoji
+           dbConn
+           (reactionMessageId reactionInfo)
+           (maybe (emojiName $ reactionEmoji reactionInfo) (T.pack . show) $
+            emojiId $ reactionEmoji reactionInfo))
+      (\e -> do
+         logEntry dts $ LogEntry "DISCORD" $ T.pack $ show (e :: SomeException)
+         return Nothing)
+  case (maybeRole, reactionGuildId reactionInfo) of
+    (Just rId, Just gId) -> do
+      void $
+        restCall dis $
+        RemoveGuildMemberRole gId (reactionUserId reactionInfo) rId
+    _ -> return ()
 eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
     void $
