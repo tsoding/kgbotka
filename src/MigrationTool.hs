@@ -87,7 +87,7 @@ convertCommands dbConn = do
     legacyCommands
 
 -- TODO(#218): document that convertTrustedUsers requires querying Twitch API
--- TODO: convertTrustedUsers is not tested properly with actually working getUsersByLogins
+-- TODO(#219): convertTrustedUsers is not tested properly with actually working getUsersByLogins
 convertTrustedUsers :: Connection -> HTTP.Manager -> ConfigTwitch -> IO ()
 convertTrustedUsers dbConn manager config = do
   roleId <- addTwitchRole dbConn "trusted"
