@@ -12,12 +12,12 @@ module KGBotka.Roles
   , listTwitchRoles
   ) where
 
+import Data.Int
 import Data.Maybe
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.TwitchAPI
-import Data.Int
 
 data TwitchBadgeRole
   = TwitchSub

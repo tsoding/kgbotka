@@ -22,6 +22,7 @@ import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple.QQ
 import KGBotka.Bttv
 import KGBotka.Command
+import KGBotka.Config
 import KGBotka.Ffz
 import KGBotka.Http
 import KGBotka.JoinedTwitchChannels
@@ -35,7 +36,6 @@ import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
 import Text.Printf
-import KGBotka.Config
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)

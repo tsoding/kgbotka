@@ -4,22 +4,22 @@
 
 module Main where
 
+import Data.Aeson
 import Data.Foldable
 import Data.Functor
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.Command
+import KGBotka.Config
 import KGBotka.Migration
+import KGBotka.Roles
+import KGBotka.TwitchAPI
+import qualified Network.HTTP.Client as HTTP
+import qualified Network.HTTP.Client.TLS as TLS
 import System.Directory
 import System.Environment
-import qualified Network.HTTP.Client.TLS as TLS
-import qualified Network.HTTP.Client as HTTP
-import Data.Aeson
-import Text.Printf
-import KGBotka.Config
-import KGBotka.TwitchAPI
-import KGBotka.Roles
 import System.IO
+import Text.Printf
 
 -- TODO(#145): MigrationTool does not convert Trusted users
 -- TODO(#146): MigrationTool does not convert quote database

@@ -26,9 +26,9 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
+import KGBotka.Config
 import KGBotka.Http
 import Network.HTTP.Client
-import KGBotka.Config
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -134,6 +134,5 @@ getStreamByLogin manager clientId login = do
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
   return (listToMaybe . twitchResData <$> responseBody response)
-
 -- TODO(#216): convenient mechanism of settings up the Twitch token
 -- TODO(#217): getStreamByLogin and getUsersByLogins should also send the Authorization header
