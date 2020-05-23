@@ -134,3 +134,6 @@ getStreamByLogin manager clientId login = do
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
   return (listToMaybe . twitchResData <$> responseBody response)
+
+-- TODO: convenient mechanism of settings up the Twitch token
+-- TODO: getStreamByLogin and getUsersByLogins should also send the Authorization header
