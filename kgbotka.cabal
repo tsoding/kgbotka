@@ -59,6 +59,8 @@ executable MigrationTool
                      , KGBotka.Command
                      , KGBotka.Http
                      , KGBotka.TwitchAPI
+                     , KGBotka.Config
+                     , KGBotka.Roles
 
   build-depends:       base >=4.12 && <4.13
                      , sqlite-simple >=0.4.16 && <0.5

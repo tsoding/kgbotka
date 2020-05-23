@@ -1,16 +1,25 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Main where
 
+import Data.Aeson
 import Data.Foldable
 import Data.Functor
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.Command
+import KGBotka.Config
 import KGBotka.Migration
+import KGBotka.Roles
+import KGBotka.TwitchAPI
+import qualified Network.HTTP.Client as HTTP
+import qualified Network.HTTP.Client.TLS as TLS
 import System.Directory
 import System.Environment
+import System.IO
+import Text.Printf
 
 -- TODO(#145): MigrationTool does not convert Trusted users
 -- TODO(#146): MigrationTool does not convert quote database
@@ -76,6 +85,26 @@ convertCommands dbConn = do
               where id = :commandId|]
          [":times" := (times :: Int), ":commandId" := commandIdent])
     legacyCommands
+
+-- TODO(#218): document that convertTrustedUsers requires querying Twitch API
+-- TODO(#219): convertTrustedUsers is not tested properly with actually working getUsersByLogins
+convertTrustedUsers :: Connection -> HTTP.Manager -> ConfigTwitch -> IO ()
+convertTrustedUsers dbConn manager config = do
+  roleId <- addTwitchRole dbConn "trusted"
+  logins <-
+    map fromOnly <$>
+    queryNamed
+      dbConn
+      [sql|select propertyText from EntityProperty
+         where entityName = 'TrustedUser';|]
+      []
+  response <- HTTP.responseBody <$> getUsersByLogins manager config logins
+  case response of
+    Right users ->
+      traverse_ (assTwitchRoleToUser dbConn roleId . twitchUserId) users
+    Left message -> do
+      hPutStrLn stderr "[ERROR] Querying user ids failed"
+      error message
 
 convertAliases :: Connection -> IO ()
 convertAliases dbConn = do
@@ -231,25 +260,40 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    dbPath:_ -> do
-      copyFile dbPath (dbPath ++ ".old")
-      withConnection dbPath $ \dbConn ->
-        withTransaction dbConn $ do
-          putStrLn "[INFO] Preparing the migration table..."
-          executeNamed dbConn [sql|DROP TABLE Migrations|] []
-          migrateDatabase dbConn kgbotkaMigrations
-          executeNamed dbConn [sql|DROP TABLE EntityId|] []
-          putStrLn "[INFO] Populating HyperNerd builtin commands..."
-          populateHyperNerdBuiltinCommands dbConn
-          putStrLn "[INFO] Converting commands..."
-          convertCommands dbConn
-          putStrLn "[INFO] Converting aliases..."
-          convertAliases dbConn
-          putStrLn "[INFO] Converting Twitch logs..."
-          convertTwitchLogs dbConn
-          putStrLn "[INFO] Converting Discord logs..."
-          convertDiscordLogs dbConn
-          putStrLn "[INFO] Converting Friday videos..."
-          convertFridayVideos dbConn
-      putStrLn "OK"
-    _ -> error "Usage: MigrationTool <dbPath>"
+    configPath:dbPath:_ -> do
+      printf "[INFO] Configuration file: %s\n" configPath
+      printf "[INFO] Database file: %s\n" dbPath
+      potentialConfig <- eitherDecodeFileStrict configPath
+      case configTwitch <$> potentialConfig of
+        Right (Just config) -> do
+          printf "[INFO] Backing up the database: %s -> %s.old\n" dbPath dbPath
+          copyFile dbPath (dbPath ++ ".old")
+          withConnection dbPath $ \dbConn ->
+            withTransaction dbConn $ do
+              manager <- TLS.newTlsManager
+              putStrLn "[INFO] Preparing the migration table..."
+              executeNamed dbConn [sql|DROP TABLE Migrations|] []
+              migrateDatabase dbConn kgbotkaMigrations
+              executeNamed dbConn [sql|DROP TABLE EntityId|] []
+              putStrLn "[INFO] Populating HyperNerd builtin commands..."
+              populateHyperNerdBuiltinCommands dbConn
+              putStrLn "[INFO] Converting commands..."
+              convertCommands dbConn
+              putStrLn "[INFO] Converting aliases..."
+              convertAliases dbConn
+              putStrLn "[INFO] Converting Twitch logs..."
+              convertTwitchLogs dbConn
+              putStrLn "[INFO] Converting Discord logs..."
+              convertDiscordLogs dbConn
+              putStrLn "[INFO] Converting Friday videos..."
+              convertFridayVideos dbConn
+              putStrLn "[INFO] Converting Trusted users..."
+              convertTrustedUsers dbConn manager config
+          putStrLn "OK"
+        Right Nothing ->
+          error $
+          printf
+            "[ERROR] Could not find twitch configuration in `%s`"
+            configPath
+        Left errorMessage -> error errorMessage
+    _ -> error "Usage: MigrationTool <configPath> <dbPath>"

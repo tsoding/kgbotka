@@ -22,6 +22,7 @@ import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple.QQ
 import KGBotka.Bttv
 import KGBotka.Command
+import KGBotka.Config
 import KGBotka.Ffz
 import KGBotka.Http
 import KGBotka.JoinedTwitchChannels
@@ -39,7 +40,7 @@ import Text.Printf
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
   , rtpCommandQueue :: !(WriteQueue ReplCommand)
-  , rtpTwitchClientId :: Maybe T.Text
+  , rtpConfigTwitch :: !(Maybe ConfigTwitch)
   , rtpManager :: !HTTP.Manager
   , rtpHandle :: !Handle
   , rtpLogQueue :: !(WriteQueue LogEntry)
@@ -55,7 +56,7 @@ data ReplThreadState = ReplThreadState
   { rtsSqliteConnection :: !(MVar Sqlite.Connection)
   , rtsCurrentChannel :: !(Maybe TwitchIrcChannel)
   , rtsCommandQueue :: !(WriteQueue ReplCommand)
-  , rtsTwitchClientId :: Maybe T.Text
+  , rtsConfigTwitch :: !(Maybe ConfigTwitch)
   , rtsManager :: !HTTP.Manager
   , rtsHandle :: !Handle
   , rtsLogQueue :: !(WriteQueue LogEntry)
@@ -80,7 +81,7 @@ replThread rtp =
       { rtsSqliteConnection = rtpSqliteConnection rtp
       , rtsCurrentChannel = Nothing
       , rtsCommandQueue = rtpCommandQueue rtp
-      , rtsTwitchClientId = rtpTwitchClientId rtp
+      , rtsConfigTwitch = rtpConfigTwitch rtp
       , rtsManager = rtpManager rtp
       , rtsHandle = rtpHandle rtp
       , rtsLogQueue = rtpLogQueue rtp
@@ -178,7 +179,7 @@ replThreadLoop rts = do
           Just _ ->
             hPutStrLn replHandle $ "Role " <> T.unpack name <> " already exists"
           Nothing -> do
-            addTwitchRole dbConn name
+            void $ addTwitchRole dbConn name
             hPutStrLn replHandle $ "Added a new role: " <> T.unpack name
       replThreadLoop rts
     ("lsroles":_, _) -> do
@@ -194,12 +195,12 @@ replThreadLoop rts = do
       replThreadLoop rts
     ("assrole":roleName:users, _) -> do
       withTransactionLogErrors $ \dbConn ->
-        case rtsTwitchClientId rts of
-          Just clientId -> do
+        case rtsConfigTwitch rts of
+          Just config -> do
             maybeRole <- getTwitchRoleByName dbConn roleName
             response <-
               HTTP.responseBody <$>
-              getUsersByLogins (rtsManager rts) clientId users
+              getUsersByLogins (rtsManager rts) config users
             case (response, maybeRole) of
               (Right twitchUsers, Just role') ->
                 traverse_
@@ -238,7 +239,7 @@ replThreadLoop rts = do
 data BackdoorThreadParams = BackdoorThreadParams
   { btpSqliteConnection :: !(MVar Sqlite.Connection)
   , btpCommandQueue :: !(WriteQueue ReplCommand)
-  , btpTwitchClientId :: Maybe T.Text
+  , btpConfigTwitch :: !(Maybe ConfigTwitch)
   , btpManager :: !HTTP.Manager
   , btpLogQueue :: !(WriteQueue LogEntry)
   , btpPort :: !Int
@@ -281,7 +282,7 @@ backdoorThread btp = do
           , rtpHandle = connHandle
           , rtpLogQueue = btpLogQueue btp
           , rtpConnAddr = addr
-          , rtpTwitchClientId = btpTwitchClientId btp
+          , rtpConfigTwitch = btpConfigTwitch btp
           , rtpMarkovQueue = btpMarkovQueue btp
           , rtpRetrainProgress = btpRetrainProgress btp
           }

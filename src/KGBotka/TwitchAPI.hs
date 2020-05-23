@@ -26,6 +26,7 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
+import KGBotka.Config
 import KGBotka.Http
 import Network.HTTP.Client
 
@@ -103,8 +104,11 @@ instance FromJSON TwitchUser where
   parseJSON invalid = typeMismatch "TwitchUser" invalid
 
 getUsersByLogins ::
-     Manager -> T.Text -> [T.Text] -> IO (Response (Either String [TwitchUser]))
-getUsersByLogins manager clientId users = do
+     Manager
+  -> ConfigTwitch
+  -> [T.Text]
+  -> IO (Response (Either String [TwitchUser]))
+getUsersByLogins manager ConfigTwitch {configTwitchClientId = clientId} users = do
   let url =
         "https://api.twitch.tv/helix/users?" <>
         T.concat (intersperse "&" $ map ("login=" <>) users)
@@ -130,3 +134,5 @@ getStreamByLogin manager clientId login = do
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
   return (listToMaybe . twitchResData <$> responseBody response)
+-- TODO(#216): convenient mechanism of settings up the Twitch token
+-- TODO(#217): getStreamByLogin and getUsersByLogins should also send the Authorization header
