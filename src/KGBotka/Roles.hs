@@ -17,6 +17,7 @@ import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import KGBotka.TwitchAPI
+import Data.Int
 
 data TwitchBadgeRole
   = TwitchSub
@@ -27,14 +28,14 @@ data TwitchBadgeRole
   deriving (Eq, Show)
 
 data TwitchRole = TwitchRole
-  { twitchRoleId :: Int
+  { twitchRoleId :: Int64
   , twitchRoleName :: T.Text
   } deriving (Show)
 
 instance FromRow TwitchRole where
   fromRow = TwitchRole <$> field <*> field
 
-assTwitchRoleToUser :: Connection -> Int -> TwitchUserId -> IO ()
+assTwitchRoleToUser :: Connection -> Int64 -> TwitchUserId -> IO ()
 assTwitchRoleToUser conn roleId' userId' =
   executeNamed
     conn
@@ -61,12 +62,13 @@ getTwitchRoleByName conn name =
     \WHERE name = :roleName;"
     [":roleName" := name]
 
-addTwitchRole :: Connection -> T.Text -> IO ()
-addTwitchRole dbConn name =
+addTwitchRole :: Connection -> T.Text -> IO Int64
+addTwitchRole dbConn name = do
   executeNamed
     dbConn
     [sql|INSERT INTO TwitchRoles (name) VALUES (:name)|]
     [":name" := name]
+  lastInsertRowId dbConn
 
 listTwitchRoles :: Connection -> IO [TwitchRole]
 listTwitchRoles dbConn =

@@ -178,7 +178,7 @@ replThreadLoop rts = do
           Just _ ->
             hPutStrLn replHandle $ "Role " <> T.unpack name <> " already exists"
           Nothing -> do
-            addTwitchRole dbConn name
+            void $ addTwitchRole dbConn name
             hPutStrLn replHandle $ "Added a new role: " <> T.unpack name
       replThreadLoop rts
     ("lsroles":_, _) -> do
