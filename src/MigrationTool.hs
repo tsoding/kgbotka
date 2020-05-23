@@ -86,7 +86,7 @@ convertCommands dbConn = do
          [":times" := (times :: Int), ":commandId" := commandIdent])
     legacyCommands
 
--- TODO: document that convertTrustedUsers requires querying Twitch API
+-- TODO(#218): document that convertTrustedUsers requires querying Twitch API
 -- TODO: convertTrustedUsers is not tested properly with actually working getUsersByLogins
 convertTrustedUsers :: Connection -> HTTP.Manager -> ConfigTwitch -> IO ()
 convertTrustedUsers dbConn manager config = do
