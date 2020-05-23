@@ -88,7 +88,7 @@ convertCommands dbConn = do
 
 -- TODO: document that convertTrustedUsers requires querying Twitch API
 convertTrustedUsers :: Connection -> HTTP.Manager -> ConfigTwitch -> IO ()
-convertTrustedUsers dbConn manager ConfigTwitch {configTwitchClientId = clientId} = do
+convertTrustedUsers dbConn manager config = do
   roleId <- addTwitchRole dbConn "trusted"
   logins <-
     map fromOnly <$>
@@ -97,7 +97,7 @@ convertTrustedUsers dbConn manager ConfigTwitch {configTwitchClientId = clientId
       [sql|select propertyText from EntityProperty
          where entityName = 'TrustedUser';|]
       []
-  response <- HTTP.responseBody <$> getUsersByLogins manager clientId logins
+  response <- HTTP.responseBody <$> getUsersByLogins manager config logins
   case response of
     Right users ->
       traverse_ (assTwitchRoleToUser dbConn roleId . twitchUserId) users

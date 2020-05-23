@@ -28,6 +28,7 @@ import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Http
 import Network.HTTP.Client
+import KGBotka.Config
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -103,8 +104,11 @@ instance FromJSON TwitchUser where
   parseJSON invalid = typeMismatch "TwitchUser" invalid
 
 getUsersByLogins ::
-     Manager -> T.Text -> [T.Text] -> IO (Response (Either String [TwitchUser]))
-getUsersByLogins manager clientId users = do
+     Manager
+  -> ConfigTwitch
+  -> [T.Text]
+  -> IO (Response (Either String [TwitchUser]))
+getUsersByLogins manager ConfigTwitch {configTwitchClientId = clientId} users = do
   let url =
         "https://api.twitch.tv/helix/users?" <>
         T.concat (intersperse "&" $ map ("login=" <>) users)

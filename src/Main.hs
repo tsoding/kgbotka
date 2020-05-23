@@ -88,7 +88,7 @@ mainWithArgs (configPath:databasePath:_) = do
           BackdoorThreadParams
             { btpSqliteConnection = sqliteConnection
             , btpCommandQueue = WriteQueue replQueue
-            , btpTwitchClientId = configTwitchClientId <$> configTwitch config
+            , btpConfigTwitch = configTwitch config
             , btpManager = manager
             , btpLogQueue = WriteQueue rawLogQueue
             , btpPort = 6969 -- TODO(#63): backdoor port is hardcoded
