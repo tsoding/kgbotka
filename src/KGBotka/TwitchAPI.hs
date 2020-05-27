@@ -108,7 +108,9 @@ getUsersByLogins ::
   -> ConfigTwitch
   -> [T.Text]
   -> IO (Response (Either String [TwitchUser]))
-getUsersByLogins manager ConfigTwitch {configTwitchClientId = clientId} users = do
+getUsersByLogins manager ConfigTwitch { configTwitchClientId = clientId
+                                      , configTwitchToken = token
+                                      } users = do
   let url =
         "https://api.twitch.tv/helix/users?" <>
         T.concat (intersperse "&" $ map ("login=" <>) users)
@@ -117,6 +119,7 @@ getUsersByLogins manager ConfigTwitch {configTwitchClientId = clientId} users = 
     httpJson manager $
     request
       { requestHeaders =
+          ("Authorization", encodeUtf8 ("OAuth " <> token)) :
           ("Client-ID", encodeUtf8 clientId) : requestHeaders request
       }
   return $ getCompose (twitchResData <$> Compose response)
