@@ -126,7 +126,7 @@ twitchConnectionParams =
 
 authorize :: ConfigTwitch -> Connection -> IO ()
 authorize conf conn = do
-  sendMsg conn (ircPass $ configTwitchToken conf)
+  sendMsg conn (ircPass $ "oauth:" <> configTwitchToken conf)
   sendMsg conn (ircNick $ configTwitchAccount conf)
   sendMsg conn (ircCapReq ["twitch.tv/tags"])
 
