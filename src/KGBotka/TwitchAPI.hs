@@ -118,7 +118,7 @@ extractTwitchResponse ::
      FromJSON a => Response B.ByteString -> Either TwitchErr a
 extractTwitchResponse response
   | status >= 400 =
-    case (eitherDecode body :: Either String TwitchErr) of
+    case eitherDecode body of
       Right err -> Left err
       Left err -> Left $ TwitchErr (T.pack err) 413 "Parsing error"
   | otherwise =
