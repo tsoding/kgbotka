@@ -86,8 +86,7 @@ queryFfzEmotes manager Nothing
   -- @uri
  = do
   request <- parseRequest "https://api.frankerfacez.com/v1/set/global"
-  ffzRes <-
-    ExceptT (eitherDecode . responseBody <$> httpLbs request manager)
+  ffzRes <- ExceptT (eitherDecode . responseBody <$> httpLbs request manager)
   return $
     concatMap ffzSetEmotes $
     mapMaybe

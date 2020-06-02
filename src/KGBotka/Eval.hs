@@ -34,6 +34,7 @@ import KGBotka.Asciify
 import KGBotka.Bttv
 import KGBotka.Calc
 import KGBotka.Command
+import KGBotka.Config
 import KGBotka.Expr
 import KGBotka.Ffz
 import KGBotka.Flip
@@ -50,7 +51,6 @@ import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import KGBotka.Config
 
 data EvalTwitchContext = EvalTwitchContext
   { etcSenderId :: !TwitchUserId

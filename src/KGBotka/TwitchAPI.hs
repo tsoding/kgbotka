@@ -15,6 +15,7 @@ module KGBotka.TwitchAPI
 
 import Data.Aeson
 import Data.Aeson.Types
+import qualified Data.ByteString.Lazy as B
 import Data.List
 import Data.Maybe
 import Data.String
@@ -28,7 +29,6 @@ import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Config
 import Network.HTTP.Client
 import Network.HTTP.Types.Status (Status(statusCode))
-import qualified Data.ByteString.Lazy as B
 
 newtype TwitchUserId =
   TwitchUserId T.Text
