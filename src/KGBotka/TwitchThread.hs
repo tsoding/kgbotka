@@ -126,7 +126,7 @@ twitchConnectionParams =
 
 authorize :: ConfigTwitch -> Connection -> IO ()
 authorize conf conn = do
-  sendMsg conn (ircPass $ configTwitchToken conf)
+  sendMsg conn (ircPass $ "oauth:" <> configTwitchToken conf)
   sendMsg conn (ircNick $ configTwitchAccount conf)
   sendMsg conn (ircCapReq ["twitch.tv/tags"])
 
@@ -304,8 +304,7 @@ processUserMsgs dbConn tts messages = do
                                     , etcChannel = channel
                                     , etcBadgeRoles = badgeRoles
                                     , etcRoles = roles
-                                    , etcClientId =
-                                        configTwitchClientId $ ttsConfig tts
+                                    , etcConfigTwitch = ttsConfig tts
                                     , etcTwitchEmotes =
                                         do emotesTag <-
                                              lookupEntryValue "emotes" $

@@ -24,7 +24,6 @@ import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Ffz
-import KGBotka.Http
 import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
 import KGBotka.Markov
@@ -64,9 +63,6 @@ data ReplThreadState = ReplThreadState
   , rtsMarkovQueue :: !(WriteQueue MarkovCommand)
   , rtsRetrainProgress :: !(MVar (Maybe Int))
   }
-
-instance ProvidesHttpManager ReplThreadState where
-  httpManager = rtsManager
 
 data ReplCommand
   = Say TwitchIrcChannel
@@ -198,16 +194,15 @@ replThreadLoop rts = do
         case rtsConfigTwitch rts of
           Just config -> do
             maybeRole <- getTwitchRoleByName dbConn roleName
-            response <-
-              HTTP.responseBody <$>
-              getUsersByLogins (rtsManager rts) config users
+            response <- getUsersByLogins (rtsManager rts) config users
             case (response, maybeRole) of
               (Right twitchUsers, Just role') ->
                 traverse_
                   (assTwitchRoleToUser dbConn (twitchRoleId role') .
                    twitchUserId)
                   twitchUsers
-              (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
+              (Left twitchErr, _) ->
+                hPutStrLn replHandle $ "[ERROR] " <> show twitchErr
               (_, Nothing) ->
                 hPutStrLn replHandle "[ERROR] Such role does not exist"
           Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"

@@ -19,7 +19,6 @@ import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
 import Irc.Identifier (idText)
-import KGBotka.Http
 import KGBotka.TwitchAPI
 import Network.HTTP.Client
 import Network.URI
@@ -45,6 +44,7 @@ instance FromJSON BttvRes where
   parseJSON (Object v) = BttvRes <$> v .: "emotes"
   parseJSON invalid = typeMismatch "BttvRes" invalid
 
+-- @uri
 instance FromJSON BttvEmote where
   parseJSON (Object v) = BttvEmote <$> code <*> url <*> return Nothing
     where
@@ -56,22 +56,26 @@ instance FromJSON BttvEmote where
 
 queryBttvEmotes ::
      Manager -> Maybe TwitchIrcChannel -> ExceptT String IO [BttvEmote]
-queryBttvEmotes manager Nothing = do
+queryBttvEmotes manager Nothing
+  -- @uri
+ = do
   request <- parseRequest "https://api.betterttv.net/2/emotes"
-  response <- lift $ httpJson manager request
-  except (bttvResEmotes <$> responseBody response)
+  response <- lift (responseBody <$> httpLbs request manager)
+  let jsonResponse = eitherDecode response
+  except (bttvResEmotes <$> jsonResponse)
 queryBttvEmotes manager channel'@(Just (TwitchIrcChannel (idText -> channel))) =
   case T.uncons channel of
     Just ('#', channelName) -> do
       let encodeURI = escapeURIString (const False)
+      -- @uri
       request <-
         parseRequest $
         "https://api.betterttv.net/2/channels/" <>
         encodeURI (T.unpack channelName)
-      response <- lift $ httpJson manager request
+      response <- lift (responseBody <$> httpLbs request manager)
+      let jsonResponse = eitherDecode response
       except $
-        map (updateBttvEmoteChannel channel') . bttvResEmotes <$>
-        responseBody response
+        map (updateBttvEmoteChannel channel') . bttvResEmotes <$> jsonResponse
     _ ->
       let invalidChannelName = channel
        in throwE $

@@ -34,6 +34,7 @@ import KGBotka.Asciify
 import KGBotka.Bttv
 import KGBotka.Calc
 import KGBotka.Command
+import KGBotka.Config
 import KGBotka.Expr
 import KGBotka.Ffz
 import KGBotka.Flip
@@ -59,7 +60,7 @@ data EvalTwitchContext = EvalTwitchContext
   , etcChannel :: !TwitchIrcChannel
   , etcBadgeRoles :: ![TwitchBadgeRole]
   , etcRoles :: ![TwitchRole]
-  , etcClientId :: !T.Text
+  , etcConfigTwitch :: !ConfigTwitch
   }
 
 data EvalDiscordContext = EvalDiscordContext
@@ -330,22 +331,20 @@ evalExpr (FunCallExpr "uptime" _) = do
   case platformContext of
     Etc etc -> do
       manager <- ecManager <$> getEval
-      let clientId = etcClientId etc
       let channel = etcChannel etc
       stream <-
         liftIO $
-        getStreamByLogin manager clientId (twitchIrcChannelName channel)
+        getStreamByLogin
+          manager
+          (etcConfigTwitch etc)
+          (twitchIrcChannelName channel)
       case stream of
         Right (Just TwitchStream {tsStartedAt = startedAt}) -> do
           now <- liftIO getCurrentTime
           return $ humanReadableDiffTime $ diffUTCTime now startedAt
-        Right Nothing -> do
-          logEntryEval $
-            LogEntry "TWITCHAPI" $
-            "No streams for " <> twitchIrcChannelText channel <> " were found"
-          return ""
+        Right Nothing -> return "Not even streaming LULW"
         Left errorMessage -> do
-          logEntryEval $ LogEntry "TWITCHAPI" $ T.pack errorMessage
+          logEntryEval $ LogEntry "TWITCHAPI" $ T.pack $ show errorMessage
           return ""
     Edc _ -> throwExceptEval $ EvalError "Uptime doesn't work in Discord"
 evalExpr (FunCallExpr "eval" args) = do

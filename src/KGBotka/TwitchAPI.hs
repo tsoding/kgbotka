@@ -15,20 +15,20 @@ module KGBotka.TwitchAPI
 
 import Data.Aeson
 import Data.Aeson.Types
-import Data.Functor.Compose
+import qualified Data.ByteString.Lazy as B
 import Data.List
 import Data.Maybe
 import Data.String
 import qualified Data.Text as T
-import Data.Text.Encoding
+import Data.Text.Encoding (encodeUtf8)
 import Data.Time
 import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Config
-import KGBotka.Http
 import Network.HTTP.Client
+import Network.HTTP.Types.Status (Status(statusCode))
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -81,6 +81,17 @@ data TwitchUser = TwitchUser
   , twitchUserLogin :: T.Text
   } deriving (Show)
 
+data TwitchErr = TwitchErr
+  { twitchErrMessage :: T.Text
+  , twitchErrStatus :: Int
+  , twitchErrError :: T.Text
+  } deriving (Show)
+
+instance FromJSON TwitchErr where
+  parseJSON (Object v) =
+    TwitchErr <$> v .: "message" <*> v .: "status" <*> v .: "error"
+  parseJSON invalid = typeMismatch "TwitchErr" invalid
+
 newtype TwitchRes a = TwitchRes
   { twitchResData :: a
   }
@@ -103,36 +114,64 @@ instance FromJSON TwitchUser where
   parseJSON (Object v) = TwitchUser <$> v .: "id" <*> v .: "login"
   parseJSON invalid = typeMismatch "TwitchUser" invalid
 
+extractTwitchResponse ::
+     FromJSON a => Response B.ByteString -> Either TwitchErr a
+extractTwitchResponse response
+  | status >= 400 =
+    case eitherDecode body of
+      Right err -> Left err
+      Left err -> Left $ TwitchErr (T.pack err) 413 "Parsing error"
+  | otherwise =
+    case eitherDecode body of
+      Right res -> Right (twitchResData res)
+      Left err -> Left $ TwitchErr (T.pack err) 413 "Parsing error"
+  where
+    body = responseBody response
+    status = statusCode $ responseStatus response
+
 getUsersByLogins ::
-     Manager
-  -> ConfigTwitch
-  -> [T.Text]
-  -> IO (Response (Either String [TwitchUser]))
-getUsersByLogins manager ConfigTwitch {configTwitchClientId = clientId} users = do
+     Manager -> ConfigTwitch -> [T.Text] -> IO (Either TwitchErr [TwitchUser])
+getUsersByLogins manager ConfigTwitch { configTwitchClientId = clientId
+                                      , configTwitchToken = token
+                                      } users
+  -- TODO(#222): Consider using network-uri for constructing uri-s
+  --
+  -- Grep for @uri
+ = do
   let url =
         "https://api.twitch.tv/helix/users?" <>
         T.concat (intersperse "&" $ map ("login=" <>) users)
   request <- parseRequest $ T.unpack url
   response <-
-    httpJson manager $
-    request
-      { requestHeaders =
-          ("Client-ID", encodeUtf8 clientId) : requestHeaders request
-      }
-  return $ getCompose (twitchResData <$> Compose response)
+    httpLbs
+      request
+        { requestHeaders =
+            ("Authorization", encodeUtf8 ("Bearer " <> token)) :
+            ("Client-ID", encodeUtf8 clientId) : requestHeaders request
+        }
+      manager
+  return $ extractTwitchResponse response
 
 getStreamByLogin ::
-     Manager -> T.Text -> T.Text -> IO (Either String (Maybe TwitchStream))
-getStreamByLogin manager clientId login = do
+     Manager
+  -> ConfigTwitch
+  -> T.Text
+  -> IO (Either TwitchErr (Maybe TwitchStream))
+getStreamByLogin manager ConfigTwitch { configTwitchClientId = clientId
+                                      , configTwitchToken = token
+                                      } login
+  -- @uri
+ = do
   let url = "https://api.twitch.tv/helix/streams?user_login=" <> T.unpack login
   request <- parseRequest url
   response <-
-    httpJson
-      manager
+    httpLbs
       request
         { requestHeaders =
+            ("Authorization", encodeUtf8 ("Bearer " <> token)) :
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
-  return (listToMaybe . twitchResData <$> responseBody response)
+      manager
+  return $ listToMaybe <$> extractTwitchResponse response
 -- TODO(#216): convenient mechanism of settings up the Twitch token
 -- TODO(#217): getStreamByLogin and getUsersByLogins should also send the Authorization header
