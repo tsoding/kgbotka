@@ -27,7 +27,6 @@ import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Config
-import KGBotka.Http
 import Network.HTTP.Client
 
 newtype TwitchUserId =
@@ -111,31 +110,38 @@ getUsersByLogins ::
 getUsersByLogins manager ConfigTwitch { configTwitchClientId = clientId
                                       , configTwitchToken = token
                                       } users = do
+  -- TODO: Consider using network-uri for constructing uri-s
+  --
+  -- Grep for @uri
   let url =
         "https://api.twitch.tv/helix/users?" <>
         T.concat (intersperse "&" $ map ("login=" <>) users)
   request <- parseRequest $ T.unpack url
   response <-
-    httpJson manager $
-    request
-      { requestHeaders =
-          ("Authorization", encodeUtf8 ("OAuth " <> token)) :
-          ("Client-ID", encodeUtf8 clientId) : requestHeaders request
-      }
-  return $ getCompose (twitchResData <$> Compose response)
+    httpLbs
+      request
+        { requestHeaders =
+            ("Authorization", encodeUtf8 ("OAuth " <> token)) :
+            ("Client-ID", encodeUtf8 clientId) : requestHeaders request
+        }
+      manager
+  let jsonResponse = eitherDecode <$> response
+  return $ getCompose (twitchResData <$> Compose jsonResponse)
 
 getStreamByLogin ::
      Manager -> T.Text -> T.Text -> IO (Either String (Maybe TwitchStream))
 getStreamByLogin manager clientId login = do
+  -- @uri
   let url = "https://api.twitch.tv/helix/streams?user_login=" <> T.unpack login
   request <- parseRequest url
   response <-
-    httpJson
-      manager
+    httpLbs
       request
         { requestHeaders =
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
-  return (listToMaybe . twitchResData <$> responseBody response)
+      manager
+  let jsonResponse = eitherDecode <$> response
+  return (listToMaybe . twitchResData <$> responseBody jsonResponse)
 -- TODO(#216): convenient mechanism of settings up the Twitch token
 -- TODO(#217): getStreamByLogin and getUsersByLogins should also send the Authorization header

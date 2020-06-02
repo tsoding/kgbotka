@@ -22,7 +22,6 @@ import Data.Ord
 import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
-import KGBotka.Http
 import KGBotka.TwitchAPI
 import Network.HTTP.Client
 
@@ -83,9 +82,12 @@ instance FromJSON FfzRes where
 
 queryFfzEmotes ::
      Manager -> Maybe TwitchIrcChannel -> ExceptT String IO [FfzEmote]
-queryFfzEmotes manager Nothing = do
+queryFfzEmotes manager Nothing
+  -- @uri
+ = do
   request <- parseRequest "https://api.frankerfacez.com/v1/set/global"
-  ffzRes <- ExceptT (responseBody <$> httpJson manager request)
+  ffzRes <-
+    ExceptT (eitherDecode . responseBody <$> httpLbs request manager)
   return $
     concatMap ffzSetEmotes $
     mapMaybe
@@ -93,14 +95,15 @@ queryFfzEmotes manager Nothing = do
     ffzGlobalResDefaultSets ffzRes
 queryFfzEmotes manager (Just channel) =
   case T.uncons $ twitchIrcChannelText channel of
-    Just ('#', channelName) -> do
+    Just ('#', channelName)
+      -- @uri
+     -> do
       request <-
         parseRequest $
         "https://api.frankerfacez.com/v1/room/" <> T.unpack channelName
-      response <- lift $ httpJson manager request
+      response <- lift (eitherDecode . responseBody <$> httpLbs request manager)
       except $
-        map (updateFfzEmoteChannel $ Just channel) . ffzResEmotes <$>
-        responseBody response
+        map (updateFfzEmoteChannel $ Just channel) . ffzResEmotes <$> response
     _ ->
       throwE $
       "Channel name " <> T.unpack (twitchIrcChannelText channel) <>
