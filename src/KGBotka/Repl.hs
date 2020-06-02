@@ -24,7 +24,6 @@ import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Config
 import KGBotka.Ffz
-import KGBotka.Http
 import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
 import KGBotka.Markov
@@ -64,9 +63,6 @@ data ReplThreadState = ReplThreadState
   , rtsMarkovQueue :: !(WriteQueue MarkovCommand)
   , rtsRetrainProgress :: !(MVar (Maybe Int))
   }
-
-instance ProvidesHttpManager ReplThreadState where
-  httpManager = rtsManager
 
 data ReplCommand
   = Say TwitchIrcChannel
