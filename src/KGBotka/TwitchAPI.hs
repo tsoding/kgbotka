@@ -19,8 +19,7 @@ import Data.List
 import Data.Maybe
 import Data.String
 import qualified Data.Text as T
-import Data.Text.Encoding (decodeUtf8)
-import Data.Text.Encoding
+import Data.Text.Encoding (encodeUtf8)
 import Data.Time
 import Database.SQLite.Simple
 import Database.SQLite.Simple.FromField
@@ -29,8 +28,6 @@ import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Config
 import Network.HTTP.Client
 import Network.HTTP.Types.Status (Status(statusCode))
-import Data.Bifunctor (first)
-import qualified Data.ByteString.Lazy as B
 
 newtype TwitchUserId =
   TwitchUserId T.Text
