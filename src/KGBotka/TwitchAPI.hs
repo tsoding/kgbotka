@@ -153,8 +153,13 @@ getUsersByLogins manager ConfigTwitch { configTwitchClientId = clientId
   return $ extractTwitchResponse response
 
 getStreamByLogin ::
-     Manager -> T.Text -> T.Text -> IO (Either TwitchErr (Maybe TwitchStream))
-getStreamByLogin manager clientId login
+     Manager
+  -> ConfigTwitch
+  -> T.Text
+  -> IO (Either TwitchErr (Maybe TwitchStream))
+getStreamByLogin manager ConfigTwitch { configTwitchClientId = clientId
+                                      , configTwitchToken = token
+                                      } login
   -- @uri
  = do
   let url = "https://api.twitch.tv/helix/streams?user_login=" <> T.unpack login
@@ -163,6 +168,7 @@ getStreamByLogin manager clientId login
     httpLbs
       request
         { requestHeaders =
+            ("Authorization", encodeUtf8 ("Bearer " <> token)) :
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
       manager

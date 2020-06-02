@@ -304,8 +304,7 @@ processUserMsgs dbConn tts messages = do
                                     , etcChannel = channel
                                     , etcBadgeRoles = badgeRoles
                                     , etcRoles = roles
-                                    , etcClientId =
-                                        configTwitchClientId $ ttsConfig tts
+                                    , etcConfigTwitch = ttsConfig tts
                                     , etcTwitchEmotes =
                                         do emotesTag <-
                                              lookupEntryValue "emotes" $
