@@ -342,8 +342,7 @@ evalExpr (FunCallExpr "uptime" _) = do
         Right (Just TwitchStream {tsStartedAt = startedAt}) -> do
           now <- liftIO getCurrentTime
           return $ humanReadableDiffTime $ diffUTCTime now startedAt
-        Right Nothing -> do
-          return "Not even streaming LULW"
+        Right Nothing -> return "Not even streaming LULW"
         Left errorMessage -> do
           logEntryEval $ LogEntry "TWITCHAPI" $ T.pack $ show errorMessage
           return ""
