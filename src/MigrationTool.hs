@@ -98,13 +98,13 @@ convertTrustedUsers dbConn manager config = do
       [sql|select propertyText from EntityProperty
          where entityName = 'TrustedUser';|]
       []
-  response <- HTTP.responseBody <$> getUsersByLogins manager config logins
+  response <- getUsersByLogins manager config logins
   case response of
     Right users ->
       traverse_ (assTwitchRoleToUser dbConn roleId . twitchUserId) users
-    Left message -> do
+    Left err -> do
       hPutStrLn stderr "[ERROR] Querying user ids failed"
-      error message
+      error $ show err
 
 convertAliases :: Connection -> IO ()
 convertAliases dbConn = do
