@@ -15,11 +15,11 @@ module KGBotka.TwitchAPI
 
 import Data.Aeson
 import Data.Aeson.Types
-import Data.Functor.Compose
 import Data.List
 import Data.Maybe
 import Data.String
 import qualified Data.Text as T
+import Data.Text.Encoding (decodeUtf8)
 import Data.Text.Encoding
 import Data.Time
 import Database.SQLite.Simple
@@ -28,6 +28,9 @@ import Database.SQLite.Simple.ToField
 import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Config
 import Network.HTTP.Client
+import Network.HTTP.Types.Status (Status(statusCode))
+import Data.Bifunctor (first)
+import qualified Data.ByteString.Lazy as B
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -80,6 +83,17 @@ data TwitchUser = TwitchUser
   , twitchUserLogin :: T.Text
   } deriving (Show)
 
+data TwitchErr = TwitchErr
+  { twitchErrMessage :: T.Text
+  , twitchErrStatus :: Int
+  , twitchErrError :: T.Text
+  } deriving (Show)
+
+instance FromJSON TwitchErr where
+  parseJSON (Object v) =
+    TwitchErr <$> v .: "message" <*> v .: "status" <*> v .: "error"
+  parseJSON invalid = typeMismatch "TwitchErr" invalid
+
 newtype TwitchRes a = TwitchRes
   { twitchResData :: a
   }
@@ -103,16 +117,14 @@ instance FromJSON TwitchUser where
   parseJSON invalid = typeMismatch "TwitchUser" invalid
 
 getUsersByLogins ::
-     Manager
-  -> ConfigTwitch
-  -> [T.Text]
-  -> IO (Response (Either String [TwitchUser]))
+     Manager -> ConfigTwitch -> [T.Text] -> IO (Either TwitchErr [TwitchUser])
 getUsersByLogins manager ConfigTwitch { configTwitchClientId = clientId
                                       , configTwitchToken = token
-                                      } users = do
+                                      } users
   -- TODO: Consider using network-uri for constructing uri-s
   --
   -- Grep for @uri
+ = do
   let url =
         "https://api.twitch.tv/helix/users?" <>
         T.concat (intersperse "&" $ map ("login=" <>) users)
@@ -121,12 +133,21 @@ getUsersByLogins manager ConfigTwitch { configTwitchClientId = clientId
     httpLbs
       request
         { requestHeaders =
-            ("Authorization", encodeUtf8 ("OAuth " <> token)) :
+            ("Authorization", encodeUtf8 ("Bearer " <> token)) :
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
       manager
-  let jsonResponse = eitherDecode <$> response
-  return $ getCompose (twitchResData <$> Compose jsonResponse)
+  let body = responseBody response
+  let status = statusCode $ responseStatus response
+  let jsonResponse =
+        if status >= 400
+          then case (eitherDecode body :: Either String TwitchErr) of
+                 Right err -> Left err
+                 Left err -> Left $ TwitchErr (T.pack err) 413 "Parsing error"
+          else case eitherDecode body of
+                 Right res -> Right (twitchResData res)
+                 Left err -> Left $ TwitchErr (T.pack err) 413 "Parsing error"
+  return jsonResponse
 
 getStreamByLogin ::
      Manager -> T.Text -> T.Text -> IO (Either String (Maybe TwitchStream))
