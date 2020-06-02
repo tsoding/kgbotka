@@ -134,7 +134,7 @@ getUsersByLogins ::
 getUsersByLogins manager ConfigTwitch { configTwitchClientId = clientId
                                       , configTwitchToken = token
                                       } users
-  -- TODO: Consider using network-uri for constructing uri-s
+  -- TODO(#222): Consider using network-uri for constructing uri-s
   --
   -- Grep for @uri
  = do
