@@ -28,6 +28,7 @@ import Irc.Identifier (Identifier, idText, mkId)
 import KGBotka.Config
 import Network.HTTP.Client
 import Network.HTTP.Types.Status (Status(statusCode))
+import qualified Data.ByteString.Lazy as B
 
 newtype TwitchUserId =
   TwitchUserId T.Text
@@ -113,6 +114,21 @@ instance FromJSON TwitchUser where
   parseJSON (Object v) = TwitchUser <$> v .: "id" <*> v .: "login"
   parseJSON invalid = typeMismatch "TwitchUser" invalid
 
+extractTwitchResponse ::
+     FromJSON a => Response B.ByteString -> Either TwitchErr a
+extractTwitchResponse response
+  | status >= 400 =
+    case (eitherDecode body :: Either String TwitchErr) of
+      Right err -> Left err
+      Left err -> Left $ TwitchErr (T.pack err) 413 "Parsing error"
+  | otherwise =
+    case eitherDecode body of
+      Right res -> Right (twitchResData res)
+      Left err -> Left $ TwitchErr (T.pack err) 413 "Parsing error"
+  where
+    body = responseBody response
+    status = statusCode $ responseStatus response
+
 getUsersByLogins ::
      Manager -> ConfigTwitch -> [T.Text] -> IO (Either TwitchErr [TwitchUser])
 getUsersByLogins manager ConfigTwitch { configTwitchClientId = clientId
@@ -134,22 +150,13 @@ getUsersByLogins manager ConfigTwitch { configTwitchClientId = clientId
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
       manager
-  let body = responseBody response
-  let status = statusCode $ responseStatus response
-  let jsonResponse =
-        if status >= 400
-          then case (eitherDecode body :: Either String TwitchErr) of
-                 Right err -> Left err
-                 Left err -> Left $ TwitchErr (T.pack err) 413 "Parsing error"
-          else case eitherDecode body of
-                 Right res -> Right (twitchResData res)
-                 Left err -> Left $ TwitchErr (T.pack err) 413 "Parsing error"
-  return jsonResponse
+  return $ extractTwitchResponse response
 
 getStreamByLogin ::
-     Manager -> T.Text -> T.Text -> IO (Either String (Maybe TwitchStream))
-getStreamByLogin manager clientId login = do
+     Manager -> T.Text -> T.Text -> IO (Either TwitchErr (Maybe TwitchStream))
+getStreamByLogin manager clientId login
   -- @uri
+ = do
   let url = "https://api.twitch.tv/helix/streams?user_login=" <> T.unpack login
   request <- parseRequest url
   response <-
@@ -159,7 +166,6 @@ getStreamByLogin manager clientId login = do
             ("Client-ID", encodeUtf8 clientId) : requestHeaders request
         }
       manager
-  let jsonResponse = eitherDecode <$> response
-  return (listToMaybe . twitchResData <$> responseBody jsonResponse)
+  return $ listToMaybe <$> extractTwitchResponse response
 -- TODO(#216): convenient mechanism of settings up the Twitch token
 -- TODO(#217): getStreamByLogin and getUsersByLogins should also send the Authorization header

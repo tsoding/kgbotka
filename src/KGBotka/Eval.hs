@@ -345,7 +345,7 @@ evalExpr (FunCallExpr "uptime" _) = do
             "No streams for " <> twitchIrcChannelText channel <> " were found"
           return ""
         Left errorMessage -> do
-          logEntryEval $ LogEntry "TWITCHAPI" $ T.pack errorMessage
+          logEntryEval $ LogEntry "TWITCHAPI" $ T.pack $ show errorMessage
           return ""
     Edc _ -> throwExceptEval $ EvalError "Uptime doesn't work in Discord"
 evalExpr (FunCallExpr "eval" args) = do
