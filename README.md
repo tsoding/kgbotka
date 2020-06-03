@@ -46,4 +46,5 @@ See [OAuth2 for Bots](https://discord.com/developers/docs/topics/oauth2#bots) se
 
 ### Friday Video Gist
 
-<!-- TODO: document Friday Video Gist synchronization feature -->
+TBD
+<!-- TODO(#224): document Friday Video Gist synchronization feature -->
