@@ -86,8 +86,14 @@ convertCommands dbConn = do
          [":times" := (times :: Int), ":commandId" := commandIdent])
     legacyCommands
 
+chunks :: Int -> [a] -> [[a]]
+chunks _ [] = []
+chunks n xs = take n xs : chunks n (drop n xs)
+
 -- TODO(#218): document that convertTrustedUsers requires querying Twitch API
 -- TODO(#219): convertTrustedUsers is not tested properly with actually working getUsersByLogins
+-- TODO: document convertTrustedUsers limitations
+--   Renamed users are ignored
 convertTrustedUsers :: Connection -> HTTP.Manager -> ConfigTwitch -> IO ()
 convertTrustedUsers dbConn manager config = do
   roleId <- addTwitchRole dbConn "trusted"
@@ -98,13 +104,14 @@ convertTrustedUsers dbConn manager config = do
       [sql|select propertyText from EntityProperty
          where entityName = 'TrustedUser';|]
       []
-  response <- getUsersByLogins manager config logins
-  case response of
-    Right users ->
-      traverse_ (assTwitchRoleToUser dbConn roleId . twitchUserId) users
-    Left err -> do
-      hPutStrLn stderr "[ERROR] Querying user ids failed"
-      error $ show err
+  for_ (chunks 100 logins) $ \loginsChunk -> do
+    response <- getUsersByLogins manager config loginsChunk
+    case response of
+      Right users ->
+        traverse_ (assTwitchRoleToUser dbConn roleId . twitchUserId) users
+      Left err -> do
+        hPutStrLn stderr "[ERROR] Querying user ids failed"
+        error $ show err
 
 convertAliases :: Connection -> IO ()
 convertAliases dbConn = do
