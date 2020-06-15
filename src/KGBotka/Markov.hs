@@ -108,7 +108,7 @@ scanPairs xs = zip xs $ tail xs
 
 genMarkovSentence :: Sqlite.Connection -> Maybe T.Text -> IO T.Text
 genMarkovSentence dbConn seed = do
-  events <- seqMarkovEvents (fromMaybe Begin $ Word <$> seed) End dbConn
+  events <- seqMarkovEvents (maybe Begin Word seed) End dbConn
   return $
     T.unwords $
     mapMaybe
