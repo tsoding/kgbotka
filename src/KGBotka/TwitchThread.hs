@@ -284,7 +284,7 @@ processUserMsgs dbConn tts messages = do
                         when
                           (T.toUpper (configTwitchAccount $ ttsConfig tts) `T.isInfixOf`
                            T.toUpper message) $ do
-                          markovResponse <- genMarkovSentence dbConn
+                          markovResponse <- genMarkovSentence dbConn Nothing
                           atomically $
                             writeQueue outgoingQueue $
                             OutPrivMsg channel $
