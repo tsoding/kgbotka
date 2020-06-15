@@ -212,9 +212,19 @@ evalExpr (FunCallExpr "urlencode" args) =
   T.concat . map (T.pack . encodeURI . T.unpack) <$> mapM evalExpr args
   where
     encodeURI = escapeURIString (const False)
-evalExpr (FunCallExpr "markov" _) = do
+evalExpr (FunCallExpr "markov" args) = do
+  prefix <- fmap T.words . listToMaybe <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
-  liftIO $ genMarkovSentence dbConn
+  (T.unwords (initSafe (fromMaybe [] prefix) <> [""]) <>) <$>
+    liftIO (genMarkovSentence dbConn (prefix >>= lastMaybe))
+  where
+    initSafe :: [a] -> [a]
+    initSafe [] = []
+    initSafe xs = init xs
+    lastMaybe :: [a] -> Maybe a
+    lastMaybe [] = Nothing
+    lastMaybe [x] = Just x
+    lastMaybe (_:xs) = lastMaybe xs
 evalExpr (FunCallExpr "flip" args) =
   T.concat . map flipText <$> mapM evalExpr args
 -- FIXME(#38): %nextvideo does not inform how many times a video was suggested

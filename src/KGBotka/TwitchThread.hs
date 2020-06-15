@@ -230,6 +230,7 @@ processControlMsgs tts messages = do
   let outgoingQueue = ttsOutgoingQueue tts
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
+    logEntry tts $ LogEntry "TWITCH" $ T.pack $ show msg
     case cookedMsg of
       Ping xs -> atomically $ writeQueue outgoingQueue $ OutPongMsg xs
       Join _ channelId _ ->
@@ -283,7 +284,7 @@ processUserMsgs dbConn tts messages = do
                         when
                           (T.toUpper (configTwitchAccount $ ttsConfig tts) `T.isInfixOf`
                            T.toUpper message) $ do
-                          markovResponse <- genMarkovSentence dbConn
+                          markovResponse <- genMarkovSentence dbConn Nothing
                           atomically $
                             writeQueue outgoingQueue $
                             OutPrivMsg channel $
