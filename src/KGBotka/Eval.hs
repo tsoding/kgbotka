@@ -215,7 +215,8 @@ evalExpr (FunCallExpr "urlencode" args) =
 evalExpr (FunCallExpr "markov" args) = do
   prefix <- fmap T.words . listToMaybe <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
-  (T.unwords (initSafe (fromMaybe [] prefix) <> [""]) <>) <$> liftIO (genMarkovSentence dbConn (prefix >>= lastMaybe))
+  (T.unwords (initSafe (fromMaybe [] prefix) <> [""]) <>) <$>
+    liftIO (genMarkovSentence dbConn (prefix >>= lastMaybe))
   where
     initSafe :: [a] -> [a]
     initSafe [] = []
