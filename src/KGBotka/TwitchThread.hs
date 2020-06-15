@@ -230,6 +230,7 @@ processControlMsgs tts messages = do
   let outgoingQueue = ttsOutgoingQueue tts
   for_ messages $ \msg -> do
     let cookedMsg = cookIrcMsg msg
+    logEntry tts $ LogEntry "TWITCH" $ T.pack $ show msg
     case cookedMsg of
       Ping xs -> atomically $ writeQueue outgoingQueue $ OutPongMsg xs
       Join _ channelId _ ->
