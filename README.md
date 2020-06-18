@@ -6,6 +6,8 @@ Twitch/Discord Chat Bot that works for KGB ![monkaS](https://cdn.betterttv.net/e
 
 ## Quick Start
 
+**WARNING! CONTAINS SUBMODULES!** Clone with `git clone --recursive`.
+
 ### Cabal
 
 ```console
