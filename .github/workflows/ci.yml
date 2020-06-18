@@ -22,4 +22,4 @@ jobs:
       - name: build
         run: cabal v2-build
       - name: lint
-        run: curl -sL https://raw.github.com/ndmitchell/hlint/master/misc/travis.sh | sh -s .
+        run: curl -sL https://raw.github.com/ndmitchell/hlint/master/misc/travis.sh | sh -s ./src/
