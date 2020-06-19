@@ -35,6 +35,8 @@ import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
 import Text.Printf
+import System.Random
+import qualified Data.ByteString.Base64 as BS
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -245,6 +247,12 @@ data BackdoorThreadParams = BackdoorThreadParams
 instance ProvidesLogging BackdoorThreadParams where
   logEntry btp = logEntry $ btpLogQueue btp
 
+-- TODO(#231): CSRF token generation is weak
+--   - We are not using cryptographic RNG
+--   - The size and method of the generation based literally on nothing (some sort CSRF token generation research is required)
+csrfToken :: IO T.Text
+csrfToken = BS.encodeBase64 . BS.pack <$> replicateM 32 (randomRIO (0, 255))
+
 backdoorThread :: BackdoorThreadParams -> IO ()
 backdoorThread btp = do
   addr:_ <-
@@ -269,16 +277,22 @@ backdoorThread btp = do
         LogEntry "BACKDOOR" $
         T.pack (show addr) <> " has connected to the Backdoor gachiBASS"
       connHandle <- socketToHandle conn ReadWriteMode
-      replThread $
-        ReplThreadParams
-          { rtpSqliteConnection = btpSqliteConnection btp
-          , rtpCommandQueue = btpCommandQueue btp
-          , rtpManager = btpManager btp
-          , rtpHandle = connHandle
-          , rtpLogQueue = btpLogQueue btp
-          , rtpConnAddr = addr
-          , rtpConfigTwitch = btpConfigTwitch btp
-          , rtpMarkovQueue = btpMarkovQueue btp
-          , rtpRetrainProgress = btpRetrainProgress btp
-          }
+      csrf <- csrfToken
+      hPrintf connHandle "CSRF => %s\ncsrf> " csrf
+      inputLine <- TE.decodeUtf8 <$> BS.hGetLine connHandle
+      when (inputLine == csrf) $
+        replThread $
+          ReplThreadParams
+            { rtpSqliteConnection = btpSqliteConnection btp
+            , rtpCommandQueue = btpCommandQueue btp
+            , rtpManager = btpManager btp
+            , rtpHandle = connHandle
+            , rtpLogQueue = btpLogQueue btp
+            , rtpConnAddr = addr
+            , rtpConfigTwitch = btpConfigTwitch btp
+            , rtpMarkovQueue = btpMarkovQueue btp
+            , rtpRetrainProgress = btpRetrainProgress btp
+            }
+      hClose connHandle
+      close conn
 -- TODO(#82): there is no REPL mechanism to update command cooldown
