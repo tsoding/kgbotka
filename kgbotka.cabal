@@ -146,6 +146,7 @@ executable kgbotka
                      , louis==0.1.0.2
                      , unordered-containers >=0.2.8.0 && <0.3
                      , discord-haskell >= 1.6.0 && < 1.7.0
+                     , base64 >= 0.4 && < 0.5
 
   -- Directories containing source files.
   hs-source-dirs:      src
