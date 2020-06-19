@@ -247,7 +247,7 @@ data BackdoorThreadParams = BackdoorThreadParams
 instance ProvidesLogging BackdoorThreadParams where
   logEntry btp = logEntry $ btpLogQueue btp
 
--- TODO: CSRF token generation is weak
+-- TODO(#231): CSRF token generation is weak
 --   - We are not using cryptographic RNG
 --   - The size and method of the generation based literally on nothing (some sort CSRF token generation research is required)
 csrfToken :: IO T.Text
