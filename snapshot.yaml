@@ -2,7 +2,7 @@ resolver: lts-14.27
 compiler: ghc-8.6.5
 
 packages:
-  - discord-haskell-1.4.0
+  - discord-haskell-1.6.0
   - hookup-0.3.1.0
   - irc-core-2.7.2
   - louis-0.1.0.2
