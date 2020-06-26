@@ -30,10 +30,13 @@ See [./secret.json.example](./secret.json.example).
 ### Twitch
 
 The easiest way to obtain Twitch credentials right now is to
+1. Go to https://tsoding.org/kgbotka-login/
+2. Press `Login` button and follow the instructions
+3. Copy paste the generated credentials to your `secret.json`. 
+   Check [./secret.json.example](./secret.json.example) to learn about
+   the format of the file.
 
-1. Login into your Bot account
-2. Generate [Twitch Chat OAuth Password](https://twitchapps.com/tmi/). **REMOVE THE `oauth:` PREFIX**. Use it as the `token` in your [secret.json](./secret.json.example).
-3. Set `clientId` to `q6batx0epp608isickayubi39itsckt`. This is the Client ID of the [Twitch Chat OAuth Password Generator](https://twitchapps.com/tmi/) itself. It's important to use this specific Client ID to match with the generated OAuth token otherwise the Twitch API queries made by the bot don't work.
+<!-- TODO: document how to generate credetials with a custom Twitch Application -->
 
 ### Discord
 
