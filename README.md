@@ -36,7 +36,7 @@ The easiest way to obtain Twitch credentials right now is to
    Check [./secret.json.example](./secret.json.example) to learn about
    the format of the file.
 
-<!-- TODO: document how to generate credetials with a custom Twitch Application -->
+<!-- TODO(#235): document how to generate credetials with a custom Twitch Application -->
 
 ### Discord
 
