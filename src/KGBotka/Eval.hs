@@ -346,7 +346,7 @@ evalExpr (FunCallExpr "xkcd" args) = do
       probablyXkcd <- liftIO $ searchXkcdInDbByTerm dbConn term
       case probablyXkcd of
         Just Xkcd {xkcdImg = img} -> return img
-        Nothing -> return $ "No xkcd with such term was found"
+        Nothing -> return "No xkcd with such term was found"
     Nothing -> throwExceptEval $ EvalError "No term was provided"
 evalExpr (FunCallExpr "uptime" _) = do
   platformContext <- ecPlatformContext <$> getEval
