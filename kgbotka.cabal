@@ -113,6 +113,7 @@ executable kgbotka
                      , KGBotka.Settings
                      , KGBotka.Sqlite
                      , KGBotka.JoinedTwitchChannels
+                     , KGBotka.Xkcd
                      , Control.Monad.Trans.Extra
                      , Control.Monad.Trans.Eval
 

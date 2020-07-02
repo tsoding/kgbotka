@@ -14,6 +14,7 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.Trans.Except
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base64 as BS
 import Data.Foldable
 import Data.Maybe
 import qualified Data.Text as T
@@ -34,9 +35,8 @@ import KGBotka.TwitchAPI
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket
 import System.IO
-import Text.Printf
 import System.Random
-import qualified Data.ByteString.Base64 as BS
+import Text.Printf
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -282,17 +282,17 @@ backdoorThread btp = do
       inputLine <- TE.decodeUtf8 <$> BS.hGetLine connHandle
       when (inputLine == csrf) $
         replThread $
-          ReplThreadParams
-            { rtpSqliteConnection = btpSqliteConnection btp
-            , rtpCommandQueue = btpCommandQueue btp
-            , rtpManager = btpManager btp
-            , rtpHandle = connHandle
-            , rtpLogQueue = btpLogQueue btp
-            , rtpConnAddr = addr
-            , rtpConfigTwitch = btpConfigTwitch btp
-            , rtpMarkovQueue = btpMarkovQueue btp
-            , rtpRetrainProgress = btpRetrainProgress btp
-            }
+        ReplThreadParams
+          { rtpSqliteConnection = btpSqliteConnection btp
+          , rtpCommandQueue = btpCommandQueue btp
+          , rtpManager = btpManager btp
+          , rtpHandle = connHandle
+          , rtpLogQueue = btpLogQueue btp
+          , rtpConnAddr = addr
+          , rtpConfigTwitch = btpConfigTwitch btp
+          , rtpMarkovQueue = btpMarkovQueue btp
+          , rtpRetrainProgress = btpRetrainProgress btp
+          }
       hClose connHandle
       close conn
 -- TODO(#82): there is no REPL mechanism to update command cooldown

@@ -45,6 +45,7 @@ import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.TwitchAPI
+import KGBotka.Xkcd
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import Text.Printf
@@ -336,6 +337,18 @@ evalExpr (FunCallExpr "help" args) = do
     Just Command {commandCode = code} ->
       return $ "Command `" <> name <> "` defined as `" <> code <> "`"
     Nothing -> return $ "Command `" <> name <> " does not exist"
+evalExpr (FunCallExpr "xkcd" args)
+  -- TODO(#237): %xkcd function does not search by several terms
+ = do
+  probablyTerm <- listToMaybe <$> mapM evalExpr args
+  dbConn <- ecSqliteConnection <$> getEval
+  case probablyTerm of
+    Just term -> do
+      probablyXkcd <- liftIO $ searchXkcdInDbByTerm dbConn term
+      case probablyXkcd of
+        Just Xkcd {xkcdImg = img} -> return img
+        Nothing -> return "No xkcd with such term was found"
+    Nothing -> throwExceptEval $ EvalError "No term was provided"
 evalExpr (FunCallExpr "uptime" _) = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of

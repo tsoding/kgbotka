@@ -210,4 +210,18 @@ kgbotkaMigrations =
            );|]
   , Migration
       [sql|ALTER TABLE Command ADD COLUMN argsRegex TEXT NOT NULL DEFAULT '(.*)';|]
+  , Migration
+      [sql|CREATE TABLE xkcd (
+             num INTEGER UNIQUE,
+             title TEXT,
+             img TEXT,
+             alt TEXT,
+             transcript TEXT
+           );|]
+  , Migration
+      [sql|CREATE TABLE IF NOT EXISTS xkcd_tf_idf (
+             term TEXT,
+             freq INTEGER,
+             num INTEGER
+           );|]
   ]
