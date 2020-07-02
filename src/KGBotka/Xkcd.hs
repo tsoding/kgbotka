@@ -105,7 +105,7 @@ indexXkcd dbConn xkcd = do
              [":term" := term, ":freq" := freq, ":num" := xkcdNum xkcd]) $
     group $ sort terms
 
--- TODO: there is no way to update xkcd_tf_idf from within the bot
+-- TODO(#238): there is no way to update xkcd_tf_idf from within the bot
 searchXkcdInDbByTerm :: Sqlite.Connection -> T.Text -> IO (Maybe Xkcd)
 searchXkcdInDbByTerm dbConn term =
   listToMaybe <$>
