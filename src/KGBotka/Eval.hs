@@ -338,7 +338,7 @@ evalExpr (FunCallExpr "help" args) = do
       return $ "Command `" <> name <> "` defined as `" <> code <> "`"
     Nothing -> return $ "Command `" <> name <> " does not exist"
 evalExpr (FunCallExpr "xkcd" args)
-  -- TODO: %xkcd function does not search by several terms
+  -- TODO(#237): %xkcd function does not search by several terms
  = do
   probablyTerm <- listToMaybe <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
