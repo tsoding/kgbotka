@@ -1,19 +1,20 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module KGBotka.Xkcd where
 
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Foldable
+import Data.Int
+import Data.List
+import Data.Maybe
+import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple (NamedParam(..))
 import Database.SQLite.Simple.QQ
-import Data.Int
-import qualified Data.Text as T
 import qualified Network.HTTP.Client as HTTP
 import Text.Printf
-import Data.Maybe
-import Data.Foldable
-import Data.List
 
 type XkcdNum = Int64
 
@@ -105,7 +106,6 @@ indexXkcd dbConn xkcd = do
     group $ sort terms
 
 -- TODO: there is no way to update xkcd_tf_idf from within the bot
-
 searchXkcdInDbByTerm :: Sqlite.Connection -> T.Text -> IO (Maybe Xkcd)
 searchXkcdInDbByTerm dbConn term =
   listToMaybe <$>

@@ -45,13 +45,13 @@ import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.TwitchAPI
+import KGBotka.Xkcd
 import qualified Network.HTTP.Client as HTTP
 import Network.URI
 import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import KGBotka.Xkcd
 
 data EvalTwitchContext = EvalTwitchContext
   { etcSenderId :: !TwitchUserId
@@ -337,8 +337,9 @@ evalExpr (FunCallExpr "help" args) = do
     Just Command {commandCode = code} ->
       return $ "Command `" <> name <> "` defined as `" <> code <> "`"
     Nothing -> return $ "Command `" <> name <> " does not exist"
-evalExpr (FunCallExpr "xkcd" args) = do
+evalExpr (FunCallExpr "xkcd" args)
   -- TODO: %xkcd function does not search by several terms
+ = do
   probablyTerm <- listToMaybe <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
   case probablyTerm of
