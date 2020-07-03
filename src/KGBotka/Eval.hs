@@ -337,16 +337,16 @@ evalExpr (FunCallExpr "help" args) = do
     Just Command {commandCode = code} ->
       return $ "Command `" <> name <> "` defined as `" <> code <> "`"
     Nothing -> return $ "Command `" <> name <> " does not exist"
-evalExpr (FunCallExpr "xkcd" args)
   -- TODO(#237): %xkcd function does not search by several terms
- = do
+evalExpr (FunCallExpr "xkcd" args) = do
   probablyTerm <- listToMaybe <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
   case probablyTerm of
     Just term -> do
       probablyXkcd <- liftIO $ searchXkcdInDbByTerm dbConn term
       case probablyXkcd of
-        Just Xkcd {xkcdImg = img} -> return img
+        Just Xkcd {xkcdNum = num} ->
+          return $ T.pack $ printf "https://xkcd.com/%d/" num
         Nothing -> return "No xkcd with such term was found"
     Nothing -> throwExceptEval $ EvalError "No term was provided"
 evalExpr (FunCallExpr "uptime" _) = do
