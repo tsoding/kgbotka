@@ -146,17 +146,21 @@ replThreadLoop rts = do
     ("addalias":alias:name:_, _) -> do
       withTransactionLogErrors $ \dbConn -> addCommandName dbConn alias name
       replThreadLoop rts
-    ("updatebttv":_, channel) -> do
+    ("updatebttv":_, _) -> do
       withTransactionLogErrors $ \dbConn -> do
-        result <- runExceptT $ updateBttvEmotes dbConn (rtsManager rts) channel
-        case (result, channel) of
-          (Right (), Nothing) ->
-            hPutStrLn replHandle "Global BTTV emotes are updated"
-          (Right (), Just channelName) ->
-            hPutStrLn replHandle $
-            "BTTV emotes are updated for channel " <>
-            T.unpack (twitchIrcChannelText channelName)
-          (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
+        let reportFailure =
+              \case
+                Left message -> hPrintf replHandle "[ERROR] %s\n" message
+                Right _ -> return ()
+        hPutStrLn replHandle "Updating Global BTTV emotes..."
+        reportFailure =<<
+          runExceptT (updateBttvEmotes dbConn (rtsManager rts) Nothing)
+        channels <- joinedChannels dbConn
+        for_ channels $ \channel -> do
+          hPrintf replHandle "Updating BTTV emotes for %s channel...\n" $
+            twitchIrcChannelText channel
+          reportFailure =<<
+            runExceptT (updateBttvEmotes dbConn (rtsManager rts) (Just channel))
       replThreadLoop rts
     ("updateffz":_, channel) -> do
       withTransactionLogErrors $ \dbConn -> do

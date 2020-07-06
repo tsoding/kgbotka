@@ -82,6 +82,7 @@ queryBttvEmotes manager channel'@(Just (TwitchIrcChannel (idText -> channel))) =
           "Channel name " <> T.unpack invalidChannelName <>
           " does not start with #"
 
+-- TODO: updateBttvEmotes does not handle channels that do no exist on BTTV
 updateBttvEmotes ::
      Connection -> Manager -> Maybe TwitchIrcChannel -> ExceptT String IO ()
 updateBttvEmotes dbConn manager channel = do
