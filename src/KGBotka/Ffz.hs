@@ -31,6 +31,7 @@ data FfzEmote = FfzEmote
   , ffzEmoteChannel :: Maybe TwitchIrcChannel
   }
 
+-- TODO: updateFfzEmotes does not handle channels that do no exist on FFZ
 updateFfzEmoteChannel :: Maybe TwitchIrcChannel -> FfzEmote -> FfzEmote
 updateFfzEmoteChannel channel emote = emote {ffzEmoteChannel = channel}
 

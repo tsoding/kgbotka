@@ -162,17 +162,21 @@ replThreadLoop rts = do
           reportFailure =<<
             runExceptT (updateBttvEmotes dbConn (rtsManager rts) (Just channel))
       replThreadLoop rts
-    ("updateffz":_, channel) -> do
+    ("updateffz":_, _) -> do
       withTransactionLogErrors $ \dbConn -> do
-        result <- runExceptT $ updateFfzEmotes dbConn (rtsManager rts) channel
-        case (result, channel) of
-          (Right (), Nothing) ->
-            hPutStrLn replHandle "Global FFZ emotes are updated"
-          (Right (), Just channelName) ->
-            hPutStrLn replHandle $
-            "FFZ emotes are updated for channel " <>
-            T.unpack (twitchIrcChannelText channelName)
-          (Left message, _) -> hPutStrLn replHandle $ "[ERROR] " <> message
+        let reportFailure =
+              \case
+                Left message -> hPrintf replHandle "[ERROR] %s\n" message
+                Right _ -> return ()
+        hPrintf replHandle "Updating Global FFZ emotes...\n"
+        reportFailure =<<
+          runExceptT (updateFfzEmotes dbConn (rtsManager rts) Nothing)
+        channels <- joinedChannels dbConn
+        for_ channels $ \channel -> do
+          hPrintf replHandle "Update FFZ emotes for %s channel...\n" $
+            twitchIrcChannelText channel
+          reportFailure =<<
+            runExceptT (updateFfzEmotes dbConn (rtsManager rts) (Just channel))
       replThreadLoop rts
     ("addrole":name:_, _) -> do
       withTransactionLogErrors $ \dbConn -> do
