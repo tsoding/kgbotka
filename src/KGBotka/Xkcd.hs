@@ -5,6 +5,7 @@ module KGBotka.Xkcd where
 
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Char
 import Data.Foldable
 import Data.Int
 import Data.List
@@ -15,7 +16,6 @@ import Database.SQLite.Simple (NamedParam(..))
 import Database.SQLite.Simple.QQ
 import qualified Network.HTTP.Client as HTTP
 import Text.Printf
-import Data.Char
 
 type XkcdNum = Int64
 
@@ -119,7 +119,9 @@ searchXkcdInDbByTerm dbConn terms =
                  xkcd.transcript
           FROM xkcd_tf_idf
           INNER JOIN xkcd ON xkcd_tf_idf.num = xkcd.num
-          WHERE |] <> generateTermsQuery (length terms) <> [sql| GROUP BY xkcd.num
+          WHERE |] <>
+     generateTermsQuery (length terms) <>
+     [sql| GROUP BY xkcd.num
            HAVING count(xkcd_tf_idf.term) = :termCount
            ORDER BY sum(xkcd_tf_idf.freq) DESC;|])
     ([":termCount" := length terms] <> generateTermsBindings terms)
