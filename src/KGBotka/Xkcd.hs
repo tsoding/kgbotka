@@ -5,6 +5,7 @@ module KGBotka.Xkcd where
 
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Char
 import Data.Foldable
 import Data.Int
 import Data.List
@@ -83,11 +84,10 @@ getLastDumpedXkcd dbConn =
          from xkcd order by num desc limit 1|]
     []
 
-stopChars :: String
-stopChars = "[]{}:.?!'"
-
 textAsTerms :: T.Text -> [T.Text]
-textAsTerms = map T.toUpper . T.words . T.filter (`notElem` stopChars)
+textAsTerms =
+  map (T.map toUpper) .
+  filter (T.all isAlphaNum) . T.groupBy (\x y -> isAlphaNum x == isAlphaNum y)
 
 indexXkcd :: Sqlite.Connection -> Xkcd -> IO ()
 indexXkcd dbConn xkcd = do
@@ -106,18 +106,36 @@ indexXkcd dbConn xkcd = do
     group $ sort terms
 
 -- TODO(#238): there is no way to update xkcd_tf_idf from within the bot
-searchXkcdInDbByTerm :: Sqlite.Connection -> T.Text -> IO (Maybe Xkcd)
-searchXkcdInDbByTerm dbConn term =
+searchXkcdInDbByTerm :: Sqlite.Connection -> [T.Text] -> IO (Maybe Xkcd)
+searchXkcdInDbByTerm _ [] = return Nothing
+searchXkcdInDbByTerm dbConn terms =
   listToMaybe <$>
   Sqlite.queryNamed
     dbConn
-    [sql|SELECT xkcd.num,
-                xkcd.title,
-                xkcd.img,
-                xkcd.alt,
-                xkcd.transcript
-         FROM xkcd_tf_idf
-         INNER JOIN xkcd ON xkcd_tf_idf.num = xkcd.num
-         WHERE xkcd_tf_idf.term = upper(:term)
-         ORDER BY xkcd_tf_idf.freq DESC;|]
-    [":term" := term]
+    ([sql|SELECT xkcd.num,
+                 xkcd.title,
+                 xkcd.img,
+                 xkcd.alt,
+                 xkcd.transcript
+          FROM xkcd_tf_idf
+          INNER JOIN xkcd ON xkcd_tf_idf.num = xkcd.num
+          WHERE |] <>
+     generateTermsQuery (length terms) <>
+     [sql| GROUP BY xkcd.num
+           HAVING count(xkcd_tf_idf.term) = :termCount
+           ORDER BY sum(xkcd_tf_idf.freq) DESC;|])
+    ([":termCount" := length terms] <> generateTermsBindings terms)
+
+generateTermsQuery :: Int -> Sqlite.Query
+generateTermsQuery n =
+  Sqlite.Query $
+  T.unwords $
+  intersperse "or" $
+  map (T.pack . printf "xkcd_tf_idf.term = upper(:term%d)") [1 .. n]
+
+generateTermsBindings :: [T.Text] -> [NamedParam]
+generateTermsBindings terms =
+  zipWith
+    (\i term -> T.pack (printf ":term%d" i) := term)
+    [1 .. length terms]
+    terms
