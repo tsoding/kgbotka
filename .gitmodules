@@ -1,3 +1,6 @@
 [submodule "third_party/discord-haskell"]
 	path = third_party/discord-haskell
 	url = https://github.com/tsoding/discord-haskell
+[submodule "third_party/direct-sqlite"]
+	path = third_party/direct-sqlite
+	url = https://github.com/tsoding/direct-sqlite

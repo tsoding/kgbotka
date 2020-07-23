@@ -1,2 +1,3 @@
 packages: ./
           ./third_party/discord-haskell/
+          ./third_party/direct-sqlite/

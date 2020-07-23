@@ -10,11 +10,9 @@ module KGBotka.Migration
 import Data.String
 
 import Data.Foldable
-import Data.Function
-import Data.List
-import qualified Data.Text as T
 import Database.SQLite.Simple
 import Database.SQLite.Simple.QQ
+import Database.SQLite3
 
 newtype Migration = Migration
   { migrationQuery :: Query
@@ -25,12 +23,6 @@ instance IsString Migration where
 
 instance FromRow Migration where
   fromRow = fromString <$> field
-
--- TODO(#81): Migration comparison function is very error prone
---   We need some kind of query normalization algorithm which is
---   semantic-insensitive
-instance Eq Migration where
-  (==) = (==) `on` (T.unwords . T.words . fromQuery . migrationQuery)
 
 applyMigration :: Connection -> Migration -> IO ()
 applyMigration conn (Migration q) = do
@@ -50,16 +42,33 @@ createMigrationTablesIfNeeded conn =
     \  migrationQuery TEXT NOT NULL         \
     \)"
 
+stripPrefixM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m (Maybe [a])
+stripPrefixM _ [] ys = return $ Just ys
+stripPrefixM predicate (x:xs) (y:ys) = do
+  cond <- predicate x y
+  if cond
+    then stripPrefixM predicate xs ys
+    else return Nothing
+stripPrefixM _ _ _ = return Nothing
+
 filterUnappliedMigrations :: Connection -> [Migration] -> IO [Migration]
 filterUnappliedMigrations conn migrations = do
   appliedMigrations <- query_ conn "SELECT migrationQuery FROM Migrations"
-  maybe
-    (error
-       "Inconsistent migrations state! \
+  unappliedMigrations <-
+    stripPrefixM
+      (\x y ->
+         queriesIdentical
+           (fromQuery $ migrationQuery x)
+           (fromQuery $ migrationQuery y))
+      appliedMigrations
+      migrations
+  case unappliedMigrations of
+    Just x -> return x
+    Nothing ->
+      error
+        "Inconsistent migrations state! \
        \List of already applied migrations \
-       \is not a prefix of required migrations.")
-    return $
-    stripPrefix appliedMigrations migrations
+       \is not a prefix of required migrations."
 
 migrateDatabase :: Connection -> [Migration] -> IO ()
 migrateDatabase conn migrations = do
