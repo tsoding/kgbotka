@@ -343,7 +343,7 @@ evalExpr (FunCallExpr "xkcd" args) = do
   dbConn <- ecSqliteConnection <$> getEval
   case probablyTerm of
     Just term -> do
-      probablyXkcd <- liftIO $ searchXkcdInDbByTerm dbConn term
+      probablyXkcd <- liftIO $ searchXkcdInDbByTerm dbConn $ textAsTerms term
       case probablyXkcd of
         Just Xkcd {xkcdNum = num} ->
           return $ T.pack $ printf "https://xkcd.com/%d/" num
