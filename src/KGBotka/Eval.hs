@@ -216,7 +216,7 @@ wordsPerMinute dbConn term = do
       [sql| select message from TwitchLog
             where messageTime > datetime('now', '-1 minute') |]
       []
-  let n = length $ filter (== (T.toUpper term)) $ concatMap textAsTerms messages
+  let n = length $ filter (== T.toUpper term) $ concatMap textAsTerms messages
   return n
 
 evalExpr :: Expr -> Eval T.Text
