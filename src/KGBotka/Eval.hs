@@ -228,6 +228,7 @@ evalExpr (FunCallExpr "urlencode" args) =
   where
     encodeURI = escapeURIString (const False)
 evalExpr (FunCallExpr "wpm" args) = do
+  -- TODO(#249): %wpm does not work in Discord
   word <- listToMaybe <$> mapM evalExpr args
   case word of
     Just word' -> do
