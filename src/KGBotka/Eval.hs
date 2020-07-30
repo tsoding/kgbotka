@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module KGBotka.Eval
   ( EvalContext(..)
@@ -29,6 +30,7 @@ import qualified Data.Text as T
 import Data.Time
 import Data.Word
 import qualified Database.SQLite.Simple as Sqlite
+import Database.SQLite.Simple.QQ
 import Discord.Types
 import KGBotka.Asciify
 import KGBotka.Bttv
@@ -205,6 +207,18 @@ requireFridayGistUpdate = do
   fridayGistUpdateRequired <- ecFridayGistUpdateRequired <$> getEval
   void $ liftIO $ tryPutMVar fridayGistUpdateRequired ()
 
+wordsPerMinute :: Sqlite.Connection -> T.Text -> IO Int
+wordsPerMinute dbConn term = do
+  messages <-
+    map Sqlite.fromOnly <$>
+    Sqlite.queryNamed
+      dbConn
+      [sql| select message from TwitchLog
+            where messageTime > datetime('now', '-1 minute') |]
+      []
+  let n = length $ filter (== T.toUpper term) $ concatMap textAsTerms messages
+  return n
+
 evalExpr :: Expr -> Eval T.Text
 evalExpr (TextExpr t) = return t
 evalExpr (FunCallExpr "or" args) =
@@ -213,6 +227,15 @@ evalExpr (FunCallExpr "urlencode" args) =
   T.concat . map (T.pack . encodeURI . T.unpack) <$> mapM evalExpr args
   where
     encodeURI = escapeURIString (const False)
+evalExpr (FunCallExpr "wpm" args) = do
+  -- TODO(#249): %wpm does not work in Discord
+  word <- listToMaybe <$> mapM evalExpr args
+  case word of
+    Just word' -> do
+      dbConn <- ecSqliteConnection <$> getEval
+      n <- liftIO $ wordsPerMinute dbConn word'
+      return $ T.pack $ printf "%d %s-s per minute" n word'
+    Nothing -> return ""
 evalExpr (FunCallExpr "markov" args) = do
   prefix <- fmap T.words . listToMaybe <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
