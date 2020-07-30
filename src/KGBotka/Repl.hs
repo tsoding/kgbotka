@@ -108,8 +108,7 @@ replThreadLoop rts = do
           (withLockedTransaction (rtsSqliteConnection rts) f)
           (\e -> hPrint replHandle (e :: Sqlite.SQLError))
   replPutStr replHandle $
-    "[" <> (twitchIrcChannelText $ fromMaybe "#" $ rtsCurrentChannel rts) <>
-    "]> "
+    "[" <> twitchIrcChannelText (fromMaybe "#" $ rtsCurrentChannel rts) <> "]> "
   hFlush (rtsHandle rts)
   inputLine <- T.decodeUtf8 <$> BS.hGetLine replHandle
   atomically $
@@ -206,8 +205,6 @@ replThreadLoop rts = do
     ("delalias":name:_, _) -> do
       withTransactionLogErrors $ \dbConn -> deleteCommandName dbConn name
       replThreadLoop rts
-    ("test-log":_, _) -> do
-      undefined
     ("assrole":roleName:users, _) -> do
       withTransactionLogErrors $ \dbConn ->
         case rtsConfigTwitch rts of
