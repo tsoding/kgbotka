@@ -246,13 +246,13 @@ evalExpr (FunCallExpr "wpm" args) = do
   word <- listToMaybe <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
   case platformContext of
-    Etc _ -> do
+    Etc _ ->
       case word of
         Just word' -> do
           n <- liftIO $ wordsPerMinuteOnTwitch dbConn word'
           return $ T.pack $ printf "%d %s per minute" n word'
         Nothing -> return ""
-    Edc _ -> do
+    Edc _ ->
       case word of
         Just word' -> do
           n <- liftIO $ wordsPerMinuteOnDiscord dbConn word'
