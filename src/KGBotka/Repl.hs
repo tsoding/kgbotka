@@ -18,7 +18,7 @@ import qualified Data.ByteString.Base64 as BS
 import Data.Foldable
 import Data.Maybe
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding as T
 import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple.QQ
 import KGBotka.Bttv
@@ -88,6 +88,12 @@ replThread rtp =
       , rtsRetrainProgress = rtpRetrainProgress rtp
       }
 
+replPutStr :: Handle -> T.Text -> IO ()
+replPutStr h = BS.hPutStr h . T.encodeUtf8
+
+replPutStrLn :: Handle -> T.Text -> IO ()
+replPutStrLn h text = replPutStr h $ text <> "\n"
+
 -- TODO(#60): there is no shutdown command that shuts down the whole bot
 -- Since we introduce backdoor connections the quit command does
 -- not serve such purpose anymore, 'cause it only closes the current
@@ -101,12 +107,10 @@ replThreadLoop rts = do
         catch
           (withLockedTransaction (rtsSqliteConnection rts) f)
           (\e -> hPrint replHandle (e :: Sqlite.SQLError))
-  hPutStr replHandle $
-    "[" <>
-    T.unpack (twitchIrcChannelText $ fromMaybe "#" $ rtsCurrentChannel rts) <>
-    "]> "
+  replPutStr replHandle $
+    "[" <> twitchIrcChannelText (fromMaybe "#" $ rtsCurrentChannel rts) <> "]> "
   hFlush (rtsHandle rts)
-  inputLine <- TE.decodeUtf8 <$> BS.hGetLine replHandle
+  inputLine <- T.decodeUtf8 <$> BS.hGetLine replHandle
   atomically $
     writeQueue (rtsLogQueue rts) $
     LogEntry "BACKDOOR" $ T.pack (show $ rtsConnAddr rts) <> ": " <> inputLine
@@ -120,7 +124,9 @@ replThreadLoop rts = do
         writeQueue (rtsCommandQueue rts) $ Say channel $ T.unwords args
       replThreadLoop rts
     ("say":_, Nothing) -> do
-      hPutStrLn replHandle "No current channel to say anything to is selected"
+      replPutStrLn
+        replHandle
+        "No current channel to say anything to is selected"
       replThreadLoop rts
     ("quit":_, _) -> return ()
     ("q":_, _) -> return ()
@@ -135,7 +141,7 @@ replThreadLoop rts = do
       replThreadLoop $ rts {rtsCurrentChannel = Nothing}
     ("ls":_, _) -> do
       withTransactionLogErrors
-        (traverse_ (hPutStrLn replHandle . T.unpack . twitchIrcChannelText) <=<
+        (traverse_ (replPutStrLn replHandle . twitchIrcChannelText) <=<
          joinedChannels)
       replThreadLoop rts
     -- TODO(#212): addcmd in REPL should accept the argsRegex
@@ -152,7 +158,7 @@ replThreadLoop rts = do
               \case
                 Left message -> hPrintf replHandle "[ERROR] %s\n" message
                 Right _ -> return ()
-        hPutStrLn replHandle "Updating Global BTTV emotes..."
+        replPutStrLn replHandle "Updating Global BTTV emotes..."
         reportFailure =<<
           runExceptT (updateBttvEmotes dbConn (rtsManager rts) Nothing)
         channels <- joinedChannels dbConn
@@ -183,15 +189,15 @@ replThreadLoop rts = do
         role <- getTwitchRoleByName dbConn name
         case role of
           Just _ ->
-            hPutStrLn replHandle $ "Role " <> T.unpack name <> " already exists"
+            replPutStrLn replHandle $ "Role " <> name <> " already exists"
           Nothing -> do
             void $ addTwitchRole dbConn name
-            hPutStrLn replHandle $ "Added a new role: " <> T.unpack name
+            replPutStrLn replHandle $ "Added a new role: " <> name
       replThreadLoop rts
     ("lsroles":_, _) -> do
       withTransactionLogErrors $ \dbConn -> do
         roles <- listTwitchRoles dbConn
-        mapM_ (hPutStrLn replHandle . T.unpack . twitchRoleName) roles
+        mapM_ (replPutStrLn replHandle . twitchRoleName) roles
       replThreadLoop rts
     ("delcmd":name:_, _) -> do
       withTransactionLogErrors $ \dbConn -> deleteCommandByName dbConn name
@@ -212,18 +218,18 @@ replThreadLoop rts = do
                    twitchUserId)
                   twitchUsers
               (Left twitchErr, _) ->
-                hPutStrLn replHandle $ "[ERROR] " <> show twitchErr
+                replPutStrLn replHandle $ "[ERROR] " <> T.pack (show twitchErr)
               (_, Nothing) ->
-                hPutStrLn replHandle "[ERROR] Such role does not exist"
-          Nothing -> hPutStrLn replHandle "[ERROR] No twitch configuration"
+                replPutStrLn replHandle "[ERROR] Such role does not exist"
+          Nothing -> replPutStrLn replHandle "[ERROR] No twitch configuration"
       replThreadLoop rts
     ("retrain":_, _) -> do
       atomically $ writeQueue (rtsMarkovQueue rts) Retrain
-      hPutStrLn replHandle "Scheduled Markov retraining..."
+      replPutStrLn replHandle "Scheduled Markov retraining..."
       replThreadLoop rts
     ("retrain-stop":_, _) -> do
       atomically $ writeQueue (rtsMarkovQueue rts) StopRetrain
-      hPutStrLn replHandle "Retraining process has been stopped..."
+      replPutStrLn replHandle "Retraining process has been stopped..."
       replThreadLoop rts
     ("retrain-pogress":_, _) -> do
       withMVar (rtsRetrainProgress rts) $ \case
@@ -232,12 +238,13 @@ replThreadLoop rts = do
             n <-
               maybe (0 :: Int) Sqlite.fromOnly . listToMaybe <$>
               Sqlite.queryNamed dbConn [sql|SELECT count(*) FROM TwitchLog|] []
-            hPutStrLn replHandle $ printf "Current progress: %d/%d" progress n
+            replPutStrLn replHandle $
+              T.pack $ printf "Current progress: %d/%d" progress n
         Nothing ->
-          hPutStrLn replHandle "There is no Markov retraining in place."
+          replPutStrLn replHandle "There is no Markov retraining in place."
       replThreadLoop rts
     (unknown:_, _) -> do
-      hPutStrLn replHandle $ T.unpack $ "Unknown command: " <> unknown
+      replPutStrLn replHandle $ "Unknown command: " <> unknown
       replThreadLoop rts
     _ -> replThreadLoop rts
 
@@ -287,7 +294,7 @@ backdoorThread btp = do
       connHandle <- socketToHandle conn ReadWriteMode
       csrf <- csrfToken
       hPrintf connHandle "CSRF => %s\ncsrf> " csrf
-      inputLine <- TE.decodeUtf8 <$> BS.hGetLine connHandle
+      inputLine <- T.decodeUtf8 <$> BS.hGetLine connHandle
       when (inputLine == csrf) $
         replThread $
         ReplThreadParams
