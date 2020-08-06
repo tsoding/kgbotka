@@ -94,6 +94,7 @@ mainWithArgs (configPath:databasePath:_) = do
             , btpPort = 6969 -- TODO(#63): backdoor port is hardcoded
             , btpMarkovQueue = WriteQueue markovCmdQueue
             , btpRetrainProgress = retrainProgress
+            , btpFridayGistUpdateRequired = fridayGistUpdateRequired
             }
       putStrLn "Done"
     Left errorMessage -> error errorMessage

@@ -7,8 +7,10 @@ module KGBotka.Eval
   , EvalPlatformContext(..)
   , EvalTwitchContext(..)
   , EvalDiscordContext(..)
+  , EvalReplContext(..)
   , evalCommandCall
   , evalCommandPipe
+  , evalExpr
   , EvalError(..)
   ) where
 

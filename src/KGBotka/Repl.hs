@@ -37,6 +37,12 @@ import Network.Socket
 import System.IO
 import System.Random
 import Text.Printf
+import KGBotka.Parser
+import KGBotka.Expr
+import KGBotka.Eval
+import qualified Data.Map as M
+import Control.Monad.Trans.State.Strict
+import Control.Monad.Trans.Eval
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -48,6 +54,7 @@ data ReplThreadParams = ReplThreadParams
   , rtpConnAddr :: !SockAddr
   , rtpMarkovQueue :: !(WriteQueue MarkovCommand)
   , rtpRetrainProgress :: !(MVar (Maybe Int))
+  , rtpFridayGistUpdateRequired :: !(MVar ())
   }
 
 instance ProvidesLogging ReplThreadParams where
@@ -64,6 +71,7 @@ data ReplThreadState = ReplThreadState
   , rtsConnAddr :: !SockAddr
   , rtsMarkovQueue :: !(WriteQueue MarkovCommand)
   , rtsRetrainProgress :: !(MVar (Maybe Int))
+  , rtsFridayGistUpdateRequired :: !(MVar ())
   }
 
 data ReplCommand
@@ -86,6 +94,7 @@ replThread rtp =
       , rtsConnAddr = rtpConnAddr rtp
       , rtsMarkovQueue = rtpMarkovQueue rtp
       , rtsRetrainProgress = rtpRetrainProgress rtp
+      , rtsFridayGistUpdateRequired = rtpFridayGistUpdateRequired rtp
       }
 
 replPutStr :: Handle -> T.Text -> IO ()
@@ -231,6 +240,26 @@ replThreadLoop rts = do
       atomically $ writeQueue (rtsMarkovQueue rts) StopRetrain
       replPutStrLn replHandle "Retraining process has been stopped..."
       replThreadLoop rts
+    ("eval":code:_, _) -> do
+      case snd <$> runParser expr code of
+        Right ast -> do
+          withTransactionLogErrors $ \dbConn -> do
+            evalResult <-
+              runExceptT $
+              evalStateT (runEvalT $ evalExpr ast) $
+              EvalContext
+                { ecVars = M.empty
+                , ecSqliteConnection = dbConn
+                , ecPlatformContext = Erc EvalReplContext
+                , ecLogQueue = rtsLogQueue rts
+                , ecManager = rtsManager rts
+                , ecFridayGistUpdateRequired = rtsFridayGistUpdateRequired rts
+                }
+            case evalResult of
+              Right response -> replPutStrLn replHandle response
+              Left (EvalError userMsg) -> replPutStrLn replHandle $ "[ERROR] " <> userMsg
+        Left err -> replPutStrLn replHandle $ "[ERROR] " <> T.pack (show err)
+      replThreadLoop rts
     ("retrain-pogress":_, _) -> do
       withMVar (rtsRetrainProgress rts) $ \case
         Just progress ->
@@ -267,6 +296,7 @@ data BackdoorThreadParams = BackdoorThreadParams
   , btpPort :: !Int
   , btpMarkovQueue :: !(WriteQueue MarkovCommand)
   , btpRetrainProgress :: !(MVar (Maybe Int))
+  , btpFridayGistUpdateRequired :: !(MVar ())
   }
 
 instance ProvidesLogging BackdoorThreadParams where
@@ -317,6 +347,7 @@ backdoorThread btp = do
           , rtpConfigTwitch = btpConfigTwitch btp
           , rtpMarkovQueue = btpMarkovQueue btp
           , rtpRetrainProgress = btpRetrainProgress btp
+          , rtpFridayGistUpdateRequired = btpFridayGistUpdateRequired btp
           }
       hClose connHandle
       close conn
