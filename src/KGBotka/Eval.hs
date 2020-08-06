@@ -207,13 +207,27 @@ requireFridayGistUpdate = do
   fridayGistUpdateRequired <- ecFridayGistUpdateRequired <$> getEval
   void $ liftIO $ tryPutMVar fridayGistUpdateRequired ()
 
-wordsPerMinute :: Sqlite.Connection -> T.Text -> IO Int
-wordsPerMinute dbConn term = do
+wordsPerMinuteOnTwitch :: Sqlite.Connection -> T.Text -> IO Int
+wordsPerMinuteOnTwitch dbConn input = do
+  let term = fromMaybe "" $ listToMaybe $ textAsTerms input
   messages <-
     map Sqlite.fromOnly <$>
     Sqlite.queryNamed
       dbConn
       [sql| select message from TwitchLog
+            where messageTime > datetime('now', '-1 minute') |]
+      []
+  let n = length $ filter (== T.toUpper term) $ concatMap textAsTerms messages
+  return n
+
+wordsPerMinuteOnDiscord :: Sqlite.Connection -> T.Text -> IO Int
+wordsPerMinuteOnDiscord dbConn input = do
+  let term = fromMaybe "" $ listToMaybe $ textAsTerms input
+  messages <-
+    map Sqlite.fromOnly <$>
+    Sqlite.queryNamed
+      dbConn
+      [sql| select message from DiscordLog
             where messageTime > datetime('now', '-1 minute') |]
       []
   let n = length $ filter (== T.toUpper term) $ concatMap textAsTerms messages
@@ -228,14 +242,22 @@ evalExpr (FunCallExpr "urlencode" args) =
   where
     encodeURI = escapeURIString (const False)
 evalExpr (FunCallExpr "wpm" args) = do
-  -- TODO(#249): %wpm does not work in Discord
+  platformContext <- ecPlatformContext <$> getEval
   word <- listToMaybe <$> mapM evalExpr args
-  case word of
-    Just word' -> do
-      dbConn <- ecSqliteConnection <$> getEval
-      n <- liftIO $ wordsPerMinute dbConn word'
-      return $ T.pack $ printf "%d %s-s per minute" n word'
-    Nothing -> return ""
+  dbConn <- ecSqliteConnection <$> getEval
+  case platformContext of
+    Etc _ ->
+      case word of
+        Just word' -> do
+          n <- liftIO $ wordsPerMinuteOnTwitch dbConn word'
+          return $ T.pack $ printf "%d %s per minute" n word'
+        Nothing -> return ""
+    Edc _ ->
+      case word of
+        Just word' -> do
+          n <- liftIO $ wordsPerMinuteOnDiscord dbConn word'
+          return $ T.pack $ printf "%d %s per minute" n word'
+        Nothing -> return ""
 evalExpr (FunCallExpr "markov" args) = do
   prefix <- fmap T.words . listToMaybe <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
