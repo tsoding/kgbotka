@@ -12,10 +12,13 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
+import Control.Monad.Trans.Eval
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.State.Strict
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base64 as BS
 import Data.Foldable
+import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -24,10 +27,13 @@ import Database.SQLite.Simple.QQ
 import KGBotka.Bttv
 import KGBotka.Command
 import KGBotka.Config
+import KGBotka.Eval
+import KGBotka.Expr
 import KGBotka.Ffz
 import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
 import KGBotka.Markov
+import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.Sqlite
@@ -37,12 +43,6 @@ import Network.Socket
 import System.IO
 import System.Random
 import Text.Printf
-import KGBotka.Parser
-import KGBotka.Expr
-import KGBotka.Eval
-import qualified Data.Map as M
-import Control.Monad.Trans.State.Strict
-import Control.Monad.Trans.Eval
 
 data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
@@ -257,7 +257,8 @@ replThreadLoop rts = do
                 }
             case evalResult of
               Right response -> replPutStrLn replHandle response
-              Left (EvalError userMsg) -> replPutStrLn replHandle $ "[ERROR] " <> userMsg
+              Left (EvalError userMsg) ->
+                replPutStrLn replHandle $ "[ERROR] " <> userMsg
         Left err -> replPutStrLn replHandle $ "[ERROR] " <> T.pack (show err)
       replThreadLoop rts
     ("retrain-pogress":_, _) -> do

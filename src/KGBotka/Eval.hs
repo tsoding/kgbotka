@@ -74,7 +74,8 @@ data EvalDiscordContext = EvalDiscordContext
   , edcRoles :: ![Snowflake]
   }
 
-data EvalReplContext = EvalReplContext
+data EvalReplContext =
+  EvalReplContext
 
 data EvalPlatformContext
   = Etc EvalTwitchContext
@@ -105,7 +106,8 @@ newtype EvalError =
 type Eval = EvalT EvalContext EvalError IO
 
 senderMentionOfContext :: EvalPlatformContext -> Maybe T.Text
-senderMentionOfContext (Etc EvalTwitchContext {etcSenderName = name}) = Just name
+senderMentionOfContext (Etc EvalTwitchContext {etcSenderName = name}) =
+  Just name
 senderMentionOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
   Just $ T.pack $ printf "<@!%d>" ((fromIntegral $ userId author) :: Word64)
 senderMentionOfContext (Erc EvalReplContext) = Nothing
@@ -168,7 +170,8 @@ evalCommandCall (CommandCall name args) = do
               ((fromIntegral $ userId $ edcAuthor edc) :: Word64)
           liftIO $ logCommand dbConn (Just senderId) Nothing commandIdent args
         Erc _ ->
-          throwExceptEval $ EvalError "Chat commands are not supported in the REPL context"
+          throwExceptEval $
+          EvalError "Chat commands are not supported in the REPL context"
       codeAst <-
         liftExceptT $
         withExceptT (EvalError . T.pack . show) $
@@ -374,7 +377,9 @@ evalExpr (FunCallExpr "asciify" args) = do
               _ -> throwExceptEval $ EvalError "No emote found"
           _ -> throwExceptEval $ EvalError "No emote found"
       -- TODO: Add %asciify support for REPL evaluation context
-      Erc _ -> throwExceptEval $ EvalError "%asciify is not support in REPL evaluation context yet"
+      Erc _ ->
+        throwExceptEval $
+        EvalError "%asciify is not support in REPL evaluation context yet"
   case image of
     Right image' -> return image'
     Left errorMessage -> do
@@ -479,7 +484,9 @@ evalExpr (FunCallExpr "roles" _) = do
         "<@!%d> Your roles: %s."
         ((fromIntegral $ userId $ edcAuthor edc) :: Word64)
         (show $ edcRoles edc)
-    Erc _ -> return "You are in the REPL. You don't need any roles. You can do whatever you want!"
+    Erc _ ->
+      return
+        "You are in the REPL. You don't need any roles. You can do whatever you want!"
 evalExpr (FunCallExpr funame _) = do
   vars <- ecVars <$> getEval
   liftExceptT $
