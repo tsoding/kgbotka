@@ -242,7 +242,7 @@ replThreadLoop rts = do
       replThreadLoop rts
     ("eval":code:_, _) -> do
       case snd <$> runParser expr code of
-        Right ast -> do
+        Right ast ->
           withTransactionLogErrors $ \dbConn -> do
             evalResult <-
               runExceptT $
