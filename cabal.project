@@ -1,3 +1,4 @@
 packages: ./
           ./third_party/discord-haskell/
           ./third_party/direct-sqlite/
+          ./third_party/HsOpenSSL-x509-system/
