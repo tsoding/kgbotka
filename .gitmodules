@@ -4,3 +4,6 @@
 [submodule "third_party/direct-sqlite"]
 	path = third_party/direct-sqlite
 	url = https://github.com/tsoding/direct-sqlite
+[submodule "third_party/HsOpenSSL-x509-system"]
+	path = third_party/HsOpenSSL-x509-system
+	url = https://github.com/herrhotzenplotz/HsOpenSSL-x509-system
