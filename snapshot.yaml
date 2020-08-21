@@ -12,3 +12,4 @@ packages:
   - text-1.2.4.0
   - emoji-0.1.0.2
   - base64-0.4.1
+  - direct-sqlite-2.3.26
