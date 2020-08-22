@@ -247,8 +247,7 @@ replThreadLoop rts = do
       withTransactionLogErrors $ \dbConn ->
         case chan of
           Nothing ->
-            replPutStrLn replHandle $
-            "setprefix only works in a joined channel."
+            replPutStrLn replHandle "setprefix only works in a joined channel."
           Just channel -> do
             setPrefixOfJoinedChannel dbConn channel prefix
             replPutStrLn replHandle $
