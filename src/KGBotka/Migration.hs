@@ -233,4 +233,6 @@ kgbotkaMigrations =
              freq INTEGER,
              num INTEGER
            );|]
+  , Migration
+    [sql|ALTER TABLE JoinedTwitchChannels ADD COLUMN channelCommandPrefix TEXT NOT NULL DEFAULT '!';|]
   ]
