@@ -47,11 +47,10 @@ callPrefixOfJoinedChannel dbConn channel =
 
 setPrefixOfJoinedChannel :: Sqlite.Connection -> TwitchIrcChannel -> T.Text -> IO ()
 setPrefixOfJoinedChannel dbConn channel prefix = do
-  Sqlite.executeNamed dbConn
-            [sql|UPDATE JoinedTwitchChannels SET channelCommandPrefix = :pref WHERE name = :channel;|]
-            [ ":channel" := channel
-            , ":pref" := prefix
-            ]
+  Sqlite.executeNamed
+    dbConn
+    [sql|UPDATE JoinedTwitchChannels SET channelCommandPrefix = :pref WHERE name = :channel;|]
+    [":channel" := channel, ":pref" := prefix]
 
 unregisterJoinedChannel :: Sqlite.Connection -> TwitchIrcChannel -> IO ()
 unregisterJoinedChannel dbConn channel =

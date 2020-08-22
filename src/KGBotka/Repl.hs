@@ -244,13 +244,16 @@ replThreadLoop rts = do
           replPutStrLn replHandle "There is no Markov retraining in place."
       replThreadLoop rts
     ("setprefix":prefix:_, chan) -> do
-        withTransactionLogErrors $ \dbConn ->
-            case chan of
-              Nothing -> replPutStrLn replHandle $ "setprefix only works in a joined channel."
-              Just channel -> do
-                        setPrefixOfJoinedChannel dbConn channel prefix
-                        replPutStrLn replHandle $ "Updated call prefix for channel " <> twitchIrcChannelText channel
-        replThreadLoop rts
+      withTransactionLogErrors $ \dbConn ->
+        case chan of
+          Nothing ->
+            replPutStrLn replHandle $
+            "setprefix only works in a joined channel."
+          Just channel -> do
+            setPrefixOfJoinedChannel dbConn channel prefix
+            replPutStrLn replHandle $
+              "Updated call prefix for channel " <> twitchIrcChannelText channel
+      replThreadLoop rts
     (unknown:_, _) -> do
       replPutStrLn replHandle $ "Unknown command: " <> unknown
       replThreadLoop rts
