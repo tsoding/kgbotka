@@ -36,7 +36,6 @@ import KGBotka.Markov
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
-import KGBotka.Settings
 import KGBotka.Sqlite
 import KGBotka.TwitchAPI
 import KGBotka.TwitchLog
@@ -275,9 +274,9 @@ processUserMsgs dbConn tts messages = do
                 let forbiddenCharLimit = 100
                 if countForbidden message < forbiddenCharLimit
                   then do
-                    settings <- fetchSettings dbConn
+                    prefix <- callPrefixOfJoinedChannel dbConn channel
                     case parseCommandPipe
-                           (settingsCallPrefix settings)
+                           (CallPrefix prefix)
                            (PipeSuffix "|")
                            message of
                       [] ->
