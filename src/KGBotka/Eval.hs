@@ -7,8 +7,10 @@ module KGBotka.Eval
   , EvalPlatformContext(..)
   , EvalTwitchContext(..)
   , EvalDiscordContext(..)
+  , EvalReplContext(..)
   , evalCommandCall
   , evalCommandPipe
+  , evalExpr
   , EvalError(..)
   ) where
 
@@ -72,9 +74,13 @@ data EvalDiscordContext = EvalDiscordContext
   , edcRoles :: ![Snowflake]
   }
 
+data EvalReplContext =
+  EvalReplContext
+
 data EvalPlatformContext
   = Etc EvalTwitchContext
   | Edc EvalDiscordContext
+  | Erc EvalReplContext
 
 data EvalContext = EvalContext
   { ecVars :: !(M.Map T.Text T.Text)
@@ -99,10 +105,12 @@ newtype EvalError =
 
 type Eval = EvalT EvalContext EvalError IO
 
-senderTextOfContext :: EvalPlatformContext -> T.Text
-senderTextOfContext (Etc EvalTwitchContext {etcSenderName = name}) = name
-senderTextOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
-  T.pack $ printf "<@!%d>" ((fromIntegral $ userId author) :: Word64)
+senderMentionOfContext :: EvalPlatformContext -> Maybe T.Text
+senderMentionOfContext (Etc EvalTwitchContext {etcSenderName = name}) =
+  Just name
+senderMentionOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
+  Just $ T.pack $ printf "<@!%d>" ((fromIntegral $ userId author) :: Word64)
+senderMentionOfContext (Erc EvalReplContext) = Nothing
 
 channelNameOfContext :: EvalPlatformContext -> T.Text
 channelNameOfContext (Etc EvalTwitchContext {etcChannel = channel}) =
@@ -124,8 +132,9 @@ evalCommandCall (CommandCall name args) = do
       -- TODO(#211): make evalCommandCall parse command call input according to command's args regex
       modifyEval $ ecVarsModify $ M.insert "1" args
       modifyEval $ ecVarsModify $ M.insert "times" $ T.pack $ show times
-      modifyEval $
-        ecVarsModify $ M.insert "sender" $ senderTextOfContext platformContext
+      case senderMentionOfContext platformContext of
+        Just sender -> modifyEval $ ecVarsModify $ M.insert "sender" sender
+        Nothing -> return ()
       modifyEval $ ecVarsModify $ M.insert "year" $ T.pack $ show yearNum
       modifyEval $ ecVarsModify $ M.insert "month" $ T.pack $ show monthNum
       modifyEval $ ecVarsModify $ M.insert "day" $ T.pack $ show dayNum
@@ -160,6 +169,9 @@ evalCommandCall (CommandCall name args) = do
               "<@!%d> The command has not cooled down yet"
               ((fromIntegral $ userId $ edcAuthor edc) :: Word64)
           liftIO $ logCommand dbConn (Just senderId) Nothing commandIdent args
+        Erc _ ->
+          throwExceptEval $
+          EvalError "Chat commands are not supported in the REPL context"
       codeAst <-
         liftExceptT $
         withExceptT (EvalError . T.pack . show) $
@@ -189,6 +201,7 @@ failIfNotTrusted = do
     Edc edc ->
       when (null $ edcRoles edc) $
       throwExceptEval $ EvalError "Only for trusted users"
+    Erc _ -> return ()
 
 failIfNotAuthority :: Eval ()
 failIfNotAuthority = do
@@ -258,6 +271,8 @@ evalExpr (FunCallExpr "wpm" args) = do
           n <- liftIO $ wordsPerMinuteOnDiscord dbConn word'
           return $ T.pack $ printf "%d %s per minute" n word'
         Nothing -> return ""
+    -- TODO: Add %wpm support for REPL evaluation context
+    Erc _ -> throwExceptEval $ EvalError "%wpm does not work in REPL yet Kapp"
 evalExpr (FunCallExpr "markov" args) = do
   prefix <- fmap T.words . listToMaybe <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
@@ -298,6 +313,7 @@ evalExpr (FunCallExpr "friday" args) = do
               Edc edc ->
                 ( userName $ edcAuthor edc
                 , T.pack $ show $ userId $ edcAuthor edc)
+              Erc _ -> ("Admin", "69")
       liftIO $
         submitVideo dbConn submissionText (AuthorId authorId) authorDisplayName
       requireFridayGistUpdate
@@ -360,6 +376,10 @@ evalExpr (FunCallExpr "asciify" args) = do
                       ".png"))
               _ -> throwExceptEval $ EvalError "No emote found"
           _ -> throwExceptEval $ EvalError "No emote found"
+      -- TODO: Add %asciify support for REPL evaluation context
+      Erc _ ->
+        throwExceptEval $
+        EvalError "%asciify is not support in REPL evaluation context yet"
   case image of
     Right image' -> return image'
     Left errorMessage -> do
@@ -415,6 +435,7 @@ evalExpr (FunCallExpr "uptime" _) = do
           logEntryEval $ LogEntry "TWITCHAPI" $ T.pack $ show errorMessage
           return ""
     Edc _ -> throwExceptEval $ EvalError "Uptime doesn't work in Discord"
+    Erc _ -> throwExceptEval $ EvalError "Uptime doesn't work in REPL"
 evalExpr (FunCallExpr "eval" args) = do
   failIfNotAuthority
   code <- T.concat <$> mapM evalExpr args
@@ -463,6 +484,9 @@ evalExpr (FunCallExpr "roles" _) = do
         "<@!%d> Your roles: %s."
         ((fromIntegral $ userId $ edcAuthor edc) :: Word64)
         (show $ edcRoles edc)
+    Erc _ ->
+      return
+        "You are in the REPL. You don't need any roles. You can do whatever you want!"
 evalExpr (FunCallExpr funame _) = do
   vars <- ecVars <$> getEval
   liftExceptT $

@@ -11,18 +11,18 @@ module KGBotka.JoinedTwitchChannels
 
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
-import Database.SQLite.Simple.FromRow
 import Database.SQLite.Simple (NamedParam(..))
+import Database.SQLite.Simple.FromRow
 import Database.SQLite.Simple.QQ
 import KGBotka.TwitchAPI
 
 data JoinedTwitchChannel = JoinedTwitchChannel
-    { joinedChannelTwitchChannel :: TwitchIrcChannel
-    , joinedChannelCallPrefix :: T.Text
-    }
+  { joinedChannelTwitchChannel :: TwitchIrcChannel
+  , joinedChannelCallPrefix :: T.Text
+  }
 
 instance FromRow JoinedTwitchChannel where
-    fromRow = JoinedTwitchChannel <$> field <*> field
+  fromRow = JoinedTwitchChannel <$> field <*> field
 
 joinedChannels :: Sqlite.Connection -> IO [TwitchIrcChannel]
 joinedChannels dbConn = do
@@ -40,13 +40,15 @@ registerJoinedChannel dbConn channel =
 
 callPrefixOfJoinedChannel :: Sqlite.Connection -> TwitchIrcChannel -> IO T.Text
 callPrefixOfJoinedChannel dbConn channel =
-    joinedChannelCallPrefix . head <$>
-                            Sqlite.queryNamed dbConn
-                                      [sql|SELECT * FROM JoinedTwitchChannels WHERE name = :channel;|]
-                                      [":channel" := channel]
+  joinedChannelCallPrefix . head <$>
+  Sqlite.queryNamed
+    dbConn
+    [sql|SELECT * FROM JoinedTwitchChannels WHERE name = :channel;|]
+    [":channel" := channel]
 
-setPrefixOfJoinedChannel :: Sqlite.Connection -> TwitchIrcChannel -> T.Text -> IO ()
-setPrefixOfJoinedChannel dbConn channel prefix = do
+setPrefixOfJoinedChannel ::
+     Sqlite.Connection -> TwitchIrcChannel -> T.Text -> IO ()
+setPrefixOfJoinedChannel dbConn channel prefix =
   Sqlite.executeNamed
     dbConn
     [sql|UPDATE JoinedTwitchChannels SET channelCommandPrefix = :pref WHERE name = :channel;|]
