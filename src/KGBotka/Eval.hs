@@ -271,7 +271,7 @@ evalExpr (FunCallExpr "wpm" args) = do
           n <- liftIO $ wordsPerMinuteOnDiscord dbConn word'
           return $ T.pack $ printf "%d %s per minute" n word'
         Nothing -> return ""
-    -- TODO: Add %wpm support for REPL evaluation context
+    -- TODO(#256): Add %wpm support for REPL evaluation context
     Erc _ -> throwExceptEval $ EvalError "%wpm does not work in REPL yet Kapp"
 evalExpr (FunCallExpr "markov" args) = do
   prefix <- fmap T.words . listToMaybe <$> mapM evalExpr args
