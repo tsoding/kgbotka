@@ -123,45 +123,51 @@ replThreadLoop rts = do
   atomically $
     writeQueue (rtsLogQueue rts) $
     LogEntry "BACKDOOR" $ T.pack (show $ rtsConnAddr rts) <> ": " <> inputLine
-  case (T.words inputLine, rtsCurrentChannel rts) of
-    ("cd":channel:_, _) ->
+  case ( T.dropWhile (== ' ') <$> T.span (/= ' ') inputLine
+       , rtsCurrentChannel rts) of
+    (("cd", ""), _) -> replThreadLoop $ rts {rtsCurrentChannel = Nothing}
+    (("cd", channel), _) ->
       replThreadLoop $
       rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
-    ("cd":_, _) -> replThreadLoop $ rts {rtsCurrentChannel = Nothing}
-    ("say":args, Just channel) -> do
-      atomically $
-        writeQueue (rtsCommandQueue rts) $ Say channel $ T.unwords args
+    (("say", message), Just channel) -> do
+      atomically $ writeQueue (rtsCommandQueue rts) $ Say channel message
       replThreadLoop rts
-    ("say":_, Nothing) -> do
+    (("say", _), Nothing) -> do
       replPutStrLn
         replHandle
         "No current channel to say anything to is selected"
       replThreadLoop rts
-    ("quit":_, _) -> return ()
-    ("q":_, _) -> return ()
-    ("join":channel:_, _) -> do
+    (("quit", _), _) -> return ()
+    (("q", _), _) -> return ()
+    (("join", channel), _) -> do
       atomically $
         writeQueue (rtsCommandQueue rts) $
         JoinChannel $ mkTwitchIrcChannel channel
       replThreadLoop $
         rts {rtsCurrentChannel = Just $ mkTwitchIrcChannel channel}
-    ("part":_, Just channel) -> do
+    (("part", _), Just channel) -> do
       atomically $ writeQueue (rtsCommandQueue rts) $ PartChannel channel
       replThreadLoop $ rts {rtsCurrentChannel = Nothing}
-    ("ls":_, _) -> do
+    (("ls", _), _) -> do
       withTransactionLogErrors
         (traverse_ (replPutStrLn replHandle . twitchIrcChannelText) <=<
          joinedChannels)
       replThreadLoop rts
     -- TODO(#212): addcmd in REPL should accept the argsRegex
-    ("addcmd":name:args, _) -> do
-      withTransactionLogErrors $ \dbConn ->
-        void $ addCommand dbConn name (T.unwords args)
+    (("addcmd", cmdDef), _) -> do
+      case T.dropWhile (== ' ') <$> T.span (/= ' ') cmdDef of
+        ("", _) -> replPutStrLn replHandle "No name for new command is provided"
+        (name, args) ->
+          withTransactionLogErrors $ \dbConn ->
+            void $ addCommand dbConn name args
       replThreadLoop rts
-    ("addalias":alias:name:_, _) -> do
-      withTransactionLogErrors $ \dbConn -> addCommandName dbConn alias name
+    (("addalias", aliasDef), _) -> do
+      case T.dropWhile (== ' ') <$> T.span (/= ' ') aliasDef of
+        ("", _) -> replPutStrLn replHandle "No name for new alias is provided"
+        (alias, name) ->
+          withTransactionLogErrors $ \dbConn -> addCommandName dbConn alias name
       replThreadLoop rts
-    ("updatebttv":_, _) -> do
+    (("updatebttv", _), _) -> do
       withTransactionLogErrors $ \dbConn -> do
         let reportFailure =
               \case
@@ -177,7 +183,7 @@ replThreadLoop rts = do
           reportFailure =<<
             runExceptT (updateBttvEmotes dbConn (rtsManager rts) (Just channel))
       replThreadLoop rts
-    ("updateffz":_, _) -> do
+    (("updateffz", _), _) -> do
       withTransactionLogErrors $ \dbConn -> do
         let reportFailure =
               \case
@@ -193,7 +199,7 @@ replThreadLoop rts = do
           reportFailure =<<
             runExceptT (updateFfzEmotes dbConn (rtsManager rts) (Just channel))
       replThreadLoop rts
-    ("addrole":name:_, _) -> do
+    (("addrole", name), _) -> do
       withTransactionLogErrors $ \dbConn -> do
         role <- getTwitchRoleByName dbConn name
         case role of
@@ -203,44 +209,50 @@ replThreadLoop rts = do
             void $ addTwitchRole dbConn name
             replPutStrLn replHandle $ "Added a new role: " <> name
       replThreadLoop rts
-    ("lsroles":_, _) -> do
+    (("lsroles", _), _) -> do
       withTransactionLogErrors $ \dbConn -> do
         roles <- listTwitchRoles dbConn
         mapM_ (replPutStrLn replHandle . twitchRoleName) roles
       replThreadLoop rts
-    ("delcmd":name:_, _) -> do
+    (("delcmd", name), _) -> do
       withTransactionLogErrors $ \dbConn -> deleteCommandByName dbConn name
       replThreadLoop rts
-    ("delalias":name:_, _) -> do
+    (("delalias", name), _) -> do
       withTransactionLogErrors $ \dbConn -> deleteCommandName dbConn name
       replThreadLoop rts
-    ("assrole":roleName:users, _) -> do
-      withTransactionLogErrors $ \dbConn ->
-        case rtsConfigTwitch rts of
-          Just config -> do
-            maybeRole <- getTwitchRoleByName dbConn roleName
-            response <- getUsersByLogins (rtsManager rts) config users
-            case (response, maybeRole) of
-              (Right twitchUsers, Just role') ->
-                traverse_
-                  (assTwitchRoleToUser dbConn (twitchRoleId role') .
-                   twitchUserId)
-                  twitchUsers
-              (Left twitchErr, _) ->
-                replPutStrLn replHandle $ "[ERROR] " <> T.pack (show twitchErr)
-              (_, Nothing) ->
-                replPutStrLn replHandle "[ERROR] Such role does not exist"
-          Nothing -> replPutStrLn replHandle "[ERROR] No twitch configuration"
+    (("assrole", roleAss), _) -> do
+      case T.dropWhile (== ' ') <$> T.span (/= ' ') roleAss of
+        ("", _) -> replPutStrLn replHandle "No role to assign is provided"
+        (roleName, users) -> do
+          withTransactionLogErrors $ \dbConn ->
+            case rtsConfigTwitch rts of
+              Just config -> do
+                maybeRole <- getTwitchRoleByName dbConn roleName
+                response <-
+                  getUsersByLogins (rtsManager rts) config $ T.words users
+                case (response, maybeRole) of
+                  (Right twitchUsers, Just role') ->
+                    traverse_
+                      (assTwitchRoleToUser dbConn (twitchRoleId role') .
+                       twitchUserId)
+                      twitchUsers
+                  (Left twitchErr, _) ->
+                    replPutStrLn replHandle $
+                    "[ERROR] " <> T.pack (show twitchErr)
+                  (_, Nothing) ->
+                    replPutStrLn replHandle "[ERROR] Such role does not exist"
+              Nothing ->
+                replPutStrLn replHandle "[ERROR] No twitch configuration"
       replThreadLoop rts
-    ("retrain":_, _) -> do
+    (("retrain", _), _) -> do
       atomically $ writeQueue (rtsMarkovQueue rts) Retrain
       replPutStrLn replHandle "Scheduled Markov retraining..."
       replThreadLoop rts
-    ("retrain-stop":_, _) -> do
+    (("retrain-stop", _), _) -> do
       atomically $ writeQueue (rtsMarkovQueue rts) StopRetrain
       replPutStrLn replHandle "Retraining process has been stopped..."
       replThreadLoop rts
-    ("eval":code:_, _) -> do
+    (("eval", code), _) -> do
       case snd <$> runParser expr code of
         Right ast ->
           withTransactionLogErrors $ \dbConn -> do
@@ -261,7 +273,7 @@ replThreadLoop rts = do
                 replPutStrLn replHandle $ "[ERROR] " <> userMsg
         Left err -> replPutStrLn replHandle $ "[ERROR] " <> T.pack (show err)
       replThreadLoop rts
-    ("retrain-pogress":_, _) -> do
+    (("retrain-pogress", _), _) -> do
       withMVar (rtsRetrainProgress rts) $ \case
         Just progress ->
           withTransactionLogErrors $ \dbConn -> do
@@ -273,7 +285,7 @@ replThreadLoop rts = do
         Nothing ->
           replPutStrLn replHandle "There is no Markov retraining in place."
       replThreadLoop rts
-    ("setprefix":prefix:_, chan) -> do
+    (("setprefix", prefix), chan) -> do
       withTransactionLogErrors $ \dbConn ->
         case chan of
           Nothing ->
@@ -283,10 +295,9 @@ replThreadLoop rts = do
             replPutStrLn replHandle $
               "Updated call prefix for channel " <> twitchIrcChannelText channel
       replThreadLoop rts
-    (unknown:_, _) -> do
+    ((unknown, _), _) -> do
       replPutStrLn replHandle $ "Unknown command: " <> unknown
       replThreadLoop rts
-    _ -> replThreadLoop rts
 
 data BackdoorThreadParams = BackdoorThreadParams
   { btpSqliteConnection :: !(MVar Sqlite.Connection)
