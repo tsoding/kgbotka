@@ -223,7 +223,7 @@ replThreadLoop rts = do
     (("assrole", roleAss), _) -> do
       case T.dropWhile (== ' ') <$> T.span (/= ' ') roleAss of
         ("", _) -> replPutStrLn replHandle "No role to assign is provided"
-        (roleName, users) -> do
+        (roleName, users) ->
           withTransactionLogErrors $ \dbConn ->
             case rtsConfigTwitch rts of
               Just config -> do
