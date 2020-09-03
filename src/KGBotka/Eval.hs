@@ -343,14 +343,15 @@ evalExpr (FunCallExpr "asciify" args) = do
               bttvEmoteImageUrl <$>
               getBttvEmoteByName dbConn emoteNameArg channel
         let ffzEmoteUrl =
-              ffzEmoteImageUrl <$>
-              getFfzEmoteByName dbConn emoteNameArg channel
+              ffzEmoteImageUrl <$> getFfzEmoteByName dbConn emoteNameArg channel
         emoteUrl <-
           liftExceptT $
           maybeToExceptT
             (EvalError "No emote found")
             (bttvEmoteUrl <|> ffzEmoteUrl)
-        liftIO $ runExceptT (T.unlines . T.splitOn " " <$> asciifyUrl dbConn manager emoteUrl)
+        liftIO $
+          runExceptT
+            (T.unlines . T.splitOn " " <$> asciifyUrl dbConn manager emoteUrl)
       Etc etc -> do
         let twitchEmoteUrl =
               let emotes = etcTwitchEmotes etc
