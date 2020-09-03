@@ -150,6 +150,7 @@ executable kgbotka
                      , discord-haskell >= 1.6.0 && < 1.7.0
                      , base64 >= 0.4 && < 0.5
                      , direct-sqlite ==2.3.26
+                     , HsOpenSSL-x509-system == 0.1.0.4
 
   -- Directories containing source files.
   hs-source-dirs:      src
