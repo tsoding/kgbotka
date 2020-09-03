@@ -74,7 +74,7 @@ data EvalDiscordContext = EvalDiscordContext
   , edcRoles :: ![Snowflake]
   }
 
-data EvalReplContext = EvalReplContext
+newtype EvalReplContext = EvalReplContext
   { ercTwitchChannel :: Maybe TwitchIrcChannel
   }
 
@@ -350,7 +350,7 @@ evalExpr (FunCallExpr "asciify" args) = do
           maybeToExceptT
             (EvalError "No emote found")
             (bttvEmoteUrl <|> ffzEmoteUrl)
-        liftIO $ runExceptT $ (T.unlines . T.splitOn " " <$> asciifyUrl dbConn manager emoteUrl)
+        liftIO $ runExceptT (T.unlines . T.splitOn " " <$> asciifyUrl dbConn manager emoteUrl)
       Etc etc -> do
         let twitchEmoteUrl =
               let emotes = etcTwitchEmotes etc
@@ -481,9 +481,9 @@ evalExpr (FunCallExpr "calc" args) = do
 evalExpr (FunCallExpr "checkchannel" _) = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
-    Erc (EvalReplContext {ercTwitchChannel = Just channel}) ->
+    Erc EvalReplContext {ercTwitchChannel = Just channel} ->
       return $ twitchIrcChannelName channel
-    Erc (EvalReplContext {ercTwitchChannel = Nothing}) ->
+    Erc EvalReplContext {ercTwitchChannel = Nothing} ->
       throwExceptEval $ EvalError "No channel"
     _ -> throwExceptEval $ EvalError "[ERROR] Works only in REPL context"
 evalExpr (FunCallExpr "roles" _) = do
