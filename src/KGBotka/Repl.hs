@@ -252,7 +252,7 @@ replThreadLoop rts = do
       atomically $ writeQueue (rtsMarkovQueue rts) StopRetrain
       replPutStrLn replHandle "Retraining process has been stopped..."
       replThreadLoop rts
-    (("eval", code), _) -> do
+    (("eval", code), channel) -> do
       case snd <$> runParser expr code of
         Right ast ->
           withTransactionLogErrors $ \dbConn -> do
@@ -262,7 +262,8 @@ replThreadLoop rts = do
               EvalContext
                 { ecVars = M.empty
                 , ecSqliteConnection = dbConn
-                , ecPlatformContext = Erc EvalReplContext
+                , ecPlatformContext =
+                    Erc EvalReplContext {ercTwitchChannel = channel}
                 , ecLogQueue = rtsLogQueue rts
                 , ecManager = rtsManager rts
                 , ecFridayGistUpdateRequired = rtsFridayGistUpdateRequired rts

@@ -74,8 +74,9 @@ data EvalDiscordContext = EvalDiscordContext
   , edcRoles :: ![Snowflake]
   }
 
-data EvalReplContext =
-  EvalReplContext
+data EvalReplContext = EvalReplContext
+  { ercTwitchChannel :: Maybe TwitchIrcChannel
+  }
 
 data EvalPlatformContext
   = Etc EvalTwitchContext
@@ -110,7 +111,7 @@ senderMentionOfContext (Etc EvalTwitchContext {etcSenderName = name}) =
   Just name
 senderMentionOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
   Just $ T.pack $ printf "<@!%d>" ((fromIntegral $ userId author) :: Word64)
-senderMentionOfContext (Erc EvalReplContext) = Nothing
+senderMentionOfContext (Erc EvalReplContext {}) = Nothing
 
 channelNameOfContext :: EvalPlatformContext -> T.Text
 channelNameOfContext (Etc EvalTwitchContext {etcChannel = channel}) =
@@ -336,6 +337,20 @@ evalExpr (FunCallExpr "asciify" args) = do
   manager <- ecManager <$> getEval
   image <-
     case platformContext of
+      Erc erc -> do
+        let channel = ercTwitchChannel erc
+        let bttvEmoteUrl =
+              bttvEmoteImageUrl <$>
+              getBttvEmoteByName dbConn emoteNameArg channel
+        let ffzEmoteUrl =
+              ffzEmoteImageUrl <$>
+              getFfzEmoteByName dbConn emoteNameArg channel
+        emoteUrl <-
+          liftExceptT $
+          maybeToExceptT
+            (EvalError "No emote found")
+            (bttvEmoteUrl <|> ffzEmoteUrl)
+        liftIO $ runExceptT $ (T.unlines . T.splitOn " " <$> asciifyUrl dbConn manager emoteUrl)
       Etc etc -> do
         let twitchEmoteUrl =
               let emotes = etcTwitchEmotes etc
@@ -377,9 +392,6 @@ evalExpr (FunCallExpr "asciify" args) = do
               _ -> throwExceptEval $ EvalError "No emote found"
           _ -> throwExceptEval $ EvalError "No emote found"
       -- TODO(#257): Add %asciify support for REPL evaluation context
-      Erc _ ->
-        throwExceptEval $
-        EvalError "%asciify is not support in REPL evaluation context yet"
   case image of
     Right image' -> return image'
     Left errorMessage -> do
@@ -466,6 +478,14 @@ evalExpr (FunCallExpr "calc" args) = do
         Left (CalcEvalError e) ->
           throwExceptEval $ EvalError ("Evaluation error: " <> e)
         Right e -> return $ T.pack $ show e
+evalExpr (FunCallExpr "checkchannel" _) = do
+  platformContext <- ecPlatformContext <$> getEval
+  case platformContext of
+    Erc (EvalReplContext {ercTwitchChannel = Just channel}) ->
+      return $ twitchIrcChannelName channel
+    Erc (EvalReplContext {ercTwitchChannel = Nothing}) ->
+      throwExceptEval $ EvalError "No channel"
+    _ -> throwExceptEval $ EvalError "[ERROR] Works only in REPL context"
 evalExpr (FunCallExpr "roles" _) = do
   platformContext <- ecPlatformContext <$> getEval
   case platformContext of
