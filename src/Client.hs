@@ -40,7 +40,7 @@ csrfAuthState chunks queue s = do
       replState queue s
     _ -> csrfAuthState (chunks ++ chunks') queue s
 
--- TODO: kgbotka-client does not detect closing the connection on the kgbotka side
+-- TODO(#261): kgbotka-client does not detect closing the connection on the kgbotka side
 main :: IO ()
 main =
   runTCPClient "127.0.0.1" "6969" $ \s -> do
