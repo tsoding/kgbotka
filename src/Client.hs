@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import Control.Concurrent
@@ -5,48 +6,40 @@ import Control.Concurrent.STM
 import qualified Control.Exception as E
 import qualified Data.ByteString.Char8 as C
 import Data.Functor
+import Control.Monad
 import Network.Socket hiding (recv, send)
 import Network.Socket.ByteString (recv, send)
 import System.IO
+import System.Exit (exitFailure)
 
-bufferSize :: Int
-bufferSize = 1024
+replState :: Socket -> IO ()
+replState s = do
+  line <- recv s 2048
+  unless (C.null line) $ do
+    putStr $ C.unpack line
+    hFlush stdout
+    line <- getLine
+    void . send s $ C.concat [C.pack line, C.pack "\n"]
+    replState s
 
-readThread :: TQueue C.ByteString -> Socket -> IO ()
-readThread queue s = do
-  chunk <- recv s bufferSize
-  atomically $ writeTQueue queue chunk
-  readThread queue s
+csrfAuthState :: Socket -> IO ()
+csrfAuthState s = do
+  line <- recv s 2048
+  if C.isPrefixOf "CSRF => " line then do
+    void . send s $ C.drop 8 line
+    putStrLn "Authorized!"
+    replState s
+  else do
+    putStrLn "Could not receive the CSRF token, aborting"
+    exitFailure
 
-replState :: TQueue C.ByteString -> Socket -> IO ()
-replState queue s = do
-  threadDelay 10000
-  chunks <- atomically $ flushTQueue queue
-  putStr $ C.unpack $ C.concat chunks
-  hFlush stdout
-  line <- getLine
-  void $ send s $ C.concat [C.pack line, C.pack "\n"]
-  replState queue s
-
-csrfAuthState :: [C.ByteString] -> TQueue C.ByteString -> Socket -> IO ()
-csrfAuthState chunks queue s = do
-  chunks' <- atomically $ flushTQueue queue
-  case C.lines (C.concat (chunks ++ chunks')) of
-    [csrf, _] -> do
-      void $ send s $ C.concat [C.drop 8 csrf, C.pack "\n"]
-      putStrLn $ C.unpack $ C.drop 8 csrf
-      putStrLn "Authorized!"
-      replState queue s
-    _ -> csrfAuthState (chunks ++ chunks') queue s
-
--- TODO(#261): kgbotka-client does not detect closing the connection on the kgbotka side
 main :: IO ()
 main =
   runTCPClient "127.0.0.1" "6969" $ \s -> do
     putStrLn "Connected!"
     queue <- atomically newTQueue
-    void $ forkIO $ readThread queue s
-    csrfAuthState [] queue s
+    csrfAuthState s
+    putStrLn "Connection closed, have a great day!"
 
 runTCPClient :: HostName -> ServiceName -> (Socket -> IO a) -> IO a
 runTCPClient host port client =
