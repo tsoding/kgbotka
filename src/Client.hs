@@ -1,13 +1,13 @@
 module Main where
 
+import Control.Concurrent
+import Control.Concurrent.STM
 import qualified Control.Exception as E
+import qualified Data.ByteString.Char8 as C
+import Data.Functor
 import Network.Socket hiding (recv, send)
 import Network.Socket.ByteString (recv, send)
-import qualified Data.ByteString.Char8 as C
-import Control.Concurrent.STM
-import Data.Functor
 import System.IO
-import Control.Concurrent
 
 bufferSize :: Int
 bufferSize = 1024
@@ -58,6 +58,6 @@ runTCPClient host port client =
       let hints = defaultHints {addrSocketType = Stream}
       head <$> getAddrInfo (Just hints) (Just host) (Just port)
     open addr = do
-        sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
-        connect sock $ addrAddress addr
-        return sock
+      sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
+      connect sock $ addrAddress addr
+      return sock
