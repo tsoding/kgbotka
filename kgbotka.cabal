@@ -101,7 +101,7 @@ executable kgbotka-client
   default-language:    Haskell2010
 
 executable kgbotka
-  ghc-options: -threaded -Wall
+  ghc-options: -threaded -Wall -Werror
 
   -- .hs or .lhs file containing the Main module.
   main-is:             Main.hs

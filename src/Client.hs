@@ -6,7 +6,6 @@ import Network.Socket.ByteString (recv, send)
 import qualified Data.ByteString.Char8 as C
 import Control.Concurrent.STM
 import Data.Functor
-import Control.Concurrent
 import System.IO
 import Control.Concurrent
 
@@ -45,7 +44,7 @@ main :: IO ()
 main =
   runTCPClient "127.0.0.1" "6969" $ \s -> do
     putStrLn "Connected!"
-    queue <- atomically $ newTQueue
+    queue <- atomically newTQueue
     void $ forkIO $ readThread queue s
     csrfAuthState [] queue s
 
