@@ -438,13 +438,21 @@ evalExpr (FunCallExpr "assrole" rawArgs) = do
               throwExceptEval $ EvalError "User does not exist! D:"
             (Left twitchErr, _) -> do
               logEntryEval $ LogEntry "TWITCHAPI" $ T.pack (show twitchErr)
-              throwExceptEval $ EvalError "Could not assign the role"
+              throwExceptEval $
+                EvalError
+                  "Could not assign the role. Twitch API returned an error. Check out logs."
             (_, Nothing) -> do
               logEntryEval $ LogEntry "TWITCHAPI" "Such role does not exist"
-              throwExceptEval $ EvalError "Could not assign the role"
+              throwExceptEval $
+                EvalError $
+                T.pack $
+                printf
+                  "Could not assign the role. The role `%s` does not exist"
+                  roleName'
         Nothing -> do
           logEntryEval $ LogEntry "TWITCHAPI" "No twitch configuration"
-          throwExceptEval $ EvalError "Could not assign the role. "
+          throwExceptEval $
+            EvalError "Could not assign the role. Twitch config is missing."
     cookedArgs' ->
       throwExceptEval $
       EvalError $
