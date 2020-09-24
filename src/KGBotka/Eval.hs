@@ -25,10 +25,12 @@ import Control.Monad.Trans.Extra
 import Control.Monad.Trans.Maybe
 import Data.Array
 import Data.Bifunctor (first)
+import qualified Data.ByteString.Lazy as BS
 import Data.Foldable
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import Data.Time
 import Data.Word
 import qualified Database.SQLite.Simple as Sqlite
@@ -308,6 +310,13 @@ evalExpr (FunCallExpr "nextvideo" _) = do
   requireFridayGistUpdate
   return $ fridayVideoAsMessage fridayVideo
 -- FIXME(#39): %friday does not inform how many times a video was suggested
+evalExpr (FunCallExpr "curl" args) = do
+  failIfNotTrusted
+  location <- T.concat <$> mapM evalExpr args
+  parsedLocation <- lift $ HTTP.parseRequest $ T.unpack location
+  man <- ecManager <$> getEval
+  result <- lift $ HTTP.httpLbs parsedLocation man
+  return $ TE.decodeUtf8 $ BS.toStrict $ HTTP.responseBody result
 evalExpr (FunCallExpr "friday" args) = do
   failIfNotTrusted
   submissionText <- T.concat <$> mapM evalExpr args
