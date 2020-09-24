@@ -263,7 +263,11 @@ replThreadLoop rts = do
                 { ecVars = M.empty
                 , ecSqliteConnection = dbConn
                 , ecPlatformContext =
-                    Erc EvalReplContext {ercTwitchChannel = channel}
+                    Erc
+                      EvalReplContext
+                        { ercTwitchChannel = channel
+                        , ercConfigTwitch = rtsConfigTwitch rts
+                        }
                 , ecLogQueue = rtsLogQueue rts
                 , ecManager = rtsManager rts
                 , ecFridayGistUpdateRequired = rtsFridayGistUpdateRequired rts

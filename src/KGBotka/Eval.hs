@@ -74,8 +74,9 @@ data EvalDiscordContext = EvalDiscordContext
   , edcRoles :: ![Snowflake]
   }
 
-newtype EvalReplContext = EvalReplContext
+data EvalReplContext = EvalReplContext
   { ercTwitchChannel :: Maybe TwitchIrcChannel
+  , ercConfigTwitch :: Maybe ConfigTwitch
   }
 
 data EvalPlatformContext
@@ -117,6 +118,7 @@ senderMentionOfContext (Erc EvalReplContext {}) = Nothing
 configTwitchOfContext :: EvalPlatformContext -> Maybe ConfigTwitch
 configTwitchOfContext (Etc EvalTwitchContext {etcConfigTwitch = config'}) =
   Just config'
+configTwitchOfContext (Erc EvalReplContext {ercConfigTwitch = config'}) = config'
 configTwitchOfContext _ = Nothing
 
 channelNameOfContext :: EvalPlatformContext -> T.Text
@@ -220,6 +222,7 @@ failIfNotAuthority = do
                            , edcGuild = Just Guild {guildOwnerId = ownerId}
                            }
       | authorId == ownerId -> return ()
+    Erc EvalReplContext {} -> return ()
     _ -> throwExceptEval $ EvalError "Only for mr strimmer :)"
 
 requireFridayGistUpdate :: Eval ()
