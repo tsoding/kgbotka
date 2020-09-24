@@ -113,6 +113,12 @@ senderMentionOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
   Just $ T.pack $ printf "<@!%d>" ((fromIntegral $ userId author) :: Word64)
 senderMentionOfContext (Erc EvalReplContext {}) = Nothing
 
+-- TODO: Implement configTwitchOfContext for REPL support
+configTwitchOfContext :: EvalPlatformContext -> Maybe ConfigTwitch
+configTwitchOfContext (Etc EvalTwitchContext {etcConfigTwitch = config'}) =
+  Just config'
+configTwitchOfContext _ = Nothing
+
 channelNameOfContext :: EvalPlatformContext -> T.Text
 channelNameOfContext (Etc EvalTwitchContext {etcChannel = channel}) =
   twitchIrcChannelName channel
@@ -407,6 +413,42 @@ evalExpr (FunCallExpr "tsify" args) = do
          'C' -> "Ts"
          x -> T.pack [x])
       text
+evalExpr (FunCallExpr "assrole" rawArgs) = do
+  failIfNotAuthority
+  cookedArgs <- mapM evalExpr rawArgs
+  case cookedArgs of
+    [roleName', userName'] -> do
+      platformContext <- ecPlatformContext <$> getEval
+      dbConn <- ecSqliteConnection <$> getEval
+      manager <- ecManager <$> getEval
+      let config' = configTwitchOfContext platformContext
+      case config' of
+        Just config -> do
+          maybeRole <- liftIO $ getTwitchRoleByName dbConn roleName'
+          response <- liftIO $ getUsersByLogins manager config [userName']
+          case (response, maybeRole) of
+            (Right twitchUsers, Just role') -> do
+              liftIO $
+                traverse_
+                  (assTwitchRoleToUser dbConn (twitchRoleId role') .
+                   twitchUserId)
+                  twitchUsers
+              return "Assigned the role"
+            (Left twitchErr, _) -> do
+              logEntryEval $ LogEntry "TWITCHAPI" $ T.pack (show twitchErr)
+              throwExceptEval $ EvalError "Could not assign the role"
+            (_, Nothing) -> do
+              logEntryEval $ LogEntry "TWITCHAPI" "Such role does not exist"
+              throwExceptEval $ EvalError "Could not assign the role"
+        Nothing -> do
+          logEntryEval $ LogEntry "TWITCHAPI" "No twitch configuration"
+          throwExceptEval $ EvalError "Could not assign the role"
+    cookedArgs' ->
+      throwExceptEval $
+      EvalError $
+      T.pack $
+      printf "%assrole accepts 2 arguments, but %d was provided" $
+      length cookedArgs'
 evalExpr (FunCallExpr "help" args) = do
   name <- T.concat <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval
