@@ -221,7 +221,9 @@ replThreadLoop rts = do
       withTransactionLogErrors $ \dbConn -> deleteCommandName dbConn name
       replThreadLoop rts
     (("assrole", _), _) -> do
-      replPutStrLn replHandle "This command is deprecated. Use eval %assrole(\"<role>\", \"<user>\")"
+      replPutStrLn
+        replHandle
+        "This command is deprecated. Use eval %assrole(\"<role>\", \"<user>\")"
       replThreadLoop rts
     (("retrain", _), _) -> do
       atomically $ writeQueue (rtsMarkovQueue rts) Retrain

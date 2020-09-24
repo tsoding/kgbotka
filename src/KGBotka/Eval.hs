@@ -117,7 +117,8 @@ senderMentionOfContext (Erc EvalReplContext {}) = Nothing
 configTwitchOfContext :: EvalPlatformContext -> Maybe ConfigTwitch
 configTwitchOfContext (Etc EvalTwitchContext {etcConfigTwitch = config'}) =
   Just config'
-configTwitchOfContext (Erc EvalReplContext {ercConfigTwitch = config'}) = config'
+configTwitchOfContext (Erc EvalReplContext {ercConfigTwitch = config'}) =
+  config'
 configTwitchOfContext _ = Nothing
 
 channelNameOfContext :: EvalPlatformContext -> T.Text
