@@ -427,13 +427,13 @@ evalExpr (FunCallExpr "assrole" rawArgs) = do
           maybeRole <- liftIO $ getTwitchRoleByName dbConn roleName'
           response <- liftIO $ getUsersByLogins manager config [userName']
           case (response, maybeRole) of
-            (Right twitchUsers, Just role') -> do
+            (Right [twitchUser], Just role') -> do
               liftIO $
-                traverse_
-                  (assTwitchRoleToUser dbConn (twitchRoleId role') .
-                   twitchUserId)
-                  twitchUsers
+                assTwitchRoleToUser dbConn (twitchRoleId role') $
+                twitchUserId twitchUser
               return "Assigned the role"
+            (Right _, Just _) ->
+              throwExceptEval $ EvalError "User does not exist! D:"
             (Left twitchErr, _) -> do
               logEntryEval $ LogEntry "TWITCHAPI" $ T.pack (show twitchErr)
               throwExceptEval $ EvalError "Could not assign the role"
@@ -442,7 +442,7 @@ evalExpr (FunCallExpr "assrole" rawArgs) = do
               throwExceptEval $ EvalError "Could not assign the role"
         Nothing -> do
           logEntryEval $ LogEntry "TWITCHAPI" "No twitch configuration"
-          throwExceptEval $ EvalError "Could not assign the role"
+          throwExceptEval $ EvalError "Could not assign the role. "
     cookedArgs' ->
       throwExceptEval $
       EvalError $
