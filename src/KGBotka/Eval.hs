@@ -74,8 +74,9 @@ data EvalDiscordContext = EvalDiscordContext
   , edcRoles :: ![Snowflake]
   }
 
-newtype EvalReplContext = EvalReplContext
+data EvalReplContext = EvalReplContext
   { ercTwitchChannel :: Maybe TwitchIrcChannel
+  , ercConfigTwitch :: Maybe ConfigTwitch
   }
 
 data EvalPlatformContext
@@ -112,6 +113,13 @@ senderMentionOfContext (Etc EvalTwitchContext {etcSenderName = name}) =
 senderMentionOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
   Just $ T.pack $ printf "<@!%d>" ((fromIntegral $ userId author) :: Word64)
 senderMentionOfContext (Erc EvalReplContext {}) = Nothing
+
+configTwitchOfContext :: EvalPlatformContext -> Maybe ConfigTwitch
+configTwitchOfContext (Etc EvalTwitchContext {etcConfigTwitch = config'}) =
+  Just config'
+configTwitchOfContext (Erc EvalReplContext {ercConfigTwitch = config'}) =
+  config'
+configTwitchOfContext _ = Nothing
 
 channelNameOfContext :: EvalPlatformContext -> T.Text
 channelNameOfContext (Etc EvalTwitchContext {etcChannel = channel}) =
@@ -214,6 +222,7 @@ failIfNotAuthority = do
                            , edcGuild = Just Guild {guildOwnerId = ownerId}
                            }
       | authorId == ownerId -> return ()
+    Erc EvalReplContext {} -> return ()
     _ -> throwExceptEval $ EvalError "Only for mr strimmer :)"
 
 requireFridayGistUpdate :: Eval ()
@@ -407,6 +416,50 @@ evalExpr (FunCallExpr "tsify" args) = do
          'C' -> "Ts"
          x -> T.pack [x])
       text
+evalExpr (FunCallExpr "assrole" rawArgs) = do
+  failIfNotAuthority
+  cookedArgs <- mapM evalExpr rawArgs
+  case cookedArgs of
+    [roleName', userName'] -> do
+      platformContext <- ecPlatformContext <$> getEval
+      dbConn <- ecSqliteConnection <$> getEval
+      manager <- ecManager <$> getEval
+      let config' = configTwitchOfContext platformContext
+      case config' of
+        Just config -> do
+          maybeRole <- liftIO $ getTwitchRoleByName dbConn roleName'
+          response <- liftIO $ getUsersByLogins manager config [userName']
+          case (response, maybeRole) of
+            (Right [twitchUser], Just role') -> do
+              liftIO $
+                assTwitchRoleToUser dbConn (twitchRoleId role') $
+                twitchUserId twitchUser
+              return "Assigned the role"
+            (Right _, Just _) ->
+              throwExceptEval $ EvalError "User does not exist! D:"
+            (Left twitchErr, _) -> do
+              logEntryEval $ LogEntry "TWITCHAPI" $ T.pack (show twitchErr)
+              throwExceptEval $
+                EvalError
+                  "Could not assign the role. Twitch API returned an error. Check out logs."
+            (_, Nothing) -> do
+              logEntryEval $ LogEntry "TWITCHAPI" "Such role does not exist"
+              throwExceptEval $
+                EvalError $
+                T.pack $
+                printf
+                  "Could not assign the role. The role `%s` does not exist"
+                  roleName'
+        Nothing -> do
+          logEntryEval $ LogEntry "TWITCHAPI" "No twitch configuration"
+          throwExceptEval $
+            EvalError "Could not assign the role. Twitch config is missing."
+    cookedArgs' ->
+      throwExceptEval $
+      EvalError $
+      T.pack $
+      printf "%assrole accepts 2 arguments, but %d was provided" $
+      length cookedArgs'
 evalExpr (FunCallExpr "help" args) = do
   name <- T.concat <$> mapM evalExpr args
   dbConn <- ecSqliteConnection <$> getEval

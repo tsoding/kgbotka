@@ -220,29 +220,10 @@ replThreadLoop rts = do
     (("delalias", name), _) -> do
       withTransactionLogErrors $ \dbConn -> deleteCommandName dbConn name
       replThreadLoop rts
-    (("assrole", roleAss), _) -> do
-      case T.dropWhile (== ' ') <$> T.span (/= ' ') roleAss of
-        ("", _) -> replPutStrLn replHandle "No role to assign is provided"
-        (roleName, users) ->
-          withTransactionLogErrors $ \dbConn ->
-            case rtsConfigTwitch rts of
-              Just config -> do
-                maybeRole <- getTwitchRoleByName dbConn roleName
-                response <-
-                  getUsersByLogins (rtsManager rts) config $ T.words users
-                case (response, maybeRole) of
-                  (Right twitchUsers, Just role') ->
-                    traverse_
-                      (assTwitchRoleToUser dbConn (twitchRoleId role') .
-                       twitchUserId)
-                      twitchUsers
-                  (Left twitchErr, _) ->
-                    replPutStrLn replHandle $
-                    "[ERROR] " <> T.pack (show twitchErr)
-                  (_, Nothing) ->
-                    replPutStrLn replHandle "[ERROR] Such role does not exist"
-              Nothing ->
-                replPutStrLn replHandle "[ERROR] No twitch configuration"
+    (("assrole", _), _) -> do
+      replPutStrLn
+        replHandle
+        "This command is deprecated. Use eval %assrole(\"<role>\", \"<user>\")"
       replThreadLoop rts
     (("retrain", _), _) -> do
       atomically $ writeQueue (rtsMarkovQueue rts) Retrain
@@ -263,7 +244,11 @@ replThreadLoop rts = do
                 { ecVars = M.empty
                 , ecSqliteConnection = dbConn
                 , ecPlatformContext =
-                    Erc EvalReplContext {ercTwitchChannel = channel}
+                    Erc
+                      EvalReplContext
+                        { ercTwitchChannel = channel
+                        , ercConfigTwitch = rtsConfigTwitch rts
+                        }
                 , ecLogQueue = rtsLogQueue rts
                 , ecManager = rtsManager rts
                 , ecFridayGistUpdateRequired = rtsFridayGistUpdateRequired rts
