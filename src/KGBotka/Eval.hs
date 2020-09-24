@@ -114,7 +114,6 @@ senderMentionOfContext (Edc EvalDiscordContext {edcAuthor = author}) =
   Just $ T.pack $ printf "<@!%d>" ((fromIntegral $ userId author) :: Word64)
 senderMentionOfContext (Erc EvalReplContext {}) = Nothing
 
--- TODO: Implement configTwitchOfContext for REPL support
 configTwitchOfContext :: EvalPlatformContext -> Maybe ConfigTwitch
 configTwitchOfContext (Etc EvalTwitchContext {etcConfigTwitch = config'}) =
   Just config'
