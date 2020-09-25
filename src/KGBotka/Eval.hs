@@ -109,6 +109,11 @@ newtype EvalError =
 
 type Eval = EvalT EvalContext EvalError IO
 
+listToMaybeLast :: [a] -> Maybe a
+listToMaybeLast [] = Nothing
+listToMaybeLast [x] = Just x
+listToMaybeLast (_:xs) = listToMaybeLast xs
+
 senderMentionOfContext :: EvalPlatformContext -> Maybe T.Text
 senderMentionOfContext (Etc EvalTwitchContext {etcSenderName = name}) =
   Just name
@@ -309,7 +314,12 @@ evalExpr (FunCallExpr "nextvideo" _) = do
     maybeToExceptT (EvalError "Video queue is empty") $ nextVideo dbConn
   requireFridayGistUpdate
   return $ fridayVideoAsMessage fridayVideo
--- FIXME(#39): %friday does not inform how many times a video was suggested
+evalExpr (FunCallExpr "trusted" args) = do
+  failIfNotTrusted
+  fromMaybe "" . listToMaybeLast <$> mapM evalExpr args
+evalExpr (FunCallExpr "authority" args) = do
+  failIfNotAuthority
+  fromMaybe "" . listToMaybeLast <$> mapM evalExpr args
 evalExpr (FunCallExpr "curl" args) = do
   failIfNotTrusted
   location <- T.concat <$> mapM evalExpr args
@@ -317,6 +327,7 @@ evalExpr (FunCallExpr "curl" args) = do
   man <- ecManager <$> getEval
   result <- lift $ HTTP.httpLbs parsedLocation man
   return $ TE.decodeUtf8 $ BS.toStrict $ HTTP.responseBody result
+-- FIXME(#39): %friday does not inform how many times a video was suggested
 evalExpr (FunCallExpr "friday" args) = do
   failIfNotTrusted
   submissionText <- T.concat <$> mapM evalExpr args
