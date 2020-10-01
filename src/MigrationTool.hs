@@ -48,7 +48,6 @@ populateHyperNerdBuiltinCommands dbConn = do
   void $ addCommand dbConn "videocount" "%videocount(%1)"
   void $ addCommand dbConn "videoq" "%videoq(%1)"
 
--- TODO(#199): go through all of the conversion queries and check the baseline amount of entities
 -- TODO(#149): MigrationTool should rather called ConvertionTool or something like that.
 -- TODO(#150): Perform database conversion on CI for testing purposes
 convertCommands :: Connection -> IO ()
