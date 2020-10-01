@@ -21,7 +21,6 @@ import System.Environment
 import System.IO
 import Text.Printf
 
--- TODO(#145): MigrationTool does not convert Trusted users
 -- TODO(#146): MigrationTool does not convert quote database
 -- TODO(#147): populateHyperNerdBuiltinCommands does not support !trust and !untrust commands
 -- TODO(#148): populateHyperNerdBuiltinCommands does not support !updatebttv !updateffz
