@@ -173,4 +173,3 @@ getStreamByLogin manager ConfigTwitch { configTwitchClientId = clientId
         }
       manager
   return $ listToMaybe <$> extractTwitchResponse response
--- TODO(#216): convenient mechanism of settings up the Twitch token
