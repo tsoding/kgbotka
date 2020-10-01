@@ -421,7 +421,6 @@ evalExpr (FunCallExpr "asciify" args) = do
                       ".png"))
               _ -> throwExceptEval $ EvalError "No emote found"
           _ -> throwExceptEval $ EvalError "No emote found"
-      -- TODO(#257): Add %asciify support for REPL evaluation context
   case image of
     Right image' -> return image'
     Left errorMessage -> do
