@@ -91,7 +91,6 @@ chunks _ [] = []
 chunks n xs = take n xs : chunks n (drop n xs)
 
 -- TODO(#218): document that convertTrustedUsers requires querying Twitch API
--- TODO(#219): convertTrustedUsers is not tested properly with actually working getUsersByLogins
 -- TODO(#225): document convertTrustedUsers limitations
 --   Renamed users are ignored
 convertTrustedUsers :: Connection -> HTTP.Manager -> ConfigTwitch -> IO ()
