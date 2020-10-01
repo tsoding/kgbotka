@@ -186,7 +186,6 @@ convertTwitchLogs dbConn =
 -- TODO(#196): document limitations of convertDiscordLogs
 --   - guildId is not converted (not available)
 --   - senderDiscordId is not converted (not available)
--- TODO(#203): convertDiscordLogs uses old conversion style
 convertDiscordLogs :: Connection -> IO ()
 convertDiscordLogs dbConn =
   executeNamed
