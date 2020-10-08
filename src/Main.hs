@@ -11,6 +11,7 @@ import Control.Concurrent.STM
 import Control.Exception
 import Data.Aeson
 import Data.Foldable
+import Data.Functor
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Config
 import KGBotka.DiscordThread
@@ -100,8 +101,9 @@ mainWithArgs (configPath:databasePath:_) = do
               , btpFridayGistUpdateRequired = fridayGistUpdateRequired
               , btpExitMonitor = exitMonitor
               }
-          ] $ \_ -> Monitor.wait exitMonitor
-      -- TODO(#268): shutting down the bot via the exitMonitor does not properly finalize log, database, etc subsystems
+          ] $ \_ -> do
+          Monitor.wait exitMonitor
+          void $ takeMVar sqliteConnection
       putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do
