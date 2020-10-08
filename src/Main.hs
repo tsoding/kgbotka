@@ -111,6 +111,3 @@ mainWithArgs _ = do
 
 main :: IO ()
 main = getArgs >>= mainWithArgs
-
-f :: Int
-f = 5
