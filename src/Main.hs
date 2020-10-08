@@ -101,6 +101,7 @@ mainWithArgs (configPath:databasePath:_) = do
               , btpExitMonitor = exitMonitor
               }
           ] $ \_ -> Monitor.wait exitMonitor
+      -- TODO: shutting down the bot via the exitMonitor does not properly finalize log, database, etc subsystems
       putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do

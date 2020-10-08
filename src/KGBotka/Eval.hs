@@ -336,10 +336,10 @@ evalExpr (FunCallExpr "shutdown" _) = do
   platformContext <- ecPlatformContext <$> getEval
   exitMonitor <- ecExitMonitor <$> getEval
   case platformContext of
-    Etc (EvalTwitchContext { etcSenderId = senderId
-                           , etcSenderName = senderName
-                           , etcChannel = channel
-                           }) ->
+    Etc EvalTwitchContext { etcSenderId = senderId
+                          , etcSenderName = senderName
+                          , etcChannel = channel
+                          } ->
       logEntryEval $
       LogEntry "SHUTDOWN" $
       T.pack $
@@ -348,7 +348,7 @@ evalExpr (FunCallExpr "shutdown" _) = do
         (show senderId)
         senderName
         (show channel)
-    Edc (EvalDiscordContext {edcAuthor = author, edcGuild = guild}) ->
+    Edc EvalDiscordContext {edcAuthor = author, edcGuild = guild} ->
       logEntryEval $
       LogEntry "SHUTDOWN" $
       T.pack $
@@ -356,7 +356,7 @@ evalExpr (FunCallExpr "shutdown" _) = do
         "Requested a shutdown from Discord context: author = %s, guild = %s"
         (show author)
         (show guild)
-    Erc (EvalReplContext {ercConnAddr = connAddr}) ->
+    Erc EvalReplContext {ercConnAddr = connAddr} ->
       logEntryEval $
       LogEntry "SHUTDOWN" $
       T.pack $
