@@ -47,12 +47,14 @@ import KGBotka.Flip
 import KGBotka.Friday
 import KGBotka.Log
 import KGBotka.Markov
+import qualified KGBotka.Monitor as Monitor
 import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.TwitchAPI
 import KGBotka.Xkcd
 import qualified Network.HTTP.Client as HTTP
+import Network.Socket (SockAddr)
 import Network.URI
 import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
@@ -79,6 +81,7 @@ data EvalDiscordContext = EvalDiscordContext
 data EvalReplContext = EvalReplContext
   { ercTwitchChannel :: Maybe TwitchIrcChannel
   , ercConfigTwitch :: Maybe ConfigTwitch
+  , ercConnAddr :: !SockAddr
   }
 
 data EvalPlatformContext
@@ -91,6 +94,7 @@ data EvalContext = EvalContext
   , ecSqliteConnection :: !Sqlite.Connection
   , ecManager :: !HTTP.Manager
   , ecLogQueue :: !(WriteQueue LogEntry)
+  , ecExitMonitor :: Monitor.T
   , ecFridayGistUpdateRequired :: !(MVar ())
   , ecPlatformContext :: !EvalPlatformContext
   }
@@ -328,6 +332,39 @@ evalExpr (FunCallExpr "curl" args) = do
   result <- lift $ HTTP.httpLbs parsedLocation man
   return $ TE.decodeUtf8 $ BS.toStrict $ HTTP.responseBody result
 -- FIXME(#39): %friday does not inform how many times a video was suggested
+evalExpr (FunCallExpr "shutdown" _) = do
+  platformContext <- ecPlatformContext <$> getEval
+  exitMonitor <- ecExitMonitor <$> getEval
+  case platformContext of
+    Etc EvalTwitchContext { etcSenderId = senderId
+                          , etcSenderName = senderName
+                          , etcChannel = channel
+                          } ->
+      logEntryEval $
+      LogEntry "SHUTDOWN" $
+      T.pack $
+      printf
+        "Requested a shutdown from Twitch context: senderId = %s, senderName = %s, channel = %s"
+        (show senderId)
+        senderName
+        (show channel)
+    Edc EvalDiscordContext {edcAuthor = author, edcGuild = guild} ->
+      logEntryEval $
+      LogEntry "SHUTDOWN" $
+      T.pack $
+      printf
+        "Requested a shutdown from Discord context: author = %s, guild = %s"
+        (show author)
+        (show guild)
+    Erc EvalReplContext {ercConnAddr = connAddr} ->
+      logEntryEval $
+      LogEntry "SHUTDOWN" $
+      T.pack $
+      printf
+        "Request a shutdown from REPL context: connAddr = %s"
+        (show connAddr)
+  liftIO $ Monitor.notify exitMonitor
+  return ""
 evalExpr (FunCallExpr "friday" args) = do
   failIfNotTrusted
   submissionText <- T.concat <$> mapM evalExpr args
@@ -585,6 +622,7 @@ evalExpr (FunCallExpr funame _) = do
     maybeToExceptT (EvalError $ "Function `" <> funame <> "` does not exists") $
     hoistMaybe $ M.lookup funame vars
 
+-- asdjkasd
 evalExprs :: [Expr] -> Eval T.Text
 evalExprs exprs' = T.concat <$> mapM evalExpr exprs'
 

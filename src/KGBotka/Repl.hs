@@ -33,6 +33,7 @@ import KGBotka.Ffz
 import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
 import KGBotka.Markov
+import qualified KGBotka.Monitor as Monitor
 import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Roles
@@ -48,6 +49,7 @@ data ReplThreadParams = ReplThreadParams
   { rtpSqliteConnection :: !(MVar Sqlite.Connection)
   , rtpCommandQueue :: !(WriteQueue ReplCommand)
   , rtpConfigTwitch :: !(Maybe ConfigTwitch)
+  , rtpExitMonitor :: !Monitor.T
   , rtpManager :: !HTTP.Manager
   , rtpHandle :: !Handle
   , rtpLogQueue :: !(WriteQueue LogEntry)
@@ -64,6 +66,7 @@ data ReplThreadState = ReplThreadState
   { rtsSqliteConnection :: !(MVar Sqlite.Connection)
   , rtsCurrentChannel :: !(Maybe TwitchIrcChannel)
   , rtsCommandQueue :: !(WriteQueue ReplCommand)
+  , rtsExitMonitor :: !Monitor.T
   , rtsConfigTwitch :: !(Maybe ConfigTwitch)
   , rtsManager :: !HTTP.Manager
   , rtsHandle :: !Handle
@@ -88,6 +91,7 @@ replThread rtp =
       , rtsCurrentChannel = Nothing
       , rtsCommandQueue = rtpCommandQueue rtp
       , rtsConfigTwitch = rtpConfigTwitch rtp
+      , rtsExitMonitor = rtpExitMonitor rtp
       , rtsManager = rtpManager rtp
       , rtsHandle = rtpHandle rtp
       , rtsLogQueue = rtpLogQueue rtp
@@ -243,11 +247,13 @@ replThreadLoop rts = do
               EvalContext
                 { ecVars = M.empty
                 , ecSqliteConnection = dbConn
+                , ecExitMonitor = rtsExitMonitor rts
                 , ecPlatformContext =
                     Erc
                       EvalReplContext
                         { ercTwitchChannel = channel
                         , ercConfigTwitch = rtsConfigTwitch rts
+                        , ercConnAddr = rtsConnAddr rts
                         }
                 , ecLogQueue = rtsLogQueue rts
                 , ecManager = rtsManager rts
@@ -291,6 +297,7 @@ data BackdoorThreadParams = BackdoorThreadParams
   , btpConfigTwitch :: !(Maybe ConfigTwitch)
   , btpManager :: !HTTP.Manager
   , btpLogQueue :: !(WriteQueue LogEntry)
+  , btpExitMonitor :: !Monitor.T
   , btpPort :: !Int
   , btpMarkovQueue :: !(WriteQueue MarkovCommand)
   , btpRetrainProgress :: !(MVar (Maybe Int))
@@ -341,6 +348,7 @@ backdoorThread btp = do
           , rtpManager = btpManager btp
           , rtpHandle = connHandle
           , rtpLogQueue = btpLogQueue btp
+          , rtpExitMonitor = btpExitMonitor btp
           , rtpConnAddr = addr
           , rtpConfigTwitch = btpConfigTwitch btp
           , rtpMarkovQueue = btpMarkovQueue btp

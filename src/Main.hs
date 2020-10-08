@@ -18,6 +18,7 @@ import KGBotka.GithubThread
 import KGBotka.Log
 import KGBotka.Markov
 import KGBotka.Migration
+import qualified KGBotka.Monitor as Monitor
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.TwitchThread
@@ -35,6 +36,7 @@ mainWithArgs (configPath:databasePath:_) = do
   putStrLn $ "Your configuration file is " <> configPath
   eitherDecodeFileStrict configPath >>= \case
     Right config -> do
+      exitMonitor <- Monitor.new
       replQueue <- atomically newTQueue
       rawLogQueue <- atomically newTQueue
       markovCmdQueue <- atomically newTQueue
@@ -51,6 +53,7 @@ mainWithArgs (configPath:databasePath:_) = do
             TwitchThreadParams
               { ttpReplQueue = ReadQueue replQueue
               , ttpSqliteConnection = sqliteConnection
+              , ttpExitMonitor = exitMonitor
               , ttpLogQueue = WriteQueue rawLogQueue
               , ttpManager = manager
               , ttpConfig = configTwitch config
@@ -62,6 +65,7 @@ mainWithArgs (configPath:databasePath:_) = do
               { dtpConfig = configDiscord config
               , dtpLogQueue = WriteQueue rawLogQueue
               , dtpSqliteConnection = sqliteConnection
+              , dtpExitMonitor = exitMonitor
               , dtpManager = manager
               , dtpFridayGistUpdateRequired = fridayGistUpdateRequired
               , dtpMarkovQueue = WriteQueue markovCmdQueue
@@ -83,19 +87,21 @@ mainWithArgs (configPath:databasePath:_) = do
               , mtpPageSize = 1000
               , mtpRetrainProgress = retrainProgress
               }
-          ] $ \_ ->
-          backdoorThread $
-          BackdoorThreadParams
-            { btpSqliteConnection = sqliteConnection
-            , btpCommandQueue = WriteQueue replQueue
-            , btpConfigTwitch = configTwitch config
-            , btpManager = manager
-            , btpLogQueue = WriteQueue rawLogQueue
-            , btpPort = 6969 -- TODO(#63): backdoor port is hardcoded
-            , btpMarkovQueue = WriteQueue markovCmdQueue
-            , btpRetrainProgress = retrainProgress
-            , btpFridayGistUpdateRequired = fridayGistUpdateRequired
-            }
+          , backdoorThread $
+            BackdoorThreadParams
+              { btpSqliteConnection = sqliteConnection
+              , btpCommandQueue = WriteQueue replQueue
+              , btpConfigTwitch = configTwitch config
+              , btpManager = manager
+              , btpLogQueue = WriteQueue rawLogQueue
+              , btpPort = 6969 -- TODO(#63): backdoor port is hardcoded
+              , btpMarkovQueue = WriteQueue markovCmdQueue
+              , btpRetrainProgress = retrainProgress
+              , btpFridayGistUpdateRequired = fridayGistUpdateRequired
+              , btpExitMonitor = exitMonitor
+              }
+          ] $ \_ -> Monitor.wait exitMonitor
+      -- TODO(#268): shutting down the bot via the exitMonitor does not properly finalize log, database, etc subsystems
       putStrLn "Done"
     Left errorMessage -> error errorMessage
 mainWithArgs _ = do

@@ -51,7 +51,7 @@ instance FromJSON TwitchUserId where
 
 newtype TwitchIrcChannel =
   TwitchIrcChannel Identifier
-  deriving (Ord, Eq)
+  deriving (Ord, Eq, Show)
 
 twitchIrcChannelText :: TwitchIrcChannel -> T.Text
 twitchIrcChannelText (TwitchIrcChannel ident) = idText ident
