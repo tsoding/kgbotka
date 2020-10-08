@@ -42,6 +42,7 @@ import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
+import qualified KGBotka.Monitor as Monitor
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge
@@ -77,6 +78,7 @@ userIdFromRawIrcMsg RawIrcMsg {_msgTags = tags} =
 data TwitchThreadParams = TwitchThreadParams
   { ttpLogQueue :: !(WriteQueue LogEntry)
   , ttpReplQueue :: !(ReadQueue ReplCommand)
+  , ttpExitMonitor :: !Monitor.T
   , ttpSqliteConnection :: !(MVar Sqlite.Connection)
   , ttpManager :: !HTTP.Manager
   , ttpConfig :: !(Maybe ConfigTwitch)
@@ -91,6 +93,7 @@ data TwitchThreadState = TwitchThreadState
   { ttsLogQueue :: !(WriteQueue LogEntry)
   , ttsReplQueue :: !(ReadQueue ReplCommand)
   , ttsSqliteConnection :: !(MVar Sqlite.Connection)
+  , ttsExitMonitor :: !Monitor.T
   , ttsManager :: !HTTP.Manager
   , ttsConfig :: ConfigTwitch
   , ttsIncomingQueue :: !(ReadQueue RawIrcMsg)
@@ -206,6 +209,7 @@ twitchThread ttp =
             { ttsLogQueue = ttpLogQueue ttp
             , ttsReplQueue = ttpReplQueue ttp
             , ttsSqliteConnection = ttpSqliteConnection ttp
+            , ttsExitMonitor = ttpExitMonitor ttp
             , ttsManager = ttpManager ttp
             , ttsConfig = config
             , ttsIncomingQueue = ReadQueue incomingIrcQueue
@@ -296,6 +300,7 @@ processUserMsgs dbConn tts messages = do
                           EvalContext
                             { ecVars = M.empty
                             , ecSqliteConnection = dbConn
+                            , ecExitMonitor = ttsExitMonitor tts
                             , ecPlatformContext =
                                 Etc
                                   EvalTwitchContext

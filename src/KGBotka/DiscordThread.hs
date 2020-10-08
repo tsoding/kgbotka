@@ -36,11 +36,13 @@ import KGBotka.Settings
 import KGBotka.Sqlite
 import qualified Network.HTTP.Client as HTTP
 import Text.Printf
+import qualified KGBotka.Monitor as Monitor
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)
   , dtpLogQueue :: !(WriteQueue LogEntry)
   , dtpSqliteConnection :: !(MVar Sqlite.Connection)
+  , dtpExitMonitor :: !Monitor.T
   , dtpManager :: !HTTP.Manager
   , dtpFridayGistUpdateRequired :: !(MVar ())
   , dtpMarkovQueue :: !(WriteQueue MarkovCommand)
@@ -50,6 +52,7 @@ data DiscordThreadState = DiscordThreadState
   { dtsLogQueue :: !(WriteQueue LogEntry)
   , dtsSqliteConnection :: !(MVar Sqlite.Connection)
   , dtsManager :: !HTTP.Manager
+  , dtsExitMonitor :: !Monitor.T
   -- TODO(#173): replace dtsCurrentUser :: !(MVar User) with !(Maybe User)
   , dtsCurrentUser :: !(MVar User)
   , dtsFridayGistUpdateRequired :: !(MVar ())
@@ -71,6 +74,7 @@ discordThread dtp =
             DiscordThreadState
               { dtsLogQueue = dtpLogQueue dtp
               , dtsSqliteConnection = dtpSqliteConnection dtp
+              , dtsExitMonitor = dtpExitMonitor dtp
               , dtsManager = dtpManager dtp
               , dtsCurrentUser = currentUser
               , dtsFridayGistUpdateRequired = dtpFridayGistUpdateRequired dtp
@@ -219,6 +223,7 @@ eventHandler dts dis (MessageCreate m)
                  EvalContext
                    { ecVars = M.empty
                    , ecSqliteConnection = dbConn
+                   , ecExitMonitor = dtsExitMonitor dts
                    , ecPlatformContext =
                        Edc
                          EvalDiscordContext
