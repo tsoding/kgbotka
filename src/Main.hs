@@ -11,6 +11,7 @@ import Control.Concurrent.STM
 import Control.Exception
 import Data.Aeson
 import Data.Foldable
+import Data.Functor
 import qualified Database.SQLite.Simple as Sqlite
 import KGBotka.Config
 import KGBotka.DiscordThread
@@ -26,7 +27,6 @@ import qualified Network.HTTP.Client.TLS as TLS
 import System.Environment
 import System.Exit
 import System.IO
-import Data.Functor
 
 -- TODO(#143): Periodic evaluation
 withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b
