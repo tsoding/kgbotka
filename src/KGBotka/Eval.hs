@@ -47,19 +47,19 @@ import KGBotka.Flip
 import KGBotka.Friday
 import KGBotka.Log
 import KGBotka.Markov
+import qualified KGBotka.Monitor as Monitor
 import KGBotka.Parser
 import KGBotka.Queue
 import KGBotka.Roles
 import KGBotka.TwitchAPI
 import KGBotka.Xkcd
 import qualified Network.HTTP.Client as HTTP
+import Network.Socket (SockAddr)
 import Network.URI
 import Text.Printf
 import qualified Text.Regex.Base.RegexLike as Regex
 import Text.Regex.TDFA (defaultCompOpt, defaultExecOpt)
 import Text.Regex.TDFA.String
-import Network.Socket (SockAddr)
-import qualified KGBotka.Monitor as Monitor
 
 data EvalTwitchContext = EvalTwitchContext
   { etcSenderId :: !TwitchUserId

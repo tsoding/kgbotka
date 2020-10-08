@@ -33,6 +33,7 @@ import KGBotka.Eval
 import KGBotka.JoinedTwitchChannels
 import KGBotka.Log
 import KGBotka.Markov
+import qualified KGBotka.Monitor as Monitor
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.Roles
@@ -42,7 +43,6 @@ import KGBotka.TwitchLog
 import qualified Network.HTTP.Client as HTTP
 import Network.Socket (Family(AF_INET))
 import Text.Printf
-import qualified KGBotka.Monitor as Monitor
 
 roleOfBadge :: T.Text -> Maybe TwitchBadgeRole
 roleOfBadge badge

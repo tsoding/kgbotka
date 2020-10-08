@@ -31,12 +31,12 @@ import KGBotka.DiscordLog
 import KGBotka.Eval
 import KGBotka.Log
 import KGBotka.Markov
+import qualified KGBotka.Monitor as Monitor
 import KGBotka.Queue
 import KGBotka.Settings
 import KGBotka.Sqlite
 import qualified Network.HTTP.Client as HTTP
 import Text.Printf
-import qualified KGBotka.Monitor as Monitor
 
 data DiscordThreadParams = DiscordThreadParams
   { dtpConfig :: !(Maybe ConfigDiscord)

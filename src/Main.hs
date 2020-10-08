@@ -18,6 +18,7 @@ import KGBotka.GithubThread
 import KGBotka.Log
 import KGBotka.Markov
 import KGBotka.Migration
+import qualified KGBotka.Monitor as Monitor
 import KGBotka.Queue
 import KGBotka.Repl
 import KGBotka.TwitchThread
@@ -25,7 +26,6 @@ import qualified Network.HTTP.Client.TLS as TLS
 import System.Environment
 import System.Exit
 import System.IO
-import qualified KGBotka.Monitor as Monitor
 
 -- TODO(#143): Periodic evaluation
 withForkIOs :: [IO ()] -> ([ThreadId] -> IO b) -> IO b

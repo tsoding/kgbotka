@@ -3,8 +3,8 @@ module KGBotka.Monitor where
 import Control.Concurrent
 
 -- Who needs OCaml LOOOOOOL
-
-newtype T = T (MVar ())
+newtype T =
+  T (MVar ())
 
 new :: IO T
 new = T <$> newEmptyMVar
