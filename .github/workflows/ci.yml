@@ -20,6 +20,6 @@ jobs:
       - name: install dependencies
         run: cabal v2-update
       - name: build
-        run: cabal v2-build
+        run: cabal v2-build -f ci
       - name: lint
         run: curl -sL https://raw.github.com/ndmitchell/hlint/master/misc/travis.sh | sh -s ./src/
