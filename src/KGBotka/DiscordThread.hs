@@ -150,9 +150,6 @@ eventHandler dts dis (MessageCreate m)
   | not (fromBot m) && isPing (messageText m) =
     void $
     restCall dis (R.CreateReaction (messageChannel m, messageId m) "hearts")
-  | not (fromBot m) && isSorry (messageText m) =
-    void $
-    restCall dis (R.CreateReaction (messageChannel m, messageId m) "flag-ca")
   | not (fromBot m) = do
     withMVar (dtsSqliteConnection dts) $ \dbConn ->
       catch
@@ -259,6 +256,3 @@ fromBot m = userIsBot (messageAuthor m)
 
 isPing :: T.Text -> Bool
 isPing = ("ping" `T.isPrefixOf`) . T.toLower
-
-isSorry :: T.Text -> Bool
-isSorry = ("sorry" `T.isSuffixOf`) . T.toLower
